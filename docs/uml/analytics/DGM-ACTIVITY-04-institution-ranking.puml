@@ -1,0 +1,70 @@
+@startuml
+' =====================================================================
+' DGM-ACTIVITY-04  机构成果分类排名生成活动图
+' 对应需求：FR11-S05（机构成果分类排名）、FR11-S08（归属口径与跨机构计数）
+'           辅助：FR11-S07（去重计数）、FR11-S10（样本不足与展示规模保护）
+' 一致性：机构归属口径与 BR-12／BR-13 一致；去重规则与 BR-11／BR-16 一致；
+'         与 DGM-ACTIVITY-02（统计指标生成与口径披露）共用同一条结果披露要求
+' =====================================================================
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam usecaseFontStyle normal
+skinparam actorFontStyle normal
+skinparam rectangleFontStyle normal
+skinparam packageFontStyle normal
+skinparam componentFontStyle normal
+skinparam ArrowFontStyle normal
+skinparam legendFontStyle normal
+skinparam stateFontStyle normal
+skinparam activityFontStyle normal
+skinparam activityDiamondFontStyle normal
+skinparam noteFontStyle normal
+skinparam dpi 150
+
+start
+partition "访客" {
+  :打开机构成果分类排名视图;
+  :设置时间范围、成果类型、研究领域与数据集范围;
+}
+partition "系统" {
+  :读取当前对外可见的统计结果及其口径版本;
+  if (存在可用的统计结果?) then (否)
+    :提示"暂无可用统计结果"并给出最近一次计算时间;
+    stop
+  else (是)
+    if (涉及跨机构计数且 Q-4 尚未冻结?) then (是)
+      :提示跨机构口径待联合评审，不发布采用候选规则的正式排名;
+      stop
+    else (否)
+      :按已冻结归属口径把合格成果实体归属到成果发生时机构;
+    endif
+    :按去重规则计数并按机构分组;
+    :按所选成果类型分类汇总;
+    if (存在计数低于样本不足阈值的机构?) then (是)
+      :标注"样本不足"，不改变实际计数;
+    else (否)
+      :按实际计数展示;
+    endif
+    if (命中机构数超过单次展示上限?) then (是)
+      :展示排名前 N 项，标注部分结果及省略规模并提示收窄条件;
+    else (否)
+      :展示完整排名;
+    endif
+    :随结果同屏披露数据范围、时间范围、计数口径与生成时间;
+  endif
+}
+partition "访客" {
+  :点击某一机构，下钻到相同条件的检索结果复核计数;
+}
+stop
+
+legend right
+  说明
+  1. 跨机构分配以 Q-4 联合冻结规则为准，各机构分别计入仅为候选方案。
+     BR-12 允许维度合计超过平台实体总数，不代替 Q-4 的具体计数决策。
+  2. 计数一律以去重后的成果实体为单位，同一成果的重复来源不重复计数。
+  3. 样本不足标注只增加提示，不改变实际计数，也不隐藏该机构。
+  4. 超出展示上限时按排名展示前 N 项，并给出收窄条件的提示，不静默截断。
+endlegend
+@enduml

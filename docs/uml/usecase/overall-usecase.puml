@@ -1,0 +1,183 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam dpi 150
+
+' DGM-USECASE-01 — 系统总体用例图，Draft，待联合 SRS 评审。
+' 唯一维护源：overall-usecase.puml；overall-usecase.svg 仅由本文件生成。
+' 从仓库根目录重新渲染：
+' plantuml -charset UTF-8 -tsvg -failfast2 docs/uml/usecase/overall-usecase.puml
+' 依据：docs/requirements/学术成果分享平台需求分析与可行性报告.md（正文 V1.9）
+' 规范：docs/srs/CognitaNexus_SRS编写与需求建模规范_V1.0.md
+' 模块：docs/srs/modules/search-recommendation.md（V0.1 Draft）
+' 本次按用户指定使用 docs/uml/usecase/，不另存第二份总体图源文件。
+' 用例别名仅为绘图标识；共同 SRS 的全局 UC 编号仍待统一分配。
+
+top to bottom direction
+skinparam defaultFontSize 16
+skinparam packageStyle rectangle
+skinparam nodesep 18
+skinparam ranksep 18
+skinparam linetype polyline
+skinparam ArrowFontSize 14
+skinparam NoteFontSize 14
+skinparam LegendFontSize 14
+skinparam actorStyle stickman
+
+title CognitaNexus 系统总体用例图\n需求建模 / SRS · V1.9 基线 · Draft
+
+actor "访客\nVisitor" as Visitor
+actor "登录用户\nLogged-in User" as User
+actor "已认领门户管理者\nPortal Manager" as PortalManager
+actor "推荐使用者（本人）" as Recommender
+actor "管理员\nAdmin" as Admin
+actor "外部数据来源\nExternal Data Source" as DataSource
+actor "成果原站\nOriginal Source Site" as OriginalSite
+
+rectangle "CognitaNexus" {
+  package "公开发现与分析" as Discovery {
+    usecase "检索成果与学者\nFR01" as Search
+    usecase "查看成果详情与来源\nFR02、FR16" as Detail
+    usecase "查看学者门户\nFR03" as Portal
+    usecase "查看成果统计与机构排名\nFR11" as Statistics
+    usecase "查看基础专家合作关系网络\nFR12" as Network
+    usecase "查看领域热点分析\nFR13" as Hotspots
+    usecase "探索合作关系\nIN01" as Exploration <<Innovation>>
+    usecase "查看相似论文推荐\nO01" as Similar <<Optional>>
+  }
+
+  package "账号、认领与门户维护" as AccountPortal {
+    usecase "注册账号\nFR04" as Register
+    usecase "登录账号\nFR04" as Login
+    usecase "退出登录\nFR04" as Logout
+    usecase "提交门户认领申请\nFR05" as Claim
+    usecase "查看本人认领申请状态\nFR05" as ClaimStatus
+    usecase "维护学者门户\nFR06" as MaintainPortal
+    usecase "确认／补录／纠正成果\nFR07、FR15" as MaintainAchievement
+  }
+
+  package "数据采集、治理与管理审核" as Governance {
+    usecase "管理数据源与采集任务\nFR08" as ManageCollection
+    usecase "采集／导入四类成果并记录来源\nFR08、FR16" as Collect
+    usecase "治理数据质量与成果归属\n清洗／去重／消歧／分类\nFR09、FR15、FR14" as DataQuality
+    usecase "管理增量更新与处理异常\nFR10" as Update
+    usecase "查看管理后台待办\nFR14" as Workbench
+    usecase "审核门户认领与成果变更\nFR05、FR07、FR14" as Review
+    usecase "管理账号与查询审计记录\nFR14" as AccountAudit
+  }
+
+  package "轻量个性化增强（Optional）" as Personalization {
+    usecase "使用轻量个性化推荐\nO02" as Personalized <<Optional>>
+    usecase "查看／清除本人兴趣偏好\nO02" as Preferences <<Optional>>
+  }
+}
+
+' 隐藏边仅控制并列业务分组布局，不表达任何业务依赖。
+Visitor -[hidden]down-> Search
+Search -[hidden]down-> Detail
+Detail -[hidden]down-> Similar
+Similar -[hidden]down-> Portal
+Portal -[hidden]down-> Statistics
+Statistics -[hidden]down-> Network
+Network -[hidden]down-> Hotspots
+Hotspots -[hidden]down-> Exploration
+
+Search -[hidden]right-> Register
+Register -[hidden]right-> ManageCollection
+ManageCollection -[hidden]down-> Collect
+Collect -[hidden]down-> DataQuality
+DataQuality -[hidden]down-> Update
+Update -[hidden]down-> Workbench
+Workbench -[hidden]down-> Review
+Review -[hidden]down-> AccountAudit
+Admin -[hidden]down-> ManageCollection
+' 两类外部服务布置在边界下方，与内部用例分开。
+
+User -[hidden]down-> Register
+Register -[hidden]down-> Login
+Login -[hidden]down-> Logout
+Logout -[hidden]down-> Claim
+Claim -[hidden]down-> ClaimStatus
+ClaimStatus -[hidden]down-> MaintainPortal
+MaintainPortal -[hidden]down-> MaintainAchievement
+Preferences -[hidden]down-> PortalManager
+
+Exploration -[hidden]down-> Personalized
+Personalized -[hidden]down-> Preferences
+Preferences -[hidden]down-> Recommender
+Preferences -[hidden]down-> DataSource
+Preferences -[hidden]down-> OriginalSite
+
+' norank 只解除布局约束；普通关联不表示执行顺序或强制前置依赖。
+Visitor -[norank]- Search
+Visitor -[norank]- Detail
+Visitor -[norank]- Portal
+Visitor -[norank]- Statistics
+Visitor -[norank]- Network
+Visitor -[norank]- Hotspots
+Visitor -[norank]- Exploration
+Visitor -[norank]- Similar
+Visitor -[norank]- Register
+Visitor -[norank]- Login
+
+User -[norank]- Logout
+User -[norank]- Claim
+User -[norank]- ClaimStatus
+PortalManager -[norank]- MaintainPortal
+PortalManager -[norank]- MaintainAchievement
+Recommender -[norank]- Personalized
+Recommender -[norank]- Preferences
+
+ManageCollection -[norank]- Admin
+Collect -[norank]- Admin
+DataQuality -[norank]- Admin
+Update -[norank]- Admin
+Workbench -[norank]- Admin
+Review -[norank]- Admin
+AccountAudit -[norank]- Admin
+MaintainPortal -[norank]- Admin
+Logout -[norank]- Admin
+Collect -[norank]- DataSource
+Detail -[norank]- OriginalSite
+' OriginalSite 仅参与用户选择外部访问的场景，不是本地详情浏览的可用性前提。
+
+' 泛化箭头由特殊角色指向一般角色，不表示登录或认领的状态转换。
+User -[norank]-|> Visitor
+PortalManager -[norank]-|> User
+
+' 只有一条扩展关系：扩展用例指向基础用例。
+' 扩展点：展示论文详情；条件：O01 已实施且当前成果为论文。
+Similar .[norank].> Detail : <<extend>>\n[O01已实施且查看论文详情]
+
+legend bottom
+  |= 范围与业务约束 |
+  | 未标注特殊优先级的用例为 Must；内部四个分组仅为阅读分组，不是子系统。 |
+  | Visitor 表示无需登录的公开使用角色；登录用户、门户管理者及管理员也可承担该角色。 |
+  | User != Scholar；Achievement != ScholarAchievementRelation；未认领门户仍可公开访问。 |
+  | 认领审核通过仅授予相应门户管理权；维护受对象级授权约束；解除参与关系不删除全局成果。 |
+  | 管理员审核 != 学术真实性／质量认证；待审变更不得提前覆盖公开版本。 |
+  | 公开检索、详情和统计只使用已生效且允许公开的数据；管理员治理可处理待审及异常数据。 |
+  | 四类成果：论文、专利、科研项目、获奖；保留来源、更新时间及真实／模拟标识。 |
+  | 来源与原站按业务职责区分，现实中可以是同一网站；外部失效不阻断已收录元数据浏览。 |
+  | 原站访问由原站决定权限；不保证全文，不代理认证或付费，不托管全文。 |
+  | O01／O02 均为 Optional，不是 Must 或 IN01 的前置依赖；失败不阻断检索和详情。 |
+  | IN01：领域／机构筛选、两学者最短合作路径、路径论文依据和无路径反馈；本期交付，不是 Optional。 |
+  | O01 仅表示内容相似，不代表论文质量；O02 不替代普通检索，不要求完整用户画像。 |
+  | O02 先明确同意再记录及使用近期行为；是否仅限登录用户待 A08 冻结；推荐使用者不是新增账号角色。 |
+  | 偏好仅限本人查看／清除，不强迫新授权；清除后不再使用已清除偏好生成后续推荐。 |
+endlegend
+
+' 覆盖核对：FR01 Search；FR02 Detail；FR03 Portal；FR04 Register/Login/Logout。
+' FR05 Claim/ClaimStatus/Review；FR06 MaintainPortal；FR07 MaintainAchievement/Review。
+' FR08 ManageCollection/Collect；FR09 DataQuality；FR10 Update；FR11 Statistics。
+' FR12 Network；FR13 Hotspots；FR14 Workbench/Review/AccountAudit/DataQuality。
+' FR15 DataQuality/MaintainAchievement；FR16 Collect/Detail；IN01 Exploration。
+' O01 Similar（Optional）；O02 Personalized/Preferences（Optional）。
+' 不画 include：认证和对象级权限是前置约束，不表示每次重复登录或重新认领。
+' 治理用例涵盖自动处理结果与人工核验，不表示全部清洗或消歧都由管理员手工执行。
+' 提交认领包含补充材料分支；成果纠正涵盖解除本人关联申请，不单独展开状态和异常。
+' 待联合冻结：O02 身份范围、授权/近期行为/偏好清除规则（模块 A08/A09）；
+' 相似推荐业务口径（A10）；公开字段与争议关系（A06）；外链反馈边界（A07）；
+' 真实/模拟过滤责任（A05）；全局用例编号及图资产路径对齐（A12）。
+@enduml

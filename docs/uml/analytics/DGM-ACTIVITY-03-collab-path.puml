@@ -1,0 +1,129 @@
+@startuml
+' =====================================================================
+' DGM-ACTIVITY-03  合作关系探索活动图（IN01，创新功能）
+' 对应需求：IN01-S01 ~ IN01-S08；基础网络部分关联 FR12
+' 提示：本图仅表示“在已声明数据范围内”的关系，不得推断范围外的合作关系
+' =====================================================================
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam usecaseFontStyle normal
+skinparam actorFontStyle normal
+skinparam rectangleFontStyle normal
+skinparam packageFontStyle normal
+skinparam componentFontStyle normal
+skinparam ArrowFontStyle normal
+skinparam legendFontStyle normal
+skinparam stateFontStyle normal
+skinparam activityFontStyle normal
+skinparam activityDiamondFontStyle normal
+skinparam noteFontStyle normal
+skinparam dpi 150
+
+start
+
+partition "访客" {
+  :打开专家合作关系网络视图;
+  if (选择筛选网络?) then (是)
+    :设置筛选条件（研究领域 / 机构 / 时间窗口 / 数据集范围）;
+  else (否)
+    :沿用已声明的当前或默认范围;
+  endif
+}
+
+partition "系统" {
+  :校验筛选条件合法性与数据范围;
+  if (条件合法?) then (否)
+    :提示无效的筛选条件并保留原结果;
+    stop
+  else (是)
+    :在已声明的数据图范围内构建满足条件的合作网络;
+    if (网络规模超过单次展示上限?) then (是)
+      :提示需要收窄筛选范围，并给出当前节点规模;
+      stop
+    else (否)
+      :展示节点与边，并披露数据范围、时间范围与关系定义;
+    endif
+  endif
+}
+
+partition "访客" {
+  if (选择查看基础网络的边证据?) then (是)
+    :选择一条合作关系;
+  else (否)
+    :继续浏览或探索;
+  endif
+}
+partition "系统" {
+  if (用户已选择查看边证据?) then (是)
+    :展示合格共同成果清单（FR12，允许非论文成果）;
+  else (否)
+    :保留网络视图;
+  endif
+}
+partition "访客" {
+  if (选择查询路径?) then (否)
+    stop
+  else (是)
+    :指定起点学者与终点学者;
+  endif
+}
+
+partition "系统" {
+  :校验两个学者节点是否存在于当前数据图;
+  if (节点均可用?) then (否)
+    :提示节点不可用（若学者已消歧合并，则跳转到合并后的学者门户）;
+    stop
+  else (是)
+    if (起点与终点相同?) then (是)
+      :提示起点与终点相同，不返回路径;
+      stop
+    else (否)
+      :在当前范围仅保留具有合格共同论文证据的关系;
+      :按合作边数计算两名学者间的最短路径;
+    endif
+    if (存在合作路径?) then (否)
+      :明确提示“在当前数据范围内不存在合作路径”并重复声明范围;
+      stop
+    else (是)
+      :展示路径（学者顺序、每一跳的合作关系与路径长度）;
+      if (存在多条等长最短路径?) then (是)
+        :列出全部等长路径，或按约定规则展示并说明规则与总条数;
+      else (否)
+        :展示唯一最短路径;
+      endif
+    endif
+  endif
+}
+
+partition "访客" {
+  if (选择查看路径论文依据?) then (否)
+    stop
+  else (是)
+    :选择某跳或全部跳;
+  endif
+}
+partition "系统" {
+  :按跳展示合格共同论文清单、去重论文数及详情入口;
+  :非论文不得替代路径依据，论文数不等同于 FR12 共同成果强度;
+}
+partition "访客" {
+  if (选择论文详情?) then (是)
+    :进入该论文的成果详情（FR02）;
+  else (否)
+    :保留论文证据清单;
+  endif
+}
+
+stop
+
+legend right
+  说明
+  1. 最短路径只在当前范围内“具有合格共同论文证据的关系子图”上计算，
+     范围外的合作关系一律视为不存在，不得由系统推断。
+  2. 路径长度以合作边数定义；同一对学者只保留一条边。
+  3. 无路径、节点不可用、规模超限三类分支都必须给出可观察提示，属验收必测项。
+  4. 本图为 IN01 相对 FR12 基础网络的增强部分；仅使用基础网络能力时，
+     流程在“展示节点与边”处即可结束。
+endlegend
+@enduml

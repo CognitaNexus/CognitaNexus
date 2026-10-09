@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" contentScriptType="application/ecmascript" contentStyleType="text/css" height="1562.5px" preserveAspectRatio="none" style="width:2431px;height:1562px;" version="1.1" viewBox="0 0 2431 1562" width="2431.25px" zoomAndPan="magnify"><defs/><g><!--MD5=[27810149bc959521461fafdea046b042]
+cluster 统计分析域（FR11 / FR12 / FR13 / IN01）--><rect fill="#FFFFFF" height="843.75" style="stroke: #000000; stroke-width: 2.34375;" width="2340.625" x="34.375" y="37.5"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="406.25" x="1001.5625" y="65.9999">统计分析域（FR11 / FR12 / FR13 / IN01）</text><ellipse cx="1696.476" cy="712.8889" fill="#F8F8F8" rx="131.6322" ry="30.0764" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="198.4375" x="1597.2572" y="723.2576">UC-11 查看统计分析</text><ellipse cx="1696.2494" cy="593.7811" fill="#F8F8F8" rx="149.3744" ry="33.6249" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="242.1875" x="1575.1557" y="604.1498">UC-12 查看机构分类排名</text><ellipse cx="1696.476" cy="826.9514" fill="#F8F8F8" rx="131.6322" ry="30.0764" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="198.4375" x="1597.2572" y="837.3201">UC-13 查看领域热点</text><ellipse cx="1696.2465" cy="467.0618" fill="#F8F8F8" rx="168.1215" ry="37.3743" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="285.9375" x="1553.2777" y="477.4305">UC-14 查看专家合作关系网络</text><ellipse cx="1696.0526" cy="276.7105" fill="#F8F8F8" rx="169.4901" ry="37.648" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="289.0625" x="1551.5213" y="287.0792">UC-15 探索合作关系（IN01）</text><ellipse cx="2201.8462" cy="593.6505" fill="#F8F8F8" rx="148.7212" ry="33.4942" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="240.625" x="2081.5337" y="604.0192">披露统计口径与数据范围</text><ellipse cx="903.7815" cy="466.85" fill="#F8F8F8" rx="139.719" ry="31.6938" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="218.75" x="794.4065" y="477.2187">查看合作关系成果证据</text><ellipse cx="903.994" cy="323.7676" fill="#F8F8F8" rx="174.3065" ry="38.6113" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="300" x="753.994" y="334.1362">按领域/机构/时间窗口筛选网络</text><ellipse cx="904.1573" cy="176.3002" fill="#F8F8F8" rx="167.4385" ry="37.2377" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="284.375" x="761.9698" y="186.6689">查询两名学者间最短合作路径</text><ellipse cx="208.0962" cy="176.463" fill="#F8F8F8" rx="148.7212" ry="33.4942" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="240.625" x="87.7837" y="186.8317">沿路径逐跳查看论文依据</text><!--MD5=[acb64d932532ebbc809d9a993fb5ccd9]
+entity Visitor--><ellipse cx="903.9063" cy="921.0938" fill="#F8F8F8" rx="12.5" ry="12.5" style="stroke: #383838; stroke-width: 2.34375;"/><path d="M903.9063,933.5938 L903.9063,975.7813 M883.5938,946.0938 L924.2188,946.0938 M903.9063,975.7813 L883.5938,999.2188 M903.9063,975.7813 L924.2188,999.2188 " fill="none" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="43.75" x="882.0313" y="1028.4999">访客</text><!--MD5=[97ab183161fd5d1db7fba7485cf76add]
+entity Admin--><ellipse cx="903.9063" cy="1103.9063" fill="#F8F8F8" rx="12.5" ry="12.5" style="stroke: #383838; stroke-width: 2.34375;"/><path d="M903.9063,1116.4063 L903.9063,1158.5938 M883.5938,1128.9063 L924.2188,1128.9063 M903.9063,1158.5938 L883.5938,1182.0313 M903.9063,1158.5938 L924.2188,1182.0313 " fill="none" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="65.625" x="871.0938" y="1211.3124">管理员</text><!--MD5=[d250fb63b474ee1a23ba6209d6f36c83]
+link Visitor to UC11--><path d="M927.0312,961.0312 C960.5625,946.2188 1026.6875,915.3594 1078.125,881.25 C1100.7344,866.2656 1100.6875,854.2031 1125,842.1875 C1166.2969,821.7656 1436.0156,764.9688 1589.0156,733.75 " fill="none" id="Visitor-&gt;UC11" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="1597.1094,732.0938,1582.0792,728.7905,1589.4556,733.6603,1584.5858,741.0366,1597.1094,732.0938" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[b834152f445f85df519612c18e0564bd]
+link Visitor to UC12--><path d="M927.1406,964.6094 C963.25,954.0313 1035.9219,928.125 1078.125,881.25 C1116.5313,838.6094 1081.875,798.7969 1125,760.9375 C1247,653.8125 1325.125,723.1563 1479.6875,673.4375 C1501.0469,666.5625 1505.5938,662.6875 1526.5625,654.6875 C1552.5625,644.7656 1580.9688,634.3281 1606.9063,624.9375 " fill="none" id="Visitor-&gt;UC12" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="1614.875,622.0469,1599.5251,620.9527,1607.5283,624.7042,1603.7768,632.7074,1614.875,622.0469" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[1a6bbefe73602b480299883776d487f7]
+link Visitor to UC13--><path d="M926.8281,972.125 C1003.375,977.9531 1270.5625,992.7656 1479.6875,935.9375 C1540.0156,919.5469 1603.0781,885.0469 1645.1563,859.1563 " fill="none" id="Visitor-&gt;UC13" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="1652.2344,854.75,1636.9905,856.8571,1645.5969,858.8706,1643.5834,867.477,1652.2344,854.75" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[089030aee7a98102fd5974fb02962685]
+link Visitor to UC14--><path d="M926.7344,965.5469 C963.5625,956.1563 1039.0469,931.6094 1078.125,881.25 C1135.3281,807.5156 1058.7344,742.2813 1125,676.5625 C1239.6094,562.9063 1345,687.3906 1479.6875,598.4375 C1509.5938,578.6875 1498.2813,554.8281 1526.5625,532.8125 C1543.6094,519.5313 1563.6875,508.6563 1583.9063,499.8281 " fill="none" id="Visitor-&gt;UC14" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="1591.3438,496.6719,1575.9576,496.3858,1584.1468,499.7116,1580.8211,507.9008,1591.3438,496.6719" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[3c91ee6c710bcb3f8b35d9b8fd0d671a]
+link Visitor to UC15--><path d="M927.0469,965.7969 C964.3906,956.7813 1040.625,932.7969 1078.125,881.25 C1153.4844,777.6719 1041.75,694.2188 1125,596.875 C1232.9063,470.7031 1350.0469,583.4063 1479.6875,479.6875 C1511.3125,454.3906 1499.3906,431.5781 1526.5625,401.5625 C1556.4063,368.5937 1596.0938,338.5938 1629.3906,316.2344 " fill="none" id="Visitor-&gt;UC15" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="1635.9531,311.875,1620.7814,314.4512,1629.4459,316.1983,1627.6987,324.8627,1635.9531,311.875" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[7b05b64a3e587d14b749c61e268eddae]
+link UC15 to UC14--><path d="M1696.0938,314.1406 C1696.0938,344.9375 1696.0938,388.6094 1696.0938,421.4375 " fill="none" id="UC15-&gt;UC14" style="stroke: #383838; stroke-width: 1.5625; stroke-dasharray: 7.0,7.0;"/><polygon fill="#383838" points="1696.0938,429.5312,1702.3438,415.4687,1696.0938,421.7187,1689.8438,415.4687,1696.0938,429.5312" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="82.8125" x="1619.5313" y="366.5313">«extend»</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="215.625" x="1553.125" y="395.9438">[用户选择探索合作关系]</text><!--MD5=[2e186ff7b86269647fe610ffa7c8cd1a]
+link UC11 to INCL_Caliber--><path d="M1788.0469,691.125 C1872.6406,671.1406 1999.2031,641.2188 2089.7031,619.8281 " fill="none" id="UC11-&gt;INCL_Caliber" style="stroke: #383838; stroke-width: 1.5625; stroke-dasharray: 7.0,7.0;"/><polygon fill="#383838" points="2097.7969,617.9063,2082.6707,615.0754,2090.1959,619.7118,2085.5595,627.237,2097.7969,617.9063" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="90.625" x="1914.0625" y="637.625">«include»</text><!--MD5=[e181d431947b8e86e49449a845c25bea]
+link UC12 to INCL_Caliber--><path d="M1845.6563,593.75 C1908.25,593.75 1981.2031,593.75 2044.5781,593.75 " fill="none" id="UC12-&gt;INCL_Caliber" style="stroke: #383838; stroke-width: 1.5625; stroke-dasharray: 7.0,7.0;"/><polygon fill="#383838" points="2053.0625,593.75,2039,587.5,2045.25,593.75,2039,600,2053.0625,593.75" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="90.625" x="1914.0625" y="587.625">«include»</text><!--MD5=[7f86ad1c6f0b2faaff92f45688e27a56]
+link UC13 to INCL_Caliber--><path d="M1773.0625,802.3281 C1802.2031,792.5156 1835.6875,780.6875 1865.625,768.75 C1929.4219,743.3125 1945.1406,736.0156 2006.25,704.6875 C2052.3594,681.0469 2103.1406,651.8438 2141.1563,629.3438 " fill="none" id="UC13-&gt;INCL_Caliber" style="stroke: #383838; stroke-width: 1.5625; stroke-dasharray: 7.0,7.0;"/><polygon fill="#383838" points="2148.0938,625.2188,2132.808,626.9971,2141.3691,629.1955,2139.1707,637.7565,2148.0938,625.2188" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="90.625" x="1914.0625" y="698.5625">«include»</text><!--MD5=[68f7b166de4627361b6eb7fd6c9252c5]
+link UC14 to INCL_Caliber--><path d="M1808.5156,495.125 C1893.3281,516.4844 2009.5625,545.7656 2093.3281,566.875 " fill="none" id="UC14-&gt;INCL_Caliber" style="stroke: #383838; stroke-width: 1.5625; stroke-dasharray: 7.0,7.0;"/><polygon fill="#383838" points="2101.3281,568.8906,2089.2343,559.3746,2093.7555,566.9695,2086.1605,571.4908,2101.3281,568.8906" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="90.625" x="1914.0625" y="517.3125">«include»</text><!--MD5=[10a9e8dcff23996ce10462231f032136]
+link INCL_Evidence to UC14--><path d="M1043.8125,467.1875 C1176.125,467.1875 1376.1406,467.1875 1519.4844,467.1875 " fill="none" id="INCL_Evidence-&gt;UC14" style="stroke: #383838; stroke-width: 1.5625; stroke-dasharray: 7.0,7.0;"/><polygon fill="#383838" points="1527.5469,467.1875,1513.4844,460.9375,1519.7344,467.1875,1513.4844,473.4375,1527.5469,467.1875" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="82.8125" x="1260.9375" y="431.375">«extend»</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="175" x="1214.8438" y="460.7875">[选中边并查看证据]</text><!--MD5=[4d86e6f6ad98f970ff51ace0b64c3a8c]
+link INCL_Filter to UC15--><path d="M1069.4219,335.6875 C1184.6094,341.625 1342.0781,344.4062 1479.6875,328.125 C1514.0781,324.0625 1550.9219,316.4531 1584.2188,308.2969 " fill="none" id="INCL_Filter-&gt;UC15" style="stroke: #383838; stroke-width: 1.5625; stroke-dasharray: 7.0,7.0;"/><polygon fill="#383838" points="1592.1563,306.3281,1576.9959,303.6859,1584.5783,308.2282,1580.036,315.8106,1592.1563,306.3281" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="82.8125" x="1260.9375" y="292.3125">«extend»</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="175" x="1214.8438" y="321.725">[用户提交筛选条件]</text><!--MD5=[02fab071a2da0bbf685bab6fdf2b3b08]
+link INCL_Path to UC15--><path d="M1049.5313,195.0625 C1074.6875,198.2812 1100.6094,201.5781 1125,204.6875 C1265.4844,222.5469 1425.4688,242.7188 1540.0313,257.1406 " fill="none" id="INCL_Path-&gt;UC15" style="stroke: #383838; stroke-width: 1.5625; stroke-dasharray: 7.0,7.0;"/><polygon fill="#383838" points="1548.2031,258.1719,1535.0385,250.2025,1540.4527,257.1891,1533.4661,262.6033,1548.2031,258.1719" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="82.8125" x="1260.9375" y="168.875">«extend»</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="215.625" x="1194.5313" y="198.2875">[用户指定两名学者查询]</text><!--MD5=[40a873cb56216bab4aadbdfe7d850e4b]
+link INCL_PathEvidence to INCL_Path--><path d="M356.3281,176.5625 C464.9688,176.5625 613.2969,176.5625 727.9375,176.5625 " fill="none" id="INCL_PathEvidence-&gt;INCL_Path" style="stroke: #383838; stroke-width: 1.5625; stroke-dasharray: 7.0,7.0;"/><polygon fill="#383838" points="736.1406,176.5625,722.0781,170.3125,728.3281,176.5625,722.0781,182.8125,736.1406,176.5625" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="82.8125" x="501.5625" y="140.75">«extend»</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="276.5625" x="404.6875" y="170.1625">[已有路径且用户选择查看论文]</text><!--MD5=[ca4facbf5e7345c624a9fe55ee4cb2db]
+link INCL_Path to INCL_Caliber--><path d="M1018.1406,148.9062 C1207.4219,108.9844 1595,55.8281 1865.625,210.9375 C2014.625,296.3437 2130.3438,473.1563 2177.25,553.0156 " fill="none" id="INCL_Path-&gt;INCL_Caliber" style="stroke: #383838; stroke-width: 1.5625; stroke-dasharray: 7.0,7.0;"/><polygon fill="#383838" points="2181.3125,559.9844,2179.6317,544.6876,2177.3788,553.2345,2168.8319,550.9815,2181.3125,559.9844" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="90.625" x="1650.7813" y="107.9375">«include»</text><!--MD5=[8f16c34dc1dc3f309d315c618429d717]
+link Admin to UC11--><path d="M937,1147.0156 C1032.1719,1127.0313 1319.8281,1054.8438 1479.6875,885.9375 C1518.25,845.2031 1485.7813,807.2656 1526.5625,768.75 C1542.9844,753.2344 1563.8281,742 1585.1875,733.8438 " fill="none" id="Admin-&gt;UC11" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="1593.0781,730.9844,1577.7282,729.8902,1585.7314,733.6417,1581.9799,741.6449,1593.0781,730.9844" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="351.5625" x="1126.5625" y="879.8125">引用 FR14/FR16 的分类映射与口径维护</text><rect fill="#DDDDDD" height="300.6988" rx="7.8125" ry="7.8125" style="stroke: #000000; stroke-width: 1.5625;" width="873.4375" x="1540.625" y="1245.3125"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="43.75" x="1550" y="1278.4999">说明</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="667.1875" x="1550" y="1310.1748">1. 本图为模块视图，UC-11 ~ UC-15 与 SRS 4.4 节、5.1 节一一对应。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="854.6875" x="1550" y="1341.8496">2. 统计、排名、热点与合作网络对访客开放；统计口径与数据范围必须随结果一并披露，</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="268.75" x="1564.0625" y="1373.5245">故作为 &lt;&lt;include&gt;&gt; 列入。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="767.1875" x="1550" y="1405.1993">3. UC-15（IN01）为条件性增强；筛选、路径查询可分别执行，证据按需查看。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="787.5" x="1564.0625" y="1436.8742">能力属于一期范围，不等于每次交互都必须执行；路径仅使用合格共同论文关系。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="506.25" x="1564.0625" y="1468.5491">FR12 共同成果证据与 IN01 路径论文证据分别表达。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="739.0625" x="1550" y="1500.2239">4. 领域分类映射与统计口径的维护属于管理侧能力（FR14 / FR16 引用项），</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="437.5" x="1564.0625" y="1531.8988">由管理后台模块负责，本模块只引用其结果。</text><!--MD5=[4d39930dd02283c289a8cf2fabfb5bb0]
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam usecaseFontStyle normal
+skinparam actorFontStyle normal
+skinparam rectangleFontStyle normal
+skinparam packageFontStyle normal
+skinparam componentFontStyle normal
+skinparam ArrowFontStyle normal
+skinparam legendFontStyle normal
+skinparam stateFontStyle normal
+skinparam activityFontStyle normal
+skinparam activityDiamondFontStyle normal
+skinparam noteFontStyle normal
+skinparam dpi 150
+left to right direction
+
+actor "访客" as Visitor
+actor "管理员" as Admin
+
+rectangle "统计分析域（FR11 / FR12 / FR13 / IN01）" {
+  usecase "UC-11 查看统计分析" as UC11
+  usecase "UC-12 查看机构分类排名" as UC12
+  usecase "UC-13 查看领域热点" as UC13
+  usecase "UC-14 查看专家合作关系网络" as UC14
+  usecase "UC-15 探索合作关系（IN01）" as UC15
+
+  usecase "披露统计口径与数据范围" as INCL_Caliber
+  usecase "查看合作关系成果证据" as INCL_Evidence
+  usecase "按领域/机构/时间窗口筛选网络" as INCL_Filter
+  usecase "查询两名学者间最短合作路径" as INCL_Path
+  usecase "沿路径逐跳查看论文依据" as INCL_PathEvidence
+}
+
+Visitor - -> UC11
+Visitor - -> UC12
+Visitor - -> UC13
+Visitor - -> UC14
+Visitor - -> UC15
+
+UC15 .> UC14 : <<extend>>\n[用户选择探索合作关系]
+
+UC11 ..> INCL_Caliber : <<include>>
+UC12 ..> INCL_Caliber : <<include>>
+UC13 ..> INCL_Caliber : <<include>>
+UC14 ..> INCL_Caliber : <<include>>
+INCL_Evidence ..> UC14 : <<extend>>\n[选中边并查看证据]
+
+INCL_Filter ..> UC15 : <<extend>>\n[用户提交筛选条件]
+INCL_Path ..> UC15 : <<extend>>\n[用户指定两名学者查询]
+INCL_PathEvidence ..> INCL_Path : <<extend>>\n[已有路径且用户选择查看论文]
+INCL_Path ..> INCL_Caliber : <<include>>
+
+Admin - -> UC11 : 引用 FR14/FR16 的分类映射与口径维护
+
+legend right
+  说明
+  1. 本图为模块视图，UC-11 ~ UC-15 与 SRS 4.4 节、5.1 节一一对应。
+  2. 统计、排名、热点与合作网络对访客开放；统计口径与数据范围必须随结果一并披露，
+     故作为 <<include>> 列入。
+  3. UC-15（IN01）为条件性增强；筛选、路径查询可分别执行，证据按需查看。
+     能力属于一期范围，不等于每次交互都必须执行；路径仅使用合格共同论文关系。
+     FR12 共同成果证据与 IN01 路径论文证据分别表达。
+  4. 领域分类映射与统计口径的维护属于管理侧能力（FR14 / FR16 引用项），
+     由管理后台模块负责，本模块只引用其结果。
+endlegend
+@enduml
+
+PlantUML version 1.2020.02(Sun Mar 01 18:22:07 CST 2020)
+(GPL source distribution)
+Java Runtime: Java(TM) SE Runtime Environment
+JVM: Java HotSpot(TM) 64-Bit Server VM
+Java Version: 22.0.2+9-70
+Operating System: Linux
+Default Encoding: UTF-8
+Language: en
+Country: US
+--></g></svg>

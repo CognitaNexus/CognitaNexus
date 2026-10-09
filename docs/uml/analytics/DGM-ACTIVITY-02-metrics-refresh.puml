@@ -1,0 +1,96 @@
+@startuml
+' =====================================================================
+' DGM-ACTIVITY-02  统计指标生成与口径披露活动图（成员⑤负责范围）
+' 对应需求：FR11-S09、FR11-S01、FR11-S10、FR13-S09、FR12-S08
+' 关联非功能需求：NF01（失败与无结果反馈）、NF04（来源不可用仍可浏览）、
+'               NF05（60 秒为待评审目标；未生效或失败时给出提示）
+' =====================================================================
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam usecaseFontStyle normal
+skinparam actorFontStyle normal
+skinparam rectangleFontStyle normal
+skinparam packageFontStyle normal
+skinparam componentFontStyle normal
+skinparam ArrowFontStyle normal
+skinparam legendFontStyle normal
+skinparam stateFontStyle normal
+skinparam activityFontStyle normal
+skinparam activityDiamondFontStyle normal
+skinparam noteFontStyle normal
+skinparam dpi 150
+
+start
+
+partition "变更来源（数据链路内部）" {
+  :成果实体、学者—成果关系或公开范围发生变化;
+  :产生一条统计影响事件（新增/更新/合并/关系变更/下架）;
+}
+
+partition "统计处理（系统）" {
+  :判断变更是否落在统计范围内;
+  if (影响统计结果?) then (否)
+    :不重算，保留当前结果;
+    stop
+  else (是)
+    :将受影响指标标记为“待更新”;
+    :分开判断成果实体统计资格与学者—成果关系资格（BR-19）;
+    :按已生效的统计口径重算受影响指标;
+    if (重算成功?) then (否)
+      :将结果置为“更新失败”，记录失败原因与时间;
+      :保留上一版可用结果，不对外展示半成品;
+      :按约定上限发起重试;
+      if (重试成功?) then (是)
+        :生成新版本结果;
+      else (否)
+        :结果维持“更新失败”，记录失败时间;
+        :放弃重试不使历史有效结果失效;
+      endif
+    else (是)
+      :生成新版本结果（含数据范围、时间范围、口径版本、生成时间）;
+    endif
+    if (本次生成了有效新结果?) then (是)
+      :在 NF05 约定时限内使新结果对外可见;
+    else (否)
+      :保留仍有效且允许公开的历史结果（如有）;
+    endif
+  endif
+}
+
+partition "访客" {
+  :打开统计、排名、热点或合作网络页面并设置筛选条件;
+}
+
+partition "统计处理（系统）" {
+  if (存在仍有效且允许公开的结果版本?) then (否)
+    :提示“暂无可用的统计结果”并给出最近一次失败或未完成时间;
+    stop
+  else (是)
+    :返回满足筛选条件的结果;
+    if (展示的是尚未反映变更的历史结果?) then (是)
+      :标注生成时间、未更新提示及最近失败时间（如有）;
+    else (否)
+      :标注当前生成时间;
+    endif
+    :同步披露数据范围、时间范围、计数口径与真实/模拟标识;
+    if (条目样本量低于约定阈值?) then (是)
+      :在该条目上标注“样本不足”，仍展示实际计数;
+    else (否)
+      :按常规展示;
+    endif
+  endif
+}
+
+stop
+
+legend right
+  说明
+  1. 本图为业务级活动模型，不描述队列、缓存或具体计算实现。
+  2. “待更新 / 更新失败”是 NF05 要求对外可提示的状态，不是内部技术术语；
+     对外只要求给出可观察提示，不要求暴露内部版本号。
+  3. 重算失败时不得展示半成品；有历史有效结果则继续展示，无历史有效结果则提示不可用。
+     历史结果因口径废弃、范围移除或公开资格撤销而失效时，不得继续展示。
+  4. 若统计范围内出现新增数据而结果尚未更新，必须在页面标注最近更新时间。
+endlegend
+@enduml

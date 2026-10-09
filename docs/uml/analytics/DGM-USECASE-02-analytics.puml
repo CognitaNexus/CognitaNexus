@@ -1,0 +1,74 @@
+@startuml
+' =====================================================================
+' DGM-USECASE-02  统计分析域用例图（成员⑤负责范围）
+' 覆盖：FR11 成果统计与机构分类排名 / FR12 基础专家合作关系网络
+'       FR13 领域热点分析 / IN01 合作关系探索
+' 一致性：与 SRS 4.4 节、5.1 节、3.3 节用例清单一致
+' =====================================================================
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam usecaseFontStyle normal
+skinparam actorFontStyle normal
+skinparam rectangleFontStyle normal
+skinparam packageFontStyle normal
+skinparam componentFontStyle normal
+skinparam ArrowFontStyle normal
+skinparam legendFontStyle normal
+skinparam stateFontStyle normal
+skinparam activityFontStyle normal
+skinparam activityDiamondFontStyle normal
+skinparam noteFontStyle normal
+skinparam dpi 150
+left to right direction
+
+actor "访客" as Visitor
+actor "管理员" as Admin
+
+rectangle "统计分析域（FR11 / FR12 / FR13 / IN01）" {
+  usecase "UC-11 查看统计分析" as UC11
+  usecase "UC-12 查看机构分类排名" as UC12
+  usecase "UC-13 查看领域热点" as UC13
+  usecase "UC-14 查看专家合作关系网络" as UC14
+  usecase "UC-15 探索合作关系（IN01）" as UC15
+
+  usecase "披露统计口径与数据范围" as INCL_Caliber
+  usecase "查看合作关系成果证据" as INCL_Evidence
+  usecase "按领域/机构/时间窗口筛选网络" as INCL_Filter
+  usecase "查询两名学者间最短合作路径" as INCL_Path
+  usecase "沿路径逐跳查看论文依据" as INCL_PathEvidence
+}
+
+Visitor --> UC11
+Visitor --> UC12
+Visitor --> UC13
+Visitor --> UC14
+Visitor --> UC15
+
+UC15 .> UC14 : <<extend>>\n[用户选择探索合作关系]
+
+UC11 ..> INCL_Caliber : <<include>>
+UC12 ..> INCL_Caliber : <<include>>
+UC13 ..> INCL_Caliber : <<include>>
+UC14 ..> INCL_Caliber : <<include>>
+INCL_Evidence ..> UC14 : <<extend>>\n[选中边并查看证据]
+
+INCL_Filter ..> UC15 : <<extend>>\n[用户提交筛选条件]
+INCL_Path ..> UC15 : <<extend>>\n[用户指定两名学者查询]
+INCL_PathEvidence ..> INCL_Path : <<extend>>\n[已有路径且用户选择查看论文]
+INCL_Path ..> INCL_Caliber : <<include>>
+
+Admin --> UC11 : 引用 FR14/FR16 的分类映射与口径维护
+
+legend right
+  说明
+  1. 本图为模块视图，UC-11 ~ UC-15 与 SRS 4.4 节、5.1 节一一对应。
+  2. 统计、排名、热点与合作网络对访客开放；统计口径与数据范围必须随结果一并披露，
+     故作为 <<include>> 列入。
+  3. UC-15（IN01）为条件性增强；筛选、路径查询可分别执行，证据按需查看。
+     能力属于一期范围，不等于每次交互都必须执行；路径仅使用合格共同论文关系。
+     FR12 共同成果证据与 IN01 路径论文证据分别表达。
+  4. 领域分类映射与统计口径的维护属于管理侧能力（FR14 / FR16 引用项），
+     由管理后台模块负责，本模块只引用其结果。
+endlegend
+@enduml

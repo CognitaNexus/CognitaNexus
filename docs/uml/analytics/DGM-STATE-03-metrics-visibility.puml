@@ -1,0 +1,57 @@
+@startuml
+' =====================================================================
+' DGM-STATE-03  统计结果生效状态图（成员⑤负责范围）
+' 对应需求：FR11-S09、FR12-S08、FR13-S09（结果更新与一致性）
+' 关联非功能需求：NF04（可恢复、不因失败丢数据）、NF05（60 秒为待评审目标；未生效/失败须提示）
+' 说明：本图描述**对外可见的统计结果**的生命周期，不描述缓存/索引/任务队列等实现。
+' =====================================================================
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam usecaseFontStyle normal
+skinparam actorFontStyle normal
+skinparam rectangleFontStyle normal
+skinparam packageFontStyle normal
+skinparam componentFontStyle normal
+skinparam ArrowFontStyle normal
+skinparam legendFontStyle normal
+skinparam stateFontStyle normal
+skinparam activityFontStyle normal
+skinparam activityDiamondFontStyle normal
+skinparam noteFontStyle normal
+skinparam dpi 150
+
+[*] --> 无可用结果 : 统计范围首次被纳入
+
+无可用结果 --> 计算中 : 触发统计计算
+
+计算中 --> 已生效 : 计算完成且通过口径校验
+计算中 --> 更新失败 : 计算失败 [数据不可用 / 口径校验未通过]
+
+已生效 --> 待更新 : 纳入统计的数据或口径发生变更
+待更新 --> 计算中 : 触发重新计算
+待更新 --> 更新失败 : 重算失败 [超出约定时限仍未完成]
+
+更新失败 --> 计算中 : 重试 [未超过重试上限]
+更新失败 --> 更新失败 : 放弃或暂停重试 [仍有历史有效结果] / 保留并提示
+更新失败 --> 无可用结果 : 放弃重试 [无历史有效结果]
+
+已生效 --> 已失效 : 口径废弃 / 范围移除 / 公开资格撤销
+待更新 --> 已失效 : 口径废弃 / 范围移除 / 公开资格撤销
+计算中 --> 已失效 : 口径废弃 / 范围移除 / 公开资格撤销
+更新失败 --> 已失效 : 口径废弃 / 范围移除 / 公开资格撤销
+无可用结果 --> 已失效 : 口径废弃 / 范围移除 / 公开资格撤销
+
+已失效 --> [*]
+
+legend right
+  说明
+  1. 最新计算状态与历史有效结果可用性分开判断：更新失败不等于无可用结果。
+     待更新、计算中、更新失败时，仍有效且允许公开的历史结果可以继续展示。
+  2. 有历史有效结果：展示上一版、生成时间和未更新/失败提示；
+     无历史有效结果：提示暂无可用结果及最近失败/未完成时间（如有）。
+     放弃重试本身不使历史结果失效；明确失效后停止展示，不能用失败回退绕过公开范围。
+  3. 该对象与“采集任务”是两个独立的状态机（DGM-STATE-01），不得混用状态名。
+  4. 若评审决定不引入独立的结果版本概念，则本图应删除并改为在 FR11-S09 中以时限与提示描述。
+endlegend
+@enduml
