@@ -1,29 +1,37 @@
-@startdot
-digraph G {
-graph [fontname="Noto Sans CJK SC", bgcolor="white", pad="0.28", nodesep="0.42", ranksep="0.58", splines=polyline, outputorder=edgesfirst];
-node [fontname="Noto Sans CJK SC", fontsize=11, color="#15324A", penwidth=1.3];
-edge [fontname="Noto Sans CJK SC", fontsize=9, color="#087F8C", fontcolor="#15324A", arrowsize=0.68];
-rankdir=LR;
-node [shape=ellipse,style="filled",fillcolor="#F4F9FC",fontsize=11];
-subgraph cluster_s {label="CognitaNexus · 数据采集与更新（局部用例图）"; fontsize=15; fontname="Noto Sans CJK SC"; fontcolor="#15324A"; color="#B5CAD8"; style="rounded,filled"; fillcolor="#F9FCFE"; penwidth=1.5;
- c01 [label="配置及停用\n获准数据来源",fillcolor="#E7F7F2"];
- c02 [label="创建并启动\n采集任务"];
- c03 [label="查看任务进度\n及失败原因"];
- c04 [label="停止与重试\n采集任务"];
- c05 [label="执行增量更新\n并追溯变更"];
- c06 [label="查看四类成果\n与来源证据"];
- c07 [label="核对四类覆盖\n及成果规模"];
-}
-admin [shape=plaintext,fontcolor="#15324A",label="管理员\n（有效权限）",fontsize=12];
-visitor [shape=plaintext,fontcolor="#15324A",label="访客",fontsize=12];
-source [shape=plaintext,fontcolor="#15324A",label="外部数据来源\n（API／授权文件）",fontsize=12];
-admin -> {c01 c02 c03 c04 c05 c07} [dir=none,color="#087F8C"];
-visitor -> c06 [dir=none,color="#087F8C"];
-source -> {c02 c05} [dir=none,color="#9D7C3C",style=dashed];
-subgraph cluster_note {label="边界说明"; fontname="Noto Sans CJK SC"; fontsize=10; style="rounded,dashed"; color="#B5CAD8";
- note [shape=note,fillcolor="#FFFFFF",style=filled,fontsize=10,label="局部用例 ≠ 系统总体用例\n调用内部清洗／消歧由 FR09 / FR15 负责\n用例编号统一由 Q-201 决定"];
-}
-{rank=same;admin;visitor;source;}
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam dpi 150
+!pragma layout smetana
+' Noto Sans CJK SC unavailable locally; use installed system default font.
+left to right direction
+title DGM-USECASE-02 采集与更新局部用例图
+
+actor "管理员" as Admin
+actor "访客" as Visitor
+actor "外部数据来源" as Source
+
+rectangle "CognitaNexus（第②成员责任范围）" {
+  usecase "UC-08 管理数据来源与采集任务\nFR08-S01～S04" as UC08
+  usecase "UC-10 更新来源数据并处理变更\nFR10-S01～S05" as UC10
+  usecase "UC-16 查看四类成果与来源证据\nFR16-S01～S03" as UC16
 }
 
-@enddot
+Admin -- UC08
+Admin -- UC10
+Admin -- UC16
+Visitor -- UC16
+Source -- UC08
+Source -- UC10
+
+note bottom of UC16
+公开浏览复用 FR01/FR02/FR03。
+管理员核对覆盖和受控输入证据。
+登录及门户授权不授予任务管理权。
+end note
+
+legend bottom
+本图是局部视图，合并到全组唯一总体用例图。
+系统、调度器不作为外部参与者。
+endlegend
+@enduml

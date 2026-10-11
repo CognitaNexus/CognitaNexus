@@ -1,30 +1,45 @@
-@startdot
-digraph G {
-graph [fontname="Noto Sans CJK SC", bgcolor="white", pad="0.28", nodesep="0.42", ranksep="0.58", splines=polyline, outputorder=edgesfirst];
-node [fontname="Noto Sans CJK SC", fontsize=11, color="#15324A", penwidth=1.3];
-edge [fontname="Noto Sans CJK SC", fontsize=9, color="#087F8C", fontcolor="#15324A", arrowsize=0.68];
-rankdir=LR; graph [ranksep="0.72", nodesep="0.5",splines=true];
-node [shape=box,style="rounded,filled",margin="0.18,0.12",fillcolor="#F4F9FC",fontsize=12];
-start [shape=circle,width=.20,label="",fillcolor="#15324A",style=filled];
-ready [label="待执行",fillcolor="#E7F7F2"];
-running [label="运行中",fillcolor="#DFF1FA"];
-failed [label="失败",fillcolor="#FEEDEA"];
-retry [label="重试",fillcolor="#FFF3E2"];
-success [label="成功",fillcolor="#E7F7F2"];
-stopped [label="已停止",fillcolor="#ECEEF1"];
-end [shape=doublecircle,width=.20,label="",fillcolor="#15324A",style=filled];
-start -> ready [label="创建有效任务"];
-ready -> running [label="启动且校验通过"];
-ready -> stopped [label="停止生效"];
-running -> success [label="全范围完成处置\n(Q-202 待冻结)"];
-running -> failed [label="取得或处理失败"];
-running -> stopped [label="停止先生效"];
-failed -> retry [label="管理员重试、条件有效"];
-retry -> running [label="准备成功／新轮次"];
-retry -> failed [label="准备失败"];
-retry -> stopped [label="停止生效"];
-success -> end [label="终态"];
-stopped -> end [label="终态"];
-}
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam dpi 150
+' Noto Sans CJK SC unavailable locally; use installed system default font.
+title DGM-STATE-01 数据采集任务状态图
 
-@enddot
+state "待执行" as Pending
+state "运行中" as Running
+state "成功" as Success
+state "失败" as Failed
+state "重试" as Retry
+state "已停止" as Stopped
+
+[*] --> Pending : 管理员创建 [权限、来源、范围有效] / 保存快照
+Pending --> Running : 管理员启动 [再次校验通过] / 记录开始时间
+Pending --> Stopped : 管理员停止 [停止生效] / 保留记录
+Running --> Success : 全范围读取结束 [全部已读记录完成处置] / 保存汇总
+Running --> Failed : 取得或处理失败 [未全部完成] / 保存错误与恢复范围
+Running --> Stopped : 管理员停止 [停止先于完成生效] / 保留已完成项
+Failed --> Retry : 管理员发起重试 [权限、来源、范围有效] / 保留原轮次
+Retry --> Running : 恢复准备通过 [执行条件仍有效] / 开始新轮次
+Retry --> Failed : 恢复准备失败 / 记录本轮错误
+Retry --> Stopped : 管理员停止 [停止生效] / 不再执行
+Success --> [*] : 生命周期结束
+Stopped --> [*] : 生命周期结束
+
+note right of Success
+成功表示本轮范围完成处置。
+异常／冲突已明确交入可追踪队列
+也可完成处置，不表示全部公开。
+队列交接失败不算完成。
+end note
+
+note bottom of Stopped
+成功、已停止不能直接重启或重试。
+再次采集另建关联原任务的新任务。
+停止与完成竞争按先生效转移裁定。
+end note
+
+legend bottom
+FR08-S02～S04、FR10-S05；SRS §6.2、BR-204/205。
+未列转移均拒绝；操作反馈不是新增状态。
+endlegend
+@enduml

@@ -1,51 +1,89 @@
-@startdot
-digraph G {
-graph [fontname="Noto Sans CJK SC", bgcolor="white", pad="0.28", nodesep="0.42", ranksep="0.58", splines=polyline, outputorder=edgesfirst];
-node [fontname="Noto Sans CJK SC", fontsize=11, color="#15324A", penwidth=1.3];
-edge [fontname="Noto Sans CJK SC", fontsize=9, color="#087F8C", fontcolor="#15324A", arrowsize=0.68];
-rankdir=TB; graph [ranksep="0.38",nodesep="0.38",splines=ortho];
-node [shape=box,style="rounded,filled",fillcolor="#F4F9FC",margin="0.15,0.09"];
-start [label="开始",shape=circle,style=filled,fillcolor="#15324A",fontcolor=white,width=.3,fixedsize=true];
-admin1 [label="管理员：核验来源许可并配置范围",fillcolor="#E7F7F2"];
-validate [label="系统：校验来源、权限与使用范围"];
-valid [label="条件有效？",shape=diamond,fillcolor="#FFF3E2"];
-error0 [label="系统：拒绝执行并显示原因",fillcolor="#FEEDEA"];
-admin2 [label="管理员：创建待执行任务并启动",fillcolor="#E7F7F2"];
-source1 [label="外部来源：返回授权范围内记录",fillcolor="#FFF6E8"];
-check [label="读取或处理是否失败？",shape=diamond,fillcolor="#FFF3E2"];
-fail [label="系统：失败；保留已完成数据\n记录错误与可恢复范围",fillcolor="#FEEDEA"];
-classify [label="系统：按来源身份识别记录\n区分新增／未变／变更／异常"];
-branch [label="识别结果",shape=diamond,fillcolor="#FFF3E2"];
-unchanged [label="未变化：更新检查时间"];
-unknown [label="身份不明：交异常或候选队列\n不强行合并"];
-new [label="新增：交 FR09／FR15 治理\n去重与归属待核验不自动公开"];
-changed [label="变更：保存前后值、来源版本\n校验人工审核／确认结果"];
-protected [label="与人工结果冲突？",shape=diamond,fillcolor="#FFF3E2"];
-queue [label="保留已生效值；新源值待核验\n交 FR07／FR14／FR15 处理"];
-apply [label="按已确认规则生效更新\n保留来源和时间证据"];
-complete [label="系统：本次读取范围是否完毕？",shape=diamond,fillcolor="#FFF3E2"];
-success [label="任务成功：全范围读取结束且完成处置\n异常数量和待核验项单独显示",fillcolor="#E7F7F2"];
-end0 [label="结束",shape=doublecircle,style=filled,fillcolor="#15324A",fontcolor=white,width=.35,fixedsize=true];
-legend [shape=note,fontsize=9,fillcolor=white,label="绿色：管理员或成功结果；米色：来源／条件判断\n蓝白：系统处理；红色：失败或拒绝\n停止任务按 §6.2 状态图处理；Q-202 未冻结"];
-start -> admin1 -> validate -> valid;
-valid -> error0 [xlabel="否"];
-valid -> admin2 [xlabel="是"];
-admin2 -> source1 -> check;
-check -> fail [xlabel="是"];
-check -> classify [xlabel="否"];
-classify -> branch;
-branch -> unchanged [xlabel="未变"];
-branch -> unknown [xlabel="异常"];
-branch -> new [xlabel="新增"];
-branch -> changed [xlabel="变更"];
-changed -> protected;
-protected -> queue [xlabel="是"];
-protected -> apply [xlabel="否"];
-{unchanged unknown new queue apply} -> complete;
-complete -> success [xlabel="是"];
-complete -> source1 [xlabel="否／继续",constraint=false];
-{error0 fail success} -> end0;
-legend -> end0 [style=invis];
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam dpi 150
+' Noto Sans CJK SC unavailable locally; use installed system default font.
+title DGM-ACTIVITY-02 采集与增量更新业务活动图
+
+start
+partition "管理员" {
+  :登记获准来源，声明类型、范围和性质;
+  :创建任务并请求启动;
+}
+partition "系统" {
+  if (权限、来源、范围及参数有效?) then (是)
+    :保存快照，待执行→运行中;
+  else (否)
+    :拒绝并显示原因，保持原状态;
+    stop
+  endif
 }
 
-@enddot
+repeat
+  partition "系统" {
+    if (停止已先于完成生效?) then (是)
+      :运行中→已停止;\n保留完成项与未完成范围;
+      stop
+    else (否)
+      :按快照获取本轮范围的下一批;
+    endif
+  }
+  partition "外部数据来源" {
+    :提供获准记录或失败反馈;
+  }
+  partition "系统" {
+    if (取得失败?) then (是)
+      :运行中→失败;\n保存错误与恢复范围;
+      note right
+      管理员可按 FR08-S04 / FR10-S05 重试。
+      重试→运行中／失败／已停止
+      的合法转移见 DGM-STATE-01。
+      历史成果仍可浏览。
+      end note
+      stop
+    else (否)
+      :逐条记录来源身份、性质及时间;
+    endif
+    if (身份和公共必要信息足够?) then (是)
+      :按同源身份和规范化内容判定;
+      if (新增来源记录?) then (是)
+        :交 FR09/FR15 治理;\n保留全部出处;
+      else (否)
+        if (内容未变化?) then (是)
+          :只更新检查时间;\n不重复成果或业务变更;
+        else (否，变更)
+          :保存源版本及前后差异;\n删除、撤稿、访问失败分别记录;
+          if (与当前人工结果冲突\n或无法核验?) then (是)
+            :保留公开值及确认／排除结果;\n交 FR07/FR14/FR15 待核验;
+            :重复同版本复用待办;
+          else (否)
+            :按治理和展示规则生效;\n记录生效时间;
+            :按 NF05 在检索、门户、统计反映;
+          endif
+        endif
+      endif
+    else (否)
+      :交异常／候选队列;\n不编造字段与身份;
+    endif
+    if (处理或队列交接失败?) then (是)
+      :运行中→失败;\n保存证据及恢复范围;
+      stop
+    else (否)
+      :保存本批互斥处置计数;\n异常／冲突另显;
+    endif
+  }
+repeat while (本轮范围仍未读完\n或仍有未完成项?) is (是) not (否)
+
+partition "系统" {
+  if (停止已先于完成生效?) then (是)
+    :运行中→已停止，保留完成结果;
+  else (否)
+    :运行中→成功，保存汇总;
+    :成功不表示全部公开或已核验归属;
+  endif
+}
+partition "管理员" {
+  :核对四类覆盖、来源证据和性质计数;
+}
+stop
+@enduml
