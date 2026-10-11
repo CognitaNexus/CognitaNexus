@@ -82,10 +82,23 @@ V1.9正文的四类、1万去重实体、两种独立来源属于明确基线；
 
 **没有处理：** 未自行重编号UC/图、未补造PlantUML、未生成不存在的追踪矩阵、未修改 V1.9 需求基线、未替其他成员做业务决策。
 
-## 5. 后续补交与 Git 归档范围
+## 5. 下一步与Git状态
 
 建议先请成员02补交3张PlantUML及SVG、追踪矩阵，交由组长协调UC和图编号，再做一次单模块复审。通过后以 Draft 身份加入 `docs/srs/modules/`，并保留本审查报告。共同 SRS 仍须全部成员及跨组评审。
 
-**本次归档：** 经用户明确授权，本审核报告与[审阅修订稿](../../srs/modules/collection-update.md)归档在组织仓库 `CognitaNexus/CognitaNexus` 的 `main` 分支；归档不代表业务规则冻结、UML 校验完成或共同 SRS 合并完成。
+**GitHub 仓库：** 已验证组织仓库 `CognitaNexus/CognitaNexus` 可访问；2026-10-11 审核 Draft 已先行归档 `main`。本次进一步补图、修改 SRS 链接并更新本审核报告；以本次提交记录为准。
 
-**仍缺：** 成员02的3张 PlantUML 图源、对应生成图、单独追踪矩阵；UC-08 与图编号冲突、Q-202/Q-204/Q-207 及 FR02-S07 跨模块边界需要联合评审。原稿仅随对话附件提供，不将其假作已经由成员02提交到仓库。
+
+## 6. 补图进度（2026-10-11；后续更新）
+
+已补充并绘制三张**模块草案图**，放入 `docs/uml/collection/`：
+
+| 图 | 可维护图源 | SVG | 校验状态 |
+| --- | --- | --- | --- |
+| 采集与更新局部用例图 | `collection-local-usecase.puml` | `generated/collection-local-usecase.svg` | 草案，角色和模块职责静态核对 |
+| 采集与增量更新活动图 | `collection-update-activity.puml` | `generated/collection-update-activity.svg` | 草案，异常／冲突／恢复条件对照 SRS |
+| 采集任务状态图 | `collection-task-state.puml` | `generated/collection-task-state.svg` | 六状态及合法转移对照 §6.2 |
+
+本次环境未安装 PlantUML CLI，三个 `.puml` 采用 PlantUML 支持的 `@startdot` 形式；SVG 由 Graphviz `dot -Tsvg` 从这三份源文件内的 DOT 内容生成，SVG 为矢量，并经 XML 解析与图片渲染目视检查。**未声称执行了 PlantUML CLI 校验**；后续成员02或整合者在具备 PlantUML 的环境里需再构建、核验可复现性。
+
+**仍未完成：** 规范统一的正式图编号（Q-201）、独立需求追踪矩阵、Q-202～Q-207 联合确认、实际数据来源许可及样例证据，以及成员02对所有三张图和对应 AC 的业务签认。因本次新补图，前文第2节“缺图”问题现改为“图已补、尚需负责人审核及统一编号”；其他问题继续有效。
