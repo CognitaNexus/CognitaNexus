@@ -1,0 +1,96 @@
+@startuml
+' DGM-ACTIVITY-04 成果去重候选判定活动图
+' 对应需求：FR09-S06、FR09-S07、FR09-S03；关联用例：UC-09
+' 对应正文：docs/srs/modules/FR09-dedup-normalization.md
+' 说明：本图为 FR09 交付的增量图，与 DGM-ACTIVITY-02 的分工是——
+'       DGM-ACTIVITY-02 描述治理总体流程；本图只展开"去重判定"这一段的证据与分支。
+!pragma layout smetana
+
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam dpi 150
+
+start
+
+partition "系统（标识匹配）" {
+  :读取规范化记录的标识比对键;
+  if (存在可用稳定标识?) then (是)
+    :按标识类型查找成果实体
+    （FR09-S06）;
+    :统计命中实体数量;
+    if (命中数量为 0?) then (是)
+      :转无标识候选判定;
+    else (否)
+      if (命中数量为 1?) then (是)
+        :关联到既有成果实体;
+        :记录匹配依据为同类型标识相等;
+      else (否)
+        :建立待核验记录
+        （列出全部候选与命中标识）;
+      endif
+    endif
+  else (否)
+    :转无标识候选判定;
+  endif
+}
+
+partition "系统（无标识候选判定）" {
+  :按标题比对用形式检索候选实体;
+  if (存在候选?) then (否)
+    :建立新成果实体
+    （依据：无标识新建）;
+  else (是)
+    :逐项比对证据
+    （标题／年份／参与者／成果类型）;
+    if (四项证据全部命中?) then (是)
+      :自动合并到该候选实体
+      （FR09-S07）;
+    else (否)
+      if (仅标题相似?) then (是)
+        :不合并，生成候选匹配
+        （BR-DUP-05）;
+      else (否)
+        :生成待核验记录
+        （证据不足或证据冲突）;
+      endif
+      :限制候选清单长度并标注候选规模;
+    endif
+  endif
+}
+
+partition "系统（版本与计数）" {
+  :判定是否属于已存在的版本关系
+  （FR09-S08）;
+  if (存在明确来源关系或已审核匹配?) then (是)
+    :并入同一成果实体的版本列表
+    （实体计数不增加）;
+  else (否)
+    :保留独立实体与候选关联
+    （标注处理状态：待核验）;
+  endif
+  :保留全部出处与来源标识
+  （BR-DUP-02）;
+}
+
+partition "管理员（候选核验）" {
+  :查看候选、逐项证据与来源
+  （FR09-S11）;
+  if (判定为同一成果?) then (是)
+    :确认合并并记录依据;
+  else (否)
+    :确认非同一成果并记录排除依据;
+  endif
+  :写入治理记录
+  （FR09-S12、BR-AUDIT-01）;
+}
+
+partition "系统（幂等保护）" {
+  :同一来源记录重复到达时记录重复到达事件
+  （FR09-S10）;
+  :成果实体计数保持不变
+  （BR-DUP-11）;
+}
+
+stop
+@enduml

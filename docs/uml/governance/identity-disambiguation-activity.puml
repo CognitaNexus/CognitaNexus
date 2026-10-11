@@ -1,0 +1,87 @@
+@startuml
+' DGM-ACTIVITY-03 学者消歧与归属判定活动图
+' 对应需求：FR15-S01～S13；关联用例：UC-10、UC-05、UC-06
+' 对应正文：docs/srs/modules/FR15-disambiguation-attribution.md
+' 说明：本图只描述业务动作与控制流，不含存储、接口或算法实现（规范 §10.1、§18）
+!pragma layout smetana
+
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam dpi 150
+
+start
+
+partition "系统（证据收集）" {
+  :从来源记录提取人员证据
+  （姓名表达／机构／外部标识／合作者／领域，FR15-S01）;
+  :剔除私人联系方式作为消歧依据
+  （BR-PRIV-01）;
+  :姓名表达归一
+  （FR15-S02）;
+}
+
+partition "系统（身份判定）" {
+  if (存在同类型外部标识一致?) then (是)
+    :判定为同一人并合并档案
+    （条件 a，FR15-S03）;
+  else (否)
+    if (机构一致且合作者与领域证据支持?) then (是)
+      :判定为同一人并合并档案
+      （条件 b，FR15-S03）;
+    else (否)
+      :生成身份候选
+      （禁止仅凭姓名合并，BR-SCH-02）;
+      :建立待核验处理项并标注门户归属状态
+      （FR15-S04）;
+      stop
+    endif
+  endif
+  :合并后证据与别名取并集
+  （BR-SCH-07）;
+}
+
+partition "系统（参与关系判定）" {
+  :按来源建立参与关系
+  （角色与顺序，FR15-S07）;
+  :记录三类独立证据
+  （来源证据／本人确认／管理员审核，FR15-S08）;
+  :计算关系确认状态
+  （自动关联｜本人确认｜待核验｜争议｜已排除，FR15-S09）;
+  if (状态为争议或涉及冲突认领?) then (是)
+    :生成冲突处理项
+    （FR15-S13、BR-SCH-09）;
+    :保持原授权与原结论不变;
+    stop
+  else (否)
+    :进入生效与传播
+    （FR15-S12）;
+  endif
+}
+
+partition "管理员（判定与纠正）" {
+  :查看证据与影响范围;
+  if (判定为同一人?) then (是)
+    :确认合并;
+  else (否)
+    if (判定为改归属或排除?) then (是)
+      :执行改归属／排除／拆分
+      （FR15-S10）;
+    else (否)
+      :标记争议或请求补充证据;
+      stop
+    endif
+  endif
+  :记录判定依据与操作者
+  （BR-AUDIT-01）;
+}
+
+partition "系统（生效与传播）" {
+  :解除个人关联时保留成果与他人关系
+  （FR15-S11、BR-SCH-19）;
+  :同步门户、检索与统计
+  （BR-SCH-20 / NF05）;
+}
+
+stop
+@enduml

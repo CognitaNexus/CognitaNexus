@@ -1,0 +1,89 @@
+@startuml
+' DGM-SEQ-01 归属判定与结果传播时序图
+' 对应需求：FR15-S03、FR15-S05、FR15-S08、FR15-S09、FR15-S10、FR15-S12
+' 关联用例：UC-10（主）、UC-06
+' 对应正文：docs/srs/modules/FR15-disambiguation-attribution.md
+' 阶段说明：规范 §2 将时序图列为"需求分析"阶段交付物；
+'           本图作为需求分析阶段的预置资产提前产出，待需求分析阶段定稿。
+' 参与者说明：本图使用逻辑参与者与系统内部逻辑单元，不代表微服务或部署结构（规范 §12.2）
+!pragma layout smetana
+
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam dpi 150
+
+actor "相关学者" as Scholar
+actor "管理员" as Admin
+
+participant "治理判定\n（FR15）" as Gov
+participant "治理留痕\n（FR09-S12／FR14）" as Audit
+participant "学者门户\n（FR03）" as Portal
+participant "检索结果\n（FR01／FR02）" as Search
+participant "统计分析\n（FR11～FR13）" as Stats
+
+== 触发：归属主张或证据变化 ==
+Scholar -> Gov : 提交本人确认／纠错／解除关联申请
+activate Gov
+Gov -> Gov : 校验申请范围与授权状态
+Gov -> Audit : 记录申请与范围
+Audit --> Gov : 留痕成功
+
+== 判定：证据充分或转人工 ==
+alt 证据满足自动判定条件（FR15-S03）
+  Gov -> Gov : 按条件 a／b 判定同一人或建立关联
+else 证据不足或存在冲突
+  Gov -> Gov : 生成身份候选或待核验处理项（FR15-S04）
+  Gov -> Audit : 记录处理项与证据清单
+  Admin -> Gov : 查看证据并作出判定
+  alt 判定为同一人或归属成立
+    Gov -> Gov : 确认合并或归属（FR15-S05）
+  else 判定为改归属／排除／拆分
+    Gov -> Gov : 执行纠正（FR15-S10）
+  else 标记争议
+    Gov -> Gov : 关系状态置为争议，禁止自动变更（FR15-S09、S13）
+  end
+end
+
+== 留痕：依据与关键变化 ==
+Gov -> Audit : 写入判定依据、操作者、时间与关键变化
+Audit --> Gov : 留痕成功
+note right of Audit
+  留痕失败时判定不得表现为成功，
+  且不得出现"已生效但无记录"的状态
+  （FR09-S12 E1、BR-AUDIT-01／02）
+end note
+
+== 传播：门户、检索、统计一致 ==
+Gov -> Portal : 更新归属与确认状态
+Gov -> Search : 更新成果与学者归属
+Gov -> Stats : 更新计数口径（按去重实体计）
+activate Portal
+activate Search
+activate Stats
+
+alt 约定时限内完成（BR-DATA-07／NF05）
+  Portal --> Gov : 一致
+  Search --> Gov : 一致
+  Stats --> Gov : 一致
+  Gov -> Admin : 报告判定已生效
+else 超时或失败
+  Portal --> Gov : 尚未一致
+  Gov -> Admin : 提示"变更尚未生效"与失败原因
+  Gov -> Gov : 持续重试直至一致
+end
+
+deactivate Portal
+deactivate Search
+deactivate Stats
+
+== 解除关联的边界 ==
+note over Gov, Stats
+  解除某位学者的关联时：
+  仅该关系状态变为已排除；
+  成果实体、出处与其他参与者关系保持不变（BR-SCH-19、FR15-S11）
+  不自动转移或撤销门户管理权（BR-SCH-09）
+end note
+
+deactivate Gov
+@enduml

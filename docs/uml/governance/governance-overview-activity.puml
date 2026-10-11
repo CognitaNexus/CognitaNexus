@@ -1,0 +1,110 @@
+@startuml
+' DGM-ACTIVITY-02 数据治理总体活动图（来源记录 -> 清洗 -> 去重 -> 候选核验 -> 生效）
+' 对应需求：FR09-S01～S12；关联用例：UC-08、UC-09
+' 对应正文：docs/srs/modules/FR09-dedup-normalization.md
+' 说明：本图只描述业务动作与控制流，不含存储、接口或算法实现（规范 §10.1、§18）
+!pragma layout smetana
+
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam dpi 150
+
+start
+
+partition "系统（数据采集）" {
+  :取得来源记录批次
+  （FR08 任务成功输出）;
+}
+
+partition "系统（清洗与规范化）" {
+  :按成果类型校验必填项
+  （FR09-S01）;
+  if (必填项完整?) then (否)
+    :建立异常记录
+    （原因：必填项缺失）;
+    note right
+      该记录不参与后续匹配，
+      由"管理员（人工处置）"泳道统一处置
+      （FR09-S11）
+    end note
+  else (是)
+    :规范化时间与精度
+    （FR09-S02）;
+    if (日期合法且语义明确?) then (否)
+      :建立待核验记录
+      （原因：日期非法／可疑／歧义）;
+    else (是)
+      :归一化稳定标识
+      （FR09-S03）;
+      :规范化属性文本与机构领域映射
+      （FR09-S04）;
+      :标记为可参与匹配的规范化记录;
+    endif
+  endif
+}
+
+partition "系统（去重判定）" {
+  if (记录可参与匹配?) then (是)
+    if (存在可用稳定标识?) then (是)
+      :按标识类型查找成果实体;
+      if (命中唯一实体?) then (是)
+        :关联到既有成果实体
+        （FR09-S06）;
+      else (否)
+        :建立待核验记录
+        （候选多个或类型不一致）;
+      endif
+    else (否)
+      :生成候选并比对多项证据
+      （标题／年份／参与者／类型，FR09-S07）;
+      if (证据达到自动合并条件?) then (是)
+        :合并到候选成果实体
+        （FR09-S09）;
+      else (否)
+        :建立成果待核验记录
+        （证据不足或冲突）;
+      endif
+    endif
+    :判定版本关系与实体计数
+    （FR09-S08、S10）;
+  else (否)
+    :进入异常或待核验队列;
+  endif
+}
+
+partition "系统（字段合并）" {
+  :逐字段比较来源值与呈现值;
+  if (与已确认或已审核值冲突?) then (是)
+    :保留公开值并生成字段冲突处理项
+    （BR-DATA-04）;
+  else (否)
+    :按优先级更新呈现值并保留出处
+    （FR09-S05）;
+  endif
+}
+
+partition "管理员（人工处置）" {
+  :处理异常与待核验队列
+  （FR09-S11、UC-09）;
+  if (处置为合并?) then (是)
+    :确认合并并保留全部出处;
+  else (否)
+    if (处置为新实体?) then (是)
+      :建立新实体并记录人工依据;
+    else (否)
+      :标记忽略或转人工复核
+      （保留原始内容）;
+    endif
+  endif
+}
+
+partition "系统（留痕与生效）" {
+  :记录治理动作与依据
+  （FR09-S12、BR-AUDIT-01）;
+  :使检索、门户与统计反映一致结果
+  （BR-DATA-07 / NF05）;
+}
+
+stop
+@enduml
