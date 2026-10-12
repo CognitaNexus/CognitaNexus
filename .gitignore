@@ -68,3 +68,7 @@ temp/
 *.swp
 *.swo
 *~
+
+# Local member handoffs and unverified reference exports
+/.local/submissions/
+/docs/srs/incoming/
