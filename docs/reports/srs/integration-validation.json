@@ -1,0 +1,81 @@
+{
+  "AC": {
+    "status": "PASS",
+    "source_unique": 445,
+    "common_definitions": 445,
+    "duplicates": [],
+    "missing": []
+  },
+  "coverage": {
+    "status": "PASS",
+    "children": 179,
+    "missing_parents": []
+  },
+  "UC_registry": {
+    "status": "PASS",
+    "count": 21
+  },
+  "BR_registry": {
+    "status": "PASS",
+    "count": 138
+  },
+  "DGM_registry": {
+    "status": "PASS",
+    "count": 17
+  },
+  "UC_definitions": {
+    "status": "PASS",
+    "count": 21
+  },
+  "links": {
+    "status": "PASS",
+    "broken": [],
+    "scope": "Markdown文件目标；未验证外部URL或中文自动锚点"
+  },
+  "references": {
+    "status": "PASS",
+    "unregistered": []
+  },
+  "UML": {
+    "status": "PASS",
+    "sources": 17,
+    "generated_svg": 17,
+    "errors": [],
+    "stderr": ""
+  },
+  "srs/CognitaNexus-SRS-V1.0_Word": {
+    "status": "PASS",
+    "zip_error": null,
+    "missing_AC": [],
+    "image_count": 17,
+    "body_chars": 280013,
+    "scope": "ZIP、XML及AC标识完整性；视觉检查另记"
+  },
+  "spec/CognitaNexus-Core-SPEC-V1.0_Word": {
+    "status": "PASS",
+    "zip_error": null,
+    "missing_AC": [],
+    "image_count": 0,
+    "body_chars": 17543,
+    "scope": "ZIP、XML及AC标识完整性；视觉检查另记"
+  },
+  "NF05": {
+    "status": "PASS"
+  },
+  "SPEC_alignment": {
+    "status": "PASS",
+    "scope": "公共对象状态、DEC-01～03与核心FR/AC追踪；候选算法参数未冻结"
+  },
+  "business_decisions": {
+    "status": "BLOCKED",
+    "reason": "DEC-01～03有组长确认；其余A/J/Q参数及六人联合签认未完成，不能宣称业务验收或Frozen"
+  },
+  "CodeArts": {
+    "status": "NOT VERIFIED",
+    "reason": "未实际操作平台验证原生工程导入、编辑及重新导出"
+  },
+  "runtime_tests": {
+    "status": "NOT VERIFIED",
+    "reason": "需求建模整改，无实现代码；未执行算法单元、集成、性能及覆盖率测试"
+  }
+}

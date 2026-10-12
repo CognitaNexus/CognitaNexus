@@ -7,12 +7,12 @@ skinparam dpi 150
 ' DGM-USECASE-01 — 系统总体用例图，Draft，待联合 SRS 评审。
 ' 唯一维护源：overall-usecase.puml；overall-usecase.svg 仅由本文件生成。
 ' 从仓库根目录重新渲染：
-' plantuml -charset UTF-8 -tsvg -failfast2 docs/uml/usecase/overall-usecase.puml
+' plantuml -charset UTF-8 -tsvg -o generated -failfast2 docs/uml/usecase/overall-usecase.puml
 ' 依据：docs/requirements/学术成果分享平台需求分析与可行性报告.md（正文 V1.9）
 ' 规范：docs/srs/CognitaNexus_SRS编写与需求建模规范_V1.0.md
 ' 模块：docs/srs/modules/search-recommendation.md（V0.1 Draft）
 ' 本次按用户指定使用 docs/uml/usecase/，不另存第二份总体图源文件。
-' 用例别名仅为绘图标识；共同 SRS 的全局 UC 编号仍待统一分配。
+' 用例别名仅为绘图标识；全局 UC 编号已按global-id-registry.md登记。
 
 top to bottom direction
 skinparam defaultFontSize 16
@@ -37,39 +37,39 @@ actor "成果原站\nOriginal Source Site" as OriginalSite
 
 rectangle "CognitaNexus" {
   package "公开发现与分析" as Discovery {
-    usecase "检索成果与学者\nFR01" as Search
-    usecase "查看成果详情与来源\nFR02、FR16" as Detail
-    usecase "查看学者门户\nFR03" as Portal
-    usecase "查看成果统计与机构排名\nFR11" as Statistics
-    usecase "查看基础专家合作关系网络\nFR12" as Network
-    usecase "查看领域热点分析\nFR13" as Hotspots
-    usecase "探索合作关系\nIN01" as Exploration <<Innovation>>
-    usecase "查看相似论文推荐\nO01" as Similar <<Optional>>
+    usecase "UC-01 检索成果与学者\nFR01" as Search
+    usecase "UC-02 查看成果详情与来源\nFR02、FR16" as Detail
+    usecase "UC-03 查看学者门户\nFR03" as Portal
+    usecase "UC-11／UC-12 查看成果统计与机构排名\nFR11" as Statistics
+    usecase "UC-14 查看基础专家合作关系网络\nFR12" as Network
+    usecase "UC-13 查看领域热点分析\nFR13" as Hotspots
+    usecase "UC-15 探索合作关系\nIN01" as Exploration <<Innovation>>
+    usecase "UC-20 查看相似论文推荐\nO01" as Similar <<Optional>>
   }
 
   package "账号、认领与门户维护" as AccountPortal {
-    usecase "注册账号\nFR04" as Register
-    usecase "登录账号\nFR04" as Login
-    usecase "退出登录\nFR04" as Logout
-    usecase "提交门户认领申请\nFR05" as Claim
-    usecase "查看本人认领申请状态\nFR05" as ClaimStatus
-    usecase "维护学者门户\nFR06" as MaintainPortal
-    usecase "确认／补录／纠正成果\nFR07、FR15" as MaintainAchievement
+    usecase "UC-04 注册账号\nFR04" as Register
+    usecase "UC-04 登录账号\nFR04" as Login
+    usecase "UC-04 退出登录\nFR04" as Logout
+    usecase "UC-05 提交门户认领申请\nFR05" as Claim
+    usecase "UC-05 查看本人认领申请状态\nFR05" as ClaimStatus
+    usecase "UC-07 维护学者门户\nFR06" as MaintainPortal
+    usecase "UC-08 确认／补录／纠正成果\nFR07、FR15" as MaintainAchievement
   }
 
   package "数据采集、治理与管理审核" as Governance {
-    usecase "管理数据源与采集任务\nFR08" as ManageCollection
-    usecase "采集／导入四类成果并记录来源\nFR08、FR16" as Collect
-    usecase "治理数据质量与成果归属\n清洗／去重／消歧／分类\nFR09、FR15、FR14" as DataQuality
-    usecase "管理增量更新与处理异常\nFR10" as Update
-    usecase "查看管理后台待办\nFR14" as Workbench
-    usecase "审核门户认领与成果变更\nFR05、FR07、FR14" as Review
-    usecase "管理账号与查询审计记录\nFR14" as AccountAudit
+    usecase "UC-18 管理数据源与采集任务\nFR08" as ManageCollection
+    usecase "UC-18／UC-16 采集／导入四类成果并记录来源\nFR08、FR16" as Collect
+    usecase "UC-09／UC-10 治理数据质量与成果归属\n清洗／去重／消歧／分类\nFR09、FR15、FR14" as DataQuality
+    usecase "UC-19 管理增量更新与处理异常\nFR10" as Update
+    usecase "UC-17 查看管理后台待办\nFR14" as Workbench
+    usecase "UC-06／UC-08 审核门户认领与成果变更\nFR05、FR07、FR14" as Review
+    usecase "UC-17 管理账号与查询审计记录\nFR14" as AccountAudit
   }
 
   package "轻量个性化增强（Optional）" as Personalization {
-    usecase "使用轻量个性化推荐\nO02" as Personalized <<Optional>>
-    usecase "查看／清除本人兴趣偏好\nO02" as Preferences <<Optional>>
+    usecase "UC-21 使用轻量个性化推荐\nO02" as Personalized <<Optional>>
+    usecase "UC-21 查看／清除本人兴趣偏好\nO02" as Preferences <<Optional>>
   }
 }
 
@@ -179,5 +179,5 @@ endlegend
 ' 提交认领包含补充材料分支；成果纠正涵盖解除本人关联申请，不单独展开状态和异常。
 ' 待联合冻结：O02 身份范围、授权/近期行为/偏好清除规则（模块 A08/A09）；
 ' 相似推荐业务口径（A10）；公开字段与争议关系（A06）；外链反馈边界（A07）；
-' 真实/模拟过滤责任（A05）；全局用例编号及图资产路径对齐（A12）。
+' 真实/模拟过滤责任（A05）；后续另一子组编号协调（A12；本组已统一）。
 @enduml

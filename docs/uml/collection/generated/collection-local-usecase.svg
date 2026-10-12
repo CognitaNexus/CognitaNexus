@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" contentScriptType="application/ecmascript" contentStyleType="text/css" height="776.5625px" preserveAspectRatio="none" style="width:676px;height:776px;" version="1.1" viewBox="0 0 676 776" width="676.5625px" zoomAndPan="magnify"><defs/><g><text fill="#000000" font-family="sans-serif" font-size="28.125" lengthAdjust="spacingAndGlyphs" textLength="523.4375" x="94.5313" y="30.0654">DGM-USECASE-03 采集与更新局部用例图</text><!--MD5=[ed9cab36a14517b84bf828ce2805f2b0]
+cluster CognitaNexus（第②成员责任范围）--><rect fill="#FFFFFF" height="456.25" style="stroke: #000000; stroke-width: 2.34375;" width="450" x="209.375" y="175.806"/><text fill="#000000" font-family="sans-serif" font-size="21.875" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="373.3398" x="247.7051" y="202.3153">CognitaNexus（第②成员责任范围）</text><ellipse cx="434.1361" cy="421.0707" fill="#F8F8F8" rx="199.7611" ry="43.7022" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="sans-serif" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="309.375" x="279.4486" y="421.6255">UC-18 管理数据来源与采集任务</text><text fill="#000000" font-family="sans-serif" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="154.6875" x="356.7923" y="451.4191">FR08-S01～S04</text><ellipse cx="434.1361" cy="563.2582" fill="#F8F8F8" rx="199.7611" ry="43.7022" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="sans-serif" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="309.375" x="279.4486" y="563.813">UC-19 更新来源数据并处理变更</text><text fill="#000000" font-family="sans-serif" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="154.6875" x="356.7923" y="593.6066">FR10-S01～S05</text><ellipse cx="434.1361" cy="278.8832" fill="#F8F8F8" rx="199.7611" ry="43.7022" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="sans-serif" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="309.375" x="279.4486" y="279.438">UC-16 查看四类成果与来源证据</text><text fill="#000000" font-family="sans-serif" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="154.6875" x="356.7923" y="309.2316">FR16-S01～S03</text><!--MD5=[97ab183161fd5d1db7fba7485cf76add]
+entity Admin--><ellipse cx="75" cy="353.931" fill="#F8F8F8" rx="12.5" ry="12.5" style="stroke: #383838; stroke-width: 2.34375;"/><path d="M75,366.431 L75,408.6185 M54.6875,378.931 L95.3125,378.931 M75,408.6185 L54.6875,432.056 M75,408.6185 L95.3125,432.056 " fill="none" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="sans-serif" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="65.625" x="42.1875" y="459.3465">管理员</text><!--MD5=[acb64d932532ebbc809d9a993fb5ccd9]
+entity Visitor--><ellipse cx="75" cy="172.681" fill="#F8F8F8" rx="12.5" ry="12.5" style="stroke: #383838; stroke-width: 2.34375;"/><path d="M75,185.181 L75,227.3685 M54.6875,197.681 L95.3125,197.681 M75,227.3685 L54.6875,250.806 M75,227.3685 L95.3125,250.806 " fill="none" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="sans-serif" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="43.75" x="53.125" y="278.0965">访客</text><!--MD5=[c8da82a3e4fd5c54db14ac48b9861466]
+entity Source--><ellipse cx="75" cy="535.181" fill="#F8F8F8" rx="12.5" ry="12.5" style="stroke: #383838; stroke-width: 2.34375;"/><path d="M75,547.681 L75,589.8685 M54.6875,560.181 L95.3125,560.181 M75,589.8685 L54.6875,613.306 M75,589.8685 L95.3125,613.306 " fill="none" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="sans-serif" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="131.25" x="9.375" y="640.5965">外部数据来源</text><path d="M255.4688,51.5873 L255.4688,150.2092 A0,0 0 0 0 255.4688,150.2092 L428.125,150.2092 L434.375,235.1029 L440.625,150.2092 L613.2813,150.2092 A0,0 0 0 0 613.2813,150.2092 L613.2813,67.2123 L597.6563,51.5873 L255.4688,51.5873 A0,0 0 0 0 255.4688,51.5873 " fill="#ECECEC" style="stroke: #383838; stroke-width: 1.5625;"/><path d="M597.6563,51.5873 L597.6563,67.2123 L613.2813,67.2123 L597.6563,51.5873 " fill="#ECECEC" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="sans-serif" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="298.4375" x="264.8438" y="81.1138">公开浏览复用 FR01/FR02/FR03。</text><text fill="#000000" font-family="sans-serif" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="304.6875" x="264.8438" y="108.7795">管理员核对覆盖和受控输入证据。</text><text fill="#000000" font-family="sans-serif" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="325" x="264.8438" y="136.4451">登录及门户授权不授予任务管理权。</text><!--MD5=[1bcc16177c95d3bc7e6b988485585b33]
+link Admin to UC08--><path d="M108.1719,404.0248 C138.9219,405.6498 188.3281,408.2435 239.4219,410.9466 " fill="none" id="Admin-UC08" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[b415004d391d90f899bf2276a07af358]
+link Admin to UC10--><path d="M108.2656,430.5716 C131.4375,449.9623 164.375,475.0716 196.875,491.431 C228.625,507.4154 264.5781,520.5873 298.6875,531.1029 " fill="none" id="Admin-UC10" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[8526d5f680335a2f8e1798763d2c362d]
+link Admin to UC16--><path d="M108.2813,387.0404 C132.2813,375.7748 166.2344,360.5248 196.875,349.2435 C232.5781,336.1029 271.9688,323.6029 308.1719,312.8841 " fill="none" id="Admin-UC16" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[f90318137dd1ca18ec56a0ac6f0c8093]
+link Visitor to UC16--><path d="M97.7813,224.556 C132.5313,230.1966 204.5781,241.8998 272.9844,252.9935 " fill="none" id="Visitor-UC16" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[a00a5e0f85d967cdee195d245d757f0d]
+link Source to UC08--><path d="M141.1094,527.3373 C158.4063,514.2123 177.6563,501.2435 196.875,491.431 C227.7188,475.6966 262.6563,462.8841 296.0156,452.7123 " fill="none" id="Source-UC08" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[4d8cb955b2b4e11f67b8cc499894dff8]
+link Source to UC10--><path d="M140.6719,579.9623 C169.1094,578.3373 204.25,576.3373 240.1875,574.2904 " fill="none" id="Source-UC10" style="stroke: #383838; stroke-width: 1.5625;"/><rect fill="#DDDDDD" height="75.2122" rx="7.8125" ry="7.8125" style="stroke: #000000; stroke-width: 1.5625;" width="478.125" x="116.4063" y="685.181"/><text fill="#000000" font-family="sans-serif" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="459.375" x="125.7813" y="716.3778">本图是局部视图，合并到全组唯一总体用例图。</text><text fill="#000000" font-family="sans-serif" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="328.125" x="125.7813" y="746.1714">系统、调度器不作为外部参与者。</text><!--MD5=[00c46ff92db07a7f168423738639cced]
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam dpi 150
+!pragma layout smetana
+left to right direction
+title DGM-USECASE-03 采集与更新局部用例图
+
+actor "管理员" as Admin
+actor "访客" as Visitor
+actor "外部数据来源" as Source
+
+rectangle "CognitaNexus（第②成员责任范围）" {
+  usecase "UC-18 管理数据来源与采集任务\nFR08-S01～S04" as UC08
+  usecase "UC-19 更新来源数据并处理变更\nFR10-S01～S05" as UC10
+  usecase "UC-16 查看四类成果与来源证据\nFR16-S01～S03" as UC16
+}
+
+Admin - - UC08
+Admin - - UC10
+Admin - - UC16
+Visitor - - UC16
+Source - - UC08
+Source - - UC10
+
+note bottom of UC16
+公开浏览复用 FR01/FR02/FR03。
+管理员核对覆盖和受控输入证据。
+登录及门户授权不授予任务管理权。
+end note
+
+legend bottom
+本图是局部视图，合并到全组唯一总体用例图。
+系统、调度器不作为外部参与者。
+endlegend
+@enduml
+
+PlantUML version 1.2020.02(Sun Mar 01 18:22:07 CST 2020)
+(GPL source distribution)
+Java Runtime: Java(TM) SE Runtime Environment
+JVM: Java HotSpot(TM) 64-Bit Server VM
+Java Version: 22.0.2+9-70
+Operating System: Linux
+Default Encoding: UTF-8
+Language: en
+Country: null
+--></g></svg>

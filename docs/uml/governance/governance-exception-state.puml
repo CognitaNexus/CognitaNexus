@@ -1,7 +1,7 @@
 @startuml
 ' DGM-STATE-04 异常／待核验处理项状态图
 ' 对应需求：FR09-S11、FR09-S12、FR15-S04、FR15-S05；关联用例：UC-09、UC-10
-' 对应正文：docs/srs/modules/FR09-dedup-normalization.md、FR15-disambiguation-attribution.md
+' 对应正文：docs/srs/modules/governance-dedup.md、FR15-disambiguation-attribution.md
 ' 说明：本状态机的对象是"处理项"（异常记录与待核验记录的统一处置载体），
 '       与采集任务状态机（DGM-STATE-01）是不同对象，不得混用。
 !pragma layout smetana
@@ -39,8 +39,8 @@ note right of 待处理
 end note
 
 note bottom of 已处理
-  处置必须留痕：操作者、时间、依据与关键变化（BR-AUDIT-01）
-  留痕只追加、不覆盖（BR-AUDIT-02）
+  处置必须留痕：操作者、时间、依据与关键变化（BR-381）
+  留痕只追加、不覆盖（BR-382）
   同一处理项不得并列重复（FR09-S11 E4）
 end note
 @enduml

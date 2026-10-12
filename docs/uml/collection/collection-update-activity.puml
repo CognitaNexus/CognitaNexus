@@ -3,7 +3,7 @@ skinparam monochrome true
 skinparam shadowing false
 skinparam dpi 150
 ' Noto Sans CJK SC unavailable locally; use installed system default font.
-title DGM-ACTIVITY-02 采集与增量更新业务活动图
+title DGM-ACTIVITY-05 采集与增量更新业务活动图
 
 start
 partition "管理员" {

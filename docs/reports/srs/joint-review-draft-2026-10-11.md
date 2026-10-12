@@ -1,5 +1,7 @@
 # CognitaNexus 六人组 SRS 跨模块联合审查（2026-10-11 · 待决草案）
 
+> 历史审查快照：本文件中的旧局部编号和问题状态仅记录2026-10-11事实。2026-10-12整改结果以[新整合报告](integration-validation-2026-10-12.md)和[编号注册表](../../srs/global-id-registry.md)为准。
+
 **输入：** GitHub `main` 原有成员 01、02、04、05 审阅稿；成员03《交付.zip》（FR09/FR15，含 6 个 PlantUML、用例及规则补丁）；成员06《CognitaNexus-SRS-V1.0-提交包(1).zip》仅提取 FR14 与 NF01～NF08。  
 **最高依据：** V1.9 需求基线和仓库 `AGENTS.md`、SRS 规范。**06 另行生成的其他 FR 不替换原责任人文档，也不引用其声称的“六人自检”作为事实。**
 
@@ -12,7 +14,7 @@
 | FR14 后台与审计缺失 | 仅引入成员06自稿的 FR14-S01～S09；后台提供聚合待办和权限审计，不能接管其余模块归属审核定义。 | `docs/srs/modules/admin-audit.md` |
 | NF01～NF08 缺失 | 仅从成员06整套 SRS 的第 9 章抽取 30 条 NF-S 需求和对应 AC；保留待评审性能条件。 | `docs/srs/modules/nonfunctional.md` |
 | 03 的图和追踪资产未统一 | 6 张 `.puml` 已在当前离线环境用随包的 PlantUML 1.2026.8 重新渲染为 SVG，均渲染成功；其原 DGM ID 与 05 重号，暂用治理模块专属文件名。 | `docs/uml/governance/` |
-| 核心 SPEC 初稿缺统一入口 | 新建四部分规则草案，阈值和待决项明确标识；不是已冻结实现算法。 | `docs/spec/core-rules-draft.md` |
+| 核心 SPEC 初稿缺统一入口 | 新建四部分规则草案，阈值和待决项明确标识；不是已冻结实现算法。 | [现行核心SPEC](../../spec/CognitaNexus-Core-SPEC-V1.0.md)（原草案已退役） |
 
 ## 2. 成员06 全面生成稿与正式负责成员的范围差异
 

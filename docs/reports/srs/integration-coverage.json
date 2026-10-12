@@ -1,0 +1,18 @@
+{
+  "children": 179,
+  "AC": 445,
+  "blocks": 169,
+  "usecases": 21,
+  "rules": 138,
+  "diagrams": 17,
+  "source_hashes": {
+    "search-recommendation": "1e9c338aee2aeb0ddc477b7c1ea67e0786cc2543d38121940d094bc95f8dbc4d",
+    "collection-update": "b597cf94499c67dcadb2244012a1780d7753412a04d9334e3da0d73cf50e98a4",
+    "governance-dedup": "becef6a262fb3cdb2a01042f9b4469246dbe175fe89c2467d184c9ff75554914",
+    "scholar-disambiguation": "d476128ee8d55f6f76af9571f553a6634426b882e669cf2c0da11e620fe76608",
+    "scholar-claim": "c5ab74baa075361bc21dcb907d08fbcdf7bc9a27d15d72a295401c5ecb74823e",
+    "analytics-graph": "95096ebaba6c8368d1436fee0c0127d56e2669cd562d1a695d1f07ac05385f7b",
+    "admin-audit": "572b7e7bfe586420b23de0e2296a36123e3ed2881b2936c22a2fd4e2951c4fe5",
+    "nonfunctional": "9dd7b7b3e01a1eeabc57668aecb8ffec8be3492ddd9df5f193965f006fd6c37f"
+  }
+}

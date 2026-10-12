@@ -1,8 +1,8 @@
 @startuml
 ' DGM-SEQ-01 归属判定与结果传播时序图
 ' 对应需求：FR15-S03、FR15-S05、FR15-S08、FR15-S09、FR15-S10、FR15-S12
-' 关联用例：UC-10（主）、UC-06
-' 对应正文：docs/srs/modules/FR15-disambiguation-attribution.md
+' 关联用例：UC-10（主）、UC-08
+' 对应正文：docs/srs/modules/scholar-disambiguation.md
 ' 阶段说明：规范 §2 将时序图列为"需求分析"阶段交付物；
 '           本图作为需求分析阶段的预置资产提前产出，待需求分析阶段定稿。
 ' 参与者说明：本图使用逻辑参与者与系统内部逻辑单元，不代表微服务或部署结构（规范 §12.2）
@@ -51,7 +51,7 @@ Audit --> Gov : 留痕成功
 note right of Audit
   留痕失败时判定不得表现为成功，
   且不得出现"已生效但无记录"的状态
-  （FR09-S12 E1、BR-AUDIT-01／02）
+  （FR09-S12 E1、BR-381／02）
 end note
 
 == 传播：门户、检索、统计一致 ==
@@ -62,7 +62,7 @@ activate Portal
 activate Search
 activate Stats
 
-alt 约定时限内完成（BR-DATA-07／NF05）
+alt 约定时限内完成（BR-327／NF05）
   Portal --> Gov : 一致
   Search --> Gov : 一致
   Stats --> Gov : 一致
@@ -81,8 +81,8 @@ deactivate Stats
 note over Gov, Stats
   解除某位学者的关联时：
   仅该关系状态变为已排除；
-  成果实体、出处与其他参与者关系保持不变（BR-SCH-19、FR15-S11）
-  不自动转移或撤销门户管理权（BR-SCH-09）
+  成果实体、出处与其他参与者关系保持不变（BR-359、FR15-S11）
+  不自动转移或撤销门户管理权（BR-349）
 end note
 
 deactivate Gov
