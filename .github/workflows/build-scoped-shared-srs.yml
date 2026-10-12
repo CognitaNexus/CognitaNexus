@@ -56,7 +56,7 @@ jobs:
           assert len(ids(md))==46 and ids(md)==ids(text)
           assert len(media)>=2, f'UML images missing: {media}'
           import re
-          sizes=[(int(x),int(y)) for x,y in re.findall(r'<wp:extent cx="(\\d+)" cy="(\\d+)"',text)]
+          sizes=[(int(x),int(y)) for x,y in re.findall(r'<wp:extent cx="(\d+)" cy="(\d+)"',text)]
           assert len(sizes)>=2, sizes
           assert max(y for x,y in sizes)<8000000, f'oversized UML image: {sizes}'
           print('PASS 46 normative AC and',len(media),'embedded UML media')
