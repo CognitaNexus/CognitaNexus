@@ -1,3 +1,5 @@
+> **版本效力（2026-10-12）：** 本表是第一组六人稿历史 UC/BR/DGM 注册表，保留本地编号及历史含义；双组工程当前应先读 [V1.1 Implementation RC](CognitaNexus-Shared-SRS-V1.1-Implementation-RC.md) 的单一业务规则和验收。V1.1 的 BR-IMP 与 AC-IMPL 不覆盖本表既有编号，也不暗示历史规则已冻结。
+
 # CognitaNexus 全局UC BR DGM编号注册表
 
 **版本：** V1.0 RC1 ｜ **日期：** 2026-10-12 ｜ **状态：** Review Candidate，编号修复已执行，业务未Frozen。  
