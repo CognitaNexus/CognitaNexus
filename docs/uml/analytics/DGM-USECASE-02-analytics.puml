@@ -33,7 +33,7 @@ rectangle "统计分析域（FR11 / FR12 / FR13 / IN01）" {
   usecase "UC-15 探索合作关系（IN01）" as UC15
 
   usecase "披露统计口径与数据范围" as INCL_Caliber
-  usecase "查看合作关系成果证据" as INCL_Evidence
+  usecase "查看合作关系论文证据" as INCL_Evidence
   usecase "按领域/机构/时间窗口筛选网络" as INCL_Filter
   usecase "查询两名学者间最短合作路径" as INCL_Path
   usecase "沿路径逐跳查看论文依据" as INCL_PathEvidence
@@ -67,7 +67,7 @@ legend right
      故作为 <<include>> 列入。
   3. UC-15（IN01）为条件性增强；筛选、路径查询可分别执行，证据按需查看。
      能力属于一期范围，不等于每次交互都必须执行；路径仅使用合格共同论文关系。
-     FR12 共同成果证据与 IN01 路径论文证据分别表达。
+     FR12 和 IN01 均只接受合格共同论文证据，不使用非论文成果建边。
   4. 领域分类映射与统计口径的维护属于管理侧能力（FR14 / FR16 引用项），
      由管理后台模块负责，本模块只引用其结果。
 endlegend
