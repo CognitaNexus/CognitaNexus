@@ -10450,12 +10450,6 @@ FR09由第③成员提供，本文只要求处理交接有可追踪结果，不�
 - 关联非功能需求：NF01、NF04、NF05、NF06、NF08
 - 关联数据对象：去重成果、来源记录、验收数据范围、核对结果
 
-## 5. 创新与可选需求
-
-IN01属于本期创新；O01/O02保留Optional状态。
-
-### 5.1 IN01合作关系探索
-
 
 #### 双组共同补充验收与规范来源（Review Candidate）
 
@@ -10469,6 +10463,15 @@ IN01属于本期创新；O01/O02保留Optional状态。
   - *来源裁决：ENHANCED_CASE；原父需求 FR16-S06，共同主目标 FR16-S03；待两组评审。*
 
 以上增补保留第一组原验收文本与编号。原始 OvO AC 对照请查 [逐条双向验收映射](integration/shared-ac-resolution-v1.0-rc.md)，标记并不等于实测 PASS。
+
+## 5. 创新与可选需求
+
+IN01属于本期创新；O01/O02保留Optional状态。
+
+### 5.1 IN01合作关系探索
+
+
+
 
 ### IN01-S01 按研究领域筛选合作网络
 
@@ -12657,6 +12660,15 @@ NF01～NF08保留原责任条款及AC。度量型模板仅作为Review Candidate
   - AC-NF08-S04-02：Given AGENTS.md When 抽查条目 Then 可追溯到 SRS 子需求编号与实现位置。
 - **验证方式：** SPEC、评审记录与 AGENTS.md 抽查。
 - **关联项：** NF08；SRS规范§18及V1.9 NF08。
+
+
+#### 双组共同补充验收与规范来源（Review Candidate）
+
+**OvO 语义细化与对应关系：**
+
+- OvO `NF08-S02` → `NF08-S03`、`NF08-S04`（REFINEMENT）：CodeArts流程证据与追踪落位分项。
+
+以上增补保留第一组原验收文本与编号。原始 OvO AC 对照请查 [逐条双向验收映射](integration/shared-ac-resolution-v1.0-rc.md)，标记并不等于实测 PASS。
 
 ## 10. 验收与追踪
 
@@ -15237,11 +15249,5 @@ O02 的用户行为收集仅在明确授权后进行；未实施 O02 不要求�
 | admin-audit.md | 572b7e7bfe586420b23de0e2296a36123e3ed2881b2936c22a2fd4e2951c4fe5 |
 | nonfunctional.md | 9dd7b7b3e01a1eeabc57668aecb8ffec8be3492ddd9df5f193965f006fd6c37f |
 
-#### 双组共同补充验收与规范来源（Review Candidate）
 
-**OvO 语义细化与对应关系：**
-
-- OvO `NF08-S02` → `NF08-S03`、`NF08-S04`（REFINEMENT）：CodeArts流程证据与追踪落位分项。
-
-以上增补保留第一组原验收文本与编号。原始 OvO AC 对照请查 [逐条双向验收映射](integration/shared-ac-resolution-v1.0-rc.md)，标记并不等于实测 PASS。
 
