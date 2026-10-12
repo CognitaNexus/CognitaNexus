@@ -7,7 +7,7 @@
 项目处于**需求建模 / SRS 与核心 SPEC 初稿**阶段。当前仓库维护需求、模块规格、图源和评审材料，尚未提供应用代码或运行部署流程。
 
 - 需求依据：V1.9 需求基线，正文状态为待小组评审。
-- 六人模块 SRS 与联合整合稿均为 Draft，尚未形成最终共同 SRS。
+- 六人模块与完整共同 SRS V1.0 为 Review Candidate，待人工联合评审，未冻结。
 - 核心 SPEC V1.0 为 Review Candidate，需联合评审；不代表规则已冻结。
 - FR01、FR02 为 Must；O01、O02 为 Optional，不作为一期基础验收的前置条件。
 
@@ -17,7 +17,7 @@
 2. [调研与可行性论证附录](docs/requirements/学术成果分享平台调研与可行性论证附录.md)
 3. [SRS 编写与需求建模规范 V1.0](docs/srs/CognitaNexus_SRS编写与需求建模规范_V1.0.md)
 4. [六人模块 SRS 导航](docs/srs/modules/README.md)
-5. [联合 SRS 草案](docs/srs/CognitaNexus-SRS-Draft.md)
+5. [完整共同 SRS](docs/srs/CognitaNexus-SRS-V1.0.md) · [Word](docs/srs/CognitaNexus-SRS-V1.0.docx)
 6. [核心 SPEC 候选稿](docs/spec/CognitaNexus-Core-SPEC-V1.0.md)
 7. [文档目录与维护约定](docs/README.md)
 
@@ -32,7 +32,7 @@ CognitaNexus/
 └── docs/
     ├── README.md
     ├── requirements/       # 需求基线与调研依据
-    ├── srs/                # 编写规范、联合草案、模块 SRS 与评审输入
+    ├── srs/                # 编写规范、共同SRS候选、模块 SRS 与评审输入
     │   ├── modules/
     │   ├── review/
     │   └── incoming/       # 历史成员原稿，当前为本地未跟踪材料

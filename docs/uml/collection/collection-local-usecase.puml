@@ -5,15 +5,15 @@ skinparam dpi 150
 !pragma layout smetana
 ' Noto Sans CJK SC unavailable locally; use installed system default font.
 left to right direction
-title DGM-USECASE-02 采集与更新局部用例图
+title DGM-USECASE-03 采集与更新局部用例图
 
 actor "管理员" as Admin
 actor "访客" as Visitor
 actor "外部数据来源" as Source
 
 rectangle "CognitaNexus（第②成员责任范围）" {
-  usecase "UC-08 管理数据来源与采集任务\nFR08-S01～S04" as UC08
-  usecase "UC-10 更新来源数据并处理变更\nFR10-S01～S05" as UC10
+  usecase "UC-18 管理数据来源与采集任务\nFR08-S01～S04" as UC08
+  usecase "UC-19 更新来源数据并处理变更\nFR10-S01～S05" as UC10
   usecase "UC-16 查看四类成果与来源证据\nFR16-S01～S03" as UC16
 }
 

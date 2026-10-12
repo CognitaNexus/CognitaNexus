@@ -1,0 +1,930 @@
+{
+  "usecases": [
+    {
+      "id": "UC-01",
+      "name": "检索成果与学者",
+      "owner": "01",
+      "parents": "FR01",
+      "source": "docs/srs/modules/search-recommendation.md"
+    },
+    {
+      "id": "UC-02",
+      "name": "查看成果详情与来源",
+      "owner": "01",
+      "parents": "FR02",
+      "source": "docs/srs/modules/search-recommendation.md"
+    },
+    {
+      "id": "UC-03",
+      "name": "查看学者门户",
+      "owner": "04",
+      "parents": "FR03",
+      "source": "docs/srs/modules/scholar-claim.md"
+    },
+    {
+      "id": "UC-04",
+      "name": "注册登录与账号权限",
+      "owner": "04",
+      "parents": "FR04",
+      "source": "docs/srs/modules/scholar-claim.md"
+    },
+    {
+      "id": "UC-05",
+      "name": "提交补充并查看本人认领申请",
+      "owner": "04",
+      "parents": "FR05",
+      "source": "docs/srs/modules/scholar-claim.md"
+    },
+    {
+      "id": "UC-06",
+      "name": "审核门户认领申请",
+      "owner": "04",
+      "parents": "FR05",
+      "source": "docs/srs/modules/scholar-claim.md"
+    },
+    {
+      "id": "UC-07",
+      "name": "维护学者门户",
+      "owner": "04",
+      "parents": "FR06",
+      "source": "docs/srs/modules/scholar-claim.md"
+    },
+    {
+      "id": "UC-08",
+      "name": "确认补录与纠正成果",
+      "owner": "04",
+      "parents": "FR07",
+      "source": "docs/srs/modules/scholar-claim.md"
+    },
+    {
+      "id": "UC-09",
+      "name": "处理成果清洗去重与治理异常",
+      "owner": "03",
+      "parents": "FR09",
+      "source": "docs/srs/review/member03-governance-usecases.md"
+    },
+    {
+      "id": "UC-10",
+      "name": "核验学者身份与成果归属",
+      "owner": "03",
+      "parents": "FR15",
+      "source": "docs/srs/review/member03-governance-usecases.md"
+    },
+    {
+      "id": "UC-11",
+      "name": "查看成果统计分析",
+      "owner": "05",
+      "parents": "FR11",
+      "source": "docs/srs/modules/analytics-graph.md"
+    },
+    {
+      "id": "UC-12",
+      "name": "查看机构分类排名",
+      "owner": "05",
+      "parents": "FR11",
+      "source": "docs/srs/modules/analytics-graph.md"
+    },
+    {
+      "id": "UC-13",
+      "name": "查看领域热点",
+      "owner": "05",
+      "parents": "FR13",
+      "source": "docs/srs/modules/analytics-graph.md"
+    },
+    {
+      "id": "UC-14",
+      "name": "查看基础专家合作网络",
+      "owner": "05",
+      "parents": "FR12",
+      "source": "docs/srs/modules/analytics-graph.md"
+    },
+    {
+      "id": "UC-15",
+      "name": "探索合作关系",
+      "owner": "05",
+      "parents": "IN01",
+      "source": "docs/srs/modules/analytics-graph.md"
+    },
+    {
+      "id": "UC-16",
+      "name": "查看四类成果与来源证据",
+      "owner": "02",
+      "parents": "FR16",
+      "source": "docs/srs/modules/collection-update.md"
+    },
+    {
+      "id": "UC-17",
+      "name": "管理后台待办权限与审计",
+      "owner": "06",
+      "parents": "FR14",
+      "source": "docs/srs/modules/admin-audit.md"
+    },
+    {
+      "id": "UC-18",
+      "name": "管理数据来源与采集任务",
+      "owner": "02",
+      "parents": "FR08",
+      "source": "docs/srs/modules/collection-update.md"
+    },
+    {
+      "id": "UC-19",
+      "name": "更新来源数据并处理变更",
+      "owner": "02",
+      "parents": "FR10",
+      "source": "docs/srs/modules/collection-update.md"
+    },
+    {
+      "id": "UC-20",
+      "name": "查看相似论文推荐",
+      "owner": "01",
+      "parents": "O01",
+      "source": "docs/srs/modules/search-recommendation.md"
+    },
+    {
+      "id": "UC-21",
+      "name": "授权使用并清除个性化推荐偏好",
+      "owner": "01",
+      "parents": "O02",
+      "source": "docs/srs/modules/search-recommendation.md"
+    }
+  ],
+  "rules": {
+    "BR-101": {
+      "text": "普通检索与详情不依赖 O01/O02 是否实施、是否授权或是否成功；推荐失败、行为记录失败不得使 FR01/FR02 不可用。个性化结果不能替代普通检索。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B §3.3.3、§4.2；失败隔离为范围约束的 SRS 细化"
+    },
+    "BR-102": {
+      "text": "检索、详情和推荐只提供平台已收录且允许展示的数据；采用生效的公开关系与版本，不泄露审核材料或未公开信息。来源允许展示且归属证据达到规则要求才公开，冲突进入核验。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B D03、NF03、FR01、FR07"
+    },
+    "BR-103": {
+      "text": "缺失字段不伪造，未知状态不升级为已确认；不得通过同名、相似标题、当前机构或其他不等价信息补造事实。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B §3.5、§5.1～§5.3"
+    },
+    "BR-104": {
+      "text": "外部原文不可访问不等于成果不存在。来源失效时保留元数据及更新时间；来源删除、撤稿、外链失败分别表达，一次失败不直接删除成果。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B §3.4、§3.5、§5.2、NF04"
+    },
+    "BR-105": {
+      "text": "审核通过、归属修正和数据更新后，展示与检索应采用已生效信息；正常情况下60秒内与门户、统计一致是 NF05 待评审目标，暂未生效或更新失败须提示。不得让待审版本覆盖公开内容。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B §5.4、FR10、FR15、NF05"
+    },
+    "BR-106": {
+      "text": "“相似论文”仅表达内容／语义接近，不表示质量、权威性或平台认可研究结论；不以推荐结果直接作出去重合并或归属判定。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B O01、§5.2；解释边界细化"
+    },
+    "BR-107": {
+      "text": "个性化行为记录与使用须先有本人明确同意；仅处理推荐所需信息。用户可查看、清除本人偏好，清除成功后不得继续以已清除偏好生成后续推荐，不得以立即重建规避清除。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B O02、NF06；清除可验证语义细化，详细范围见 A08、A09"
+    },
+    "BR-108": {
+      "text": "统一入口检索成果和学者，结果范围可区分，不要求任何特定界面控件；未认领学者的公开档案仍可检索与访问。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B FR01、FR03；G 拆分示例；范围区分为细化"
+    },
+    "BR-109": {
+      "text": "适用的类型、年份、领域、机构条件可组合；已接受条件不得静默丢弃，过滤可清除；同维度多选、时间语义与适用性按 A02、A03 冻结。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B FR01、NF01"
+    },
+    "BR-110": {
+      "text": "分类浏览使用生效本地分类与来源映射，不能强行归类；允许一成果多领域，下级包含规则须明确；多个来源不生成重复成果结果。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B §5.2、§5.3、FR09"
+    },
+    "BR-111": {
+      "text": "成果机构优先采用成果发生时单位，缺失标未知，不静默替换为当前任职机构；学者查询机构口径另按 A03 冻结。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B §5.3"
+    },
+    "BR-112": {
+      "text": "排序和分页不改变查询条件含义；固定数据与条件下遍历分页不重复、不遗漏实体；排序并列、缺失与分页边界按 A04 冻结。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B FR01；SRS 细化"
+    },
+    "BR-113": {
+      "text": "成功但无匹配与查询执行失败须区分；不自动放宽条件冒充原查询结果，不将旧结果伪装为本次查询成功结果。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B FR01、NF01；反馈语义细化"
+    },
+    "BR-114": {
+      "text": "真实与模拟数据须可区分，模拟不得冒充真实；B §3.3.2 已要求支持过滤，但未指定普通用户搜索页控件或角色。过滤责任与验收必须在 A05 落定。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B §3.3.2、FR16、NF06"
+    },
+    "BR-115": {
+      "text": "四类成果展示公共与适用专属信息；字段有无、时间语义和参与角色分别表达；数据字段清单不是每条记录的完整性保证。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B FR02、§5.1"
+    },
+    "BR-116": {
+      "text": "成果与学者导航采用生效且允许公开的关系，不以同名直接关联；无学者关系时可以展示来源参与者名称但不伪造门户导航。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B FR03、FR15、§5.2；导航异常细化"
+    },
+    "BR-117": {
+      "text": "来源可追溯，合并后保留的多个公开出处仍可查；时间类型不可混称，缺来源链接不能编造。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B §3.5、§5.1、§5.2、FR16"
+    },
+    "BR-118": {
+      "text": "不保证全文；原站登录、订阅及付费由原站处理；不代理认证、不托管全文、不提供下载代理，不把公开链接解释为可再分发许可。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B §3.3.4、§3.5、FR02"
+    },
+    "BR-119": {
+      "text": "发表、版本、门户认领、学者确认、管理员审核分别表达；业务审核通过不是同行评审或学术质量认证；只有明确来源或审核证据才确认版本关系。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B §5.2、§5.4"
+    },
+    "BR-120": {
+      "text": "引用量是可选信息；有多个来源时分别表达，不求和生成总引用量；项目经费不默认采集或公开。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B §5.1、§5.3"
+    },
+    "BR-121": {
+      "text": "O01 全部为 Optional，只针对论文详情；可基于标题、摘要、关键词、领域等内容，不要求论文关系图。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B §3.3.3、§4.2"
+    },
+    "BR-122": {
+      "text": "相似结果排除当前成果实体本身，不因同一成果多来源而推荐自己；未归并版本及候选关系按 A10 处理，不新增去重规则。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "O01 范围内经本次编写确认的 SRS 细化"
+    },
+    "BR-123": {
+      "text": "内容不足或无候选时不伪造推荐；推荐失败与无候选区分；结果仅引用已有且允许展示的信息。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B O01、NF01、FR02；SRS 细化"
+    },
+    "BR-124": {
+      "text": "O02 全部为 Optional；登录、认领、继续浏览、沉默都不是明确授权；授权不可确认时按未授权处理，未授权行为不得转用个性化。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B O02、NF06；明确同意语义细化"
+    },
+    "BR-125": {
+      "text": "只使用本人授权范围内的近期检索、浏览、收藏等允许行为，不要求实施收藏或完整画像；具体范围与时限须冻结。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B §3.3.3、§4.2、NF06"
+    },
+    "BR-126": {
+      "text": "兴趣以领域／关键词等业务含义及依据类型解释，不混入他人或未授权数据，不推断与推荐无关的敏感属性；数据不足不伪称已有兴趣。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B O02、NF06；可解释性细化"
+    },
+    "BR-127": {
+      "text": "用户只能查看／清除本人偏好；清除失败不报告成功，清除与授权撤回语义分开；清除范围、在途结果和旧行为复用边界须按 A09 冻结。",
+      "source": "docs/srs/modules/search-recommendation.md",
+      "basis": "B O02、NF03、NF06；隐私和清除语义细化"
+    },
+    "BR-201": {
+      "text": "来源、获取范围与再展示须获准；停用／条件失效阻断新执行",
+      "source": "docs/srs/modules/collection-update.md",
+      "basis": "V1.9 §3.5、§7.2、D06；继承并细化FR08"
+    },
+    "BR-202": {
+      "text": "两个独立来源按提供者或独立集合；同源不同输入方式不重复计",
+      "source": "docs/srs/modules/collection-update.md",
+      "basis": "V1.9 §3.3.1、§8.2；来源独立性细化提案"
+    },
+    "BR-203": {
+      "text": "任务快照不可暗改，配置及关键操作记录操作者、时间和变化",
+      "source": "docs/srs/modules/collection-update.md",
+      "basis": "V1.9 FR08/FR14、NF05；与FR14合并"
+    },
+    "BR-204": {
+      "text": "六状态、守卫、终态及停止／重试遵循§6.2",
+      "source": "docs/srs/modules/collection-update.md",
+      "basis": "V1.9 §5.4；参照规范§11，补重试停止及竞争裁定"
+    },
+    "BR-205": {
+      "text": "失败／停止保留已完成结果，重放不重复成果、业务变更和同版本待办",
+      "source": "docs/srs/modules/collection-update.md",
+      "basis": "V1.9 FR08/FR10、§8.2、NF04；与FR09交接"
+    },
+    "BR-206": {
+      "text": "同源身份及规范化内容判新增／未变／变更，无身份只能候选；无游标说明范围与局限",
+      "source": "docs/srs/modules/collection-update.md",
+      "basis": "V1.9 FR10、附录§2.5；与FR09确认比较口径"
+    },
+    "BR-207": {
+      "text": "采集、检查、源更新时间、生效时间分别表达；缺失标未知",
+      "source": "docs/srs/modules/collection-update.md",
+      "basis": "V1.9 FR10/FR16、§5.1；时间语义细化"
+    },
+    "BR-208": {
+      "text": "不静默覆盖人工确认、排除和审核值；冲突保留原值，交审核；并发生效前复核",
+      "source": "docs/srs/modules/collection-update.md",
+      "basis": "V1.9 §5.2条5、FR07/FR10；与FR07/FR14/FR15确认"
+    },
+    "BR-209": {
+      "text": "四类均有样例，总量按去重实体≥10,000；保留出处，来源／版本不凑数；性质可核对",
+      "source": "docs/srs/modules/collection-update.md",
+      "basis": "V1.9 FR16、§3.3.2、D02；混合细分为评审提案"
+    },
+    "BR-210": {
+      "text": "正常生效结果按NF05在60秒内一致；待核验未生效不替换公开结果，失败有提示",
+      "source": "docs/srs/modules/collection-update.md",
+      "basis": "V1.9 NF05及FR10；目标待评审，与公共NF合并"
+    },
+    "BR-211": {
+      "text": "删除、撤稿、外链失败独立，有证据才变更来源状态，单次失败不删除全局成果",
+      "source": "docs/srs/modules/collection-update.md",
+      "basis": "V1.9 §5.2条6/8、FR02/FR10/FR16"
+    },
+    "BR-212": {
+      "text": "类型字段、参与者角色与时间语义独立；未知不编造，不采集非公开敏感字段",
+      "source": "docs/srs/modules/collection-update.md",
+      "basis": "V1.9 §5.1、NF06"
+    },
+    "BR-301": {
+      "text": "同类型稳定标识归一化后完全相等且证据相容，是自动关联既有成果的依据；无标识按FR09-S07的待评审组合条件处理",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "5.2-1"
+    },
+    "BR-302": {
+      "text": "跨来源合并必须保留所有出处",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "5.2-1"
+    },
+    "BR-303": {
+      "text": "无稳定标识时须比较年份、参与者、类型等多项证据",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "5.2-2"
+    },
+    "BR-304": {
+      "text": "不同类型标识不得互相当作同一成果依据",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "5.1、5.2-1"
+    },
+    "BR-305": {
+      "text": "标题相似只产生候选，不能单独作为合并依据",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "5.2-2"
+    },
+    "BR-306": {
+      "text": "人工确认或已审核值优先于自动来源值，冲突不得静默覆盖",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "5.2-5"
+    },
+    "BR-307": {
+      "text": "证据不足必须进入待核验，禁止自动合并",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "5.2-3、5.4"
+    },
+    "BR-308": {
+      "text": "只有明确来源关系或经审核确认的匹配才能归并版本",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "5.2-7"
+    },
+    "BR-309": {
+      "text": "不同版本不直接增加成果实体总量",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "5.2-7、5.3"
+    },
+    "BR-310": {
+      "text": "合并／拆分必须可追溯，保留合并链",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "FR09 本期验证边界"
+    },
+    "BR-311": {
+      "text": "重复导入、重试与增量重叠不得增加实体或重复计数",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "FR09、5.4、NF04"
+    },
+    "BR-321": {
+      "text": "缺失字段必须显式标明未知，禁止推断填充",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "FR02、5.1"
+    },
+    "BR-322": {
+      "text": "时间精度与语义必须显式保存",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "5.1"
+    },
+    "BR-323": {
+      "text": "无法可靠映射时标注未映射／待分类，禁止强行归类",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "5.3"
+    },
+    "BR-325": {
+      "text": "来源原始值必须保留并可追溯到来源",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "5.2-1、FR16"
+    },
+    "BR-326": {
+      "text": "来源删除、撤回、外链失效分别记录，均不删除成果",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "5.2-6"
+    },
+    "BR-381": {
+      "text": "关键治理动作必须留痕",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "FR14 本期验证边界"
+    },
+    "BR-382": {
+      "text": "历史治理记录只追加不覆盖",
+      "source": "docs/srs/modules/governance-dedup.md",
+      "basis": "NF05"
+    },
+    "BR-341": {
+      "text": "成果实体去重与学者身份合并相互独立，一方证据不足不得连带影响另一方",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "FR09／FR15 边界"
+    },
+    "BR-342": {
+      "text": "姓名相同不足以判定同一人",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.2-3"
+    },
+    "BR-343": {
+      "text": "人员敏感信息不得作为公开消歧依据",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.2-3、NF06"
+    },
+    "BR-344": {
+      "text": "机构归属优先采用成果发生时的单位，缺失标明未知",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.3"
+    },
+    "BR-345": {
+      "text": "缩写、译名、相似形式只用于产生候选",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.2-3"
+    },
+    "BR-346": {
+      "text": "满足条件（a）外部标识一致或（b）机构＋合作者＋领域支持才可自动合并",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "FR15 本期验证边界"
+    },
+    "BR-347": {
+      "text": "身份合并必须可追溯，合并后证据为并集",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "FR15 本期验证边界"
+    },
+    "BR-348": {
+      "text": "争议期间禁止自动合并与自动关联",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.4"
+    },
+    "BR-349": {
+      "text": "冲突认领不得自动转移原授权；判定不自动改变门户管理权",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "D04"
+    },
+    "BR-350": {
+      "text": "门户认领状态与关系确认状态分别表达",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.2-4、5.4"
+    },
+    "BR-351": {
+      "text": "认领通过、审核通过均不构成学术质量或真实性认证",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.2-8"
+    },
+    "BR-352": {
+      "text": "参与关系必须记录角色与顺序，未知须显式标注",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.1"
+    },
+    "BR-353": {
+      "text": "同一成果上不同参与者不得合并为一条关系，角色不得混用",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.1"
+    },
+    "BR-354": {
+      "text": "关系建立必须有可追溯的来源依据",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.2-1"
+    },
+    "BR-355": {
+      "text": "来源证据、本人确认、管理员审核是三类独立证据，不得合并为单一标签",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.2-4、5.2-8"
+    },
+    "BR-356": {
+      "text": "关系状态五取一，优先级 已排除 > 争议 > 待核验 > 本人确认 > 自动关联",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.4"
+    },
+    "BR-357": {
+      "text": "纠正后同时保留来源事实与人工修正结论",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.2-1、5.2-5"
+    },
+    "BR-358": {
+      "text": "拆分后无法确定的归属必须置为待核验",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.2-2"
+    },
+    "BR-359": {
+      "text": "解除个人关联只影响该条关系，不删除成果、出处或他人关系",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "FR07 本期验证边界"
+    },
+    "BR-360": {
+      "text": "治理结论生效后门户、检索与统计必须一致",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "NF05"
+    },
+    "BR-361": {
+      "text": "归属争议期间禁止自动生成新结论",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.4"
+    },
+    "BR-371": {
+      "text": "不采集手机号、私人邮箱及未公开项目细节作为消歧依据",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "NF06"
+    },
+    "BR-324": {
+      "text": "已确认或已审核值不得被自动更新静默覆盖（公共规则）",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "5.2-5"
+    },
+    "BR-327": {
+      "text": "在NF05约定条件下按待评审60秒目标反映一致结果，失败给出提示（对应 NF05）",
+      "source": "docs/srs/modules/scholar-disambiguation.md",
+      "basis": "NF05"
+    },
+    "BR-401": {
+      "text": "学者档案可先于账号存在",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 FR03"
+    },
+    "BR-402": {
+      "text": "未认领公开门户无需登录可访问",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 FR03"
+    },
+    "BR-403": {
+      "text": "门户认领、申请状态、对象授权、成果关系与审核来源分别表达；不得由驳回推导撤销别人授权",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 §5.2、D04；对象细化 J01"
+    },
+    "BR-404": {
+      "text": "缺失字段标未知，不编造",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 §3.5"
+    },
+    "BR-405": {
+      "text": "说明已收录范围，不承诺全球全部成果",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 §3.1.1"
+    },
+    "BR-406": {
+      "text": "账号与学者独立，注册不要求已拥有账号",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 FR04；流程纠正"
+    },
+    "BR-407": {
+      "text": "操作角色与具体对象授权同时满足才可执行",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 NF03"
+    },
+    "BR-408": {
+      "text": "直接受保护请求必须鉴权，前端隐藏不能替代",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 FR04"
+    },
+    "BR-409": {
+      "text": "账号状态与会话状态分离；禁用阻止受保护操作；额外状态与会话策略待定",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 FR04；J02"
+    },
+    "BR-410": {
+      "text": "认领审核通过仅授予该门户权，不代表法律确权或质量认证",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 §1.4、§5.2"
+    },
+    "BR-411": {
+      "text": "冲突认领人工处理，不自动覆盖原授权；未解决不能普通批准",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 D04；J03"
+    },
+    "BR-412": {
+      "text": "待审申请不改变门户公开内容或既有管理授权",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 FR05、D04"
+    },
+    "BR-413": {
+      "text": "本人可查申请状态、处理原因、结果及补充要求；审核记录可追溯",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 FR05"
+    },
+    "BR-414": {
+      "text": "多证据人工审核；证据方式、字段与边界待冻结，学校邮箱／ORCID／主页／附件仅候选",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 D04；原稿过度承诺降为 J03"
+    },
+    "BR-415": {
+      "text": "需审核的门户修改通过前不替换公开内容；按冻结字段分类区分直接与待审",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 FR06；J05"
+    },
+    "BR-416": {
+      "text": "重要修改与审核保留操作者、时间、关键变化及结果",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 FR06、FR14"
+    },
+    "BR-417": {
+      "text": "展示设置只控制允许范围，不能公开敏感材料或删除共享成果",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 FR06、NF06；J05"
+    },
+    "BR-418": {
+      "text": "维护操作持续检查目标授权，无目标权不得写入",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 FR06、NF03"
+    },
+    "BR-419": {
+      "text": "本人确认只影响所选本人的关系；多人合法作者不是互斥冲突",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 §5.2.1、§5.3、FR15"
+    },
+    "BR-420": {
+      "text": "需审核成果变更不提前覆盖公开值；无冲突本人确认不一律待审",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 FR07、§5.4；J06"
+    },
+    "BR-421": {
+      "text": "排除一位学者关系不删全局成果、不改其他合法关系",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 FR07"
+    },
+    "BR-422": {
+      "text": "成果操作结果、原因及生效情况可查询可追溯",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 FR07、NF05"
+    },
+    "BR-423": {
+      "text": "同名或另一作者已确认不足以判定归属；证据不足／真正冲突交核验",
+      "source": "docs/srs/modules/scholar-claim.md",
+      "basis": "V1.9 FR15、D03；J06"
+    },
+    "BR-511": {
+      "text": "统计中的\"成果数量\"均指**去重后的成果实体数量**，不是来源记录条数或版本记录条数",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR11 全部、FR12、FR13"
+    },
+    "BR-512": {
+      "text": "学者维度与机构维度的计数合计可分别大于平台成果实体总量；同一成果关联多个领域时在各领域分别计入。该现象必须在口径声明中说明，不得隐藏，也不得为让合计相等而人为去重",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR11-S04、FR11-S08"
+    },
+    "BR-513": {
+      "text": "机构归属取**成果发生时的机构归属**；缺失时标为\"机构未知\"，不得使用学者当前任职机构代替；\"机构未知\"不参与机构名次",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR11-S05、FR11-S08、IN01-S02"
+    },
+    "BR-514": {
+      "text": "任何统计、排名、热点或网络结果必须与结果同屏披露数据范围、时间范围、计数口径、统计条件与生成时间；模拟数据结果另须标识数据集来源",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "本分册全部"
+    },
+    "BR-515": {
+      "text": "真实数据与模拟数据分开标识、支持过滤；使用模拟数据的结果不得用于描述真实世界的机构排名、热点或合作关系结论",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR11-S12、FR13-S03"
+    },
+    "BR-516": {
+      "text": "同一成果实体的多条来源记录只计一次，且只增加一次关系强度；重试或重复导入不得造成重复计数",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR11-S02、FR11-S07、FR12-S04"
+    },
+    "BR-517": {
+      "text": "任意两名学者之间只有一条合作关系边；作者顺序不同、成果不同均不产生新边",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR12-S04"
+    },
+    "BR-518": {
+      "text": "FR12 每条合作关系须可追溯到至少一项合格共同成果；IN01 路径每一跳须有合格共同论文依据，非论文成果不得替代。FR12 共同成果数与 IN01 路径论文证据数分别声明",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR12-S02、FR12-S03、IN01-S04"
+    },
+    "BR-519": {
+      "text": "分离成果实体统计资格与学者—成果关系资格（§7.2）：有效公开成果不因部分作者归属待核验而整体退出成果统计；网络仅采用两端均合格的共同成果关联，待核验／争议／已排除关联不成边、不增加强度。实体和关联排除数量分别披露；IN01 路径另限论文",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR11、FR13、FR12-S05、IN01"
+    },
+    "BR-520": {
+      "text": "计数低于约定阈值 T 的统计条目，或参与成果数量低于 T 的时间点，须标注\"样本不足\"并仍展示实际计数；不得隐藏、补足或用默认值替代（T 见 Q-1）",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR11-S10、FR13-S04、FR13-S05、FR13-S08"
+    },
+    "BR-521": {
+      "text": "关键词与主题的归一必须基于可查询的规则；规则变更必须触发相关热点结果重算；无法判定时不合并并标注",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR13-S01、FR13-S07、FR13-S09"
+    },
+    "BR-522": {
+      "text": "热点指标、关系强度、机构排名均不得被表述或暗示为研究质量、影响力、学术水平或机构优劣的结论；相关页面须固定展示对应声明",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR12-S03、FR13-S06"
+    },
+    "BR-523": {
+      "text": "纳入统计范围的数据或口径变更后，统计、排名、热点与合作网络须在 NF05 约定时限内与检索、门户反映一致结果；未完成或失败时须给出可观察提示并展示上一版可用结果",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR11-S09、FR12-S08、FR13-S09"
+    },
+    "BR-524": {
+      "text": "IN01 的筛选与最短路径计算只能在已声明的数据图范围内进行；范围外关系视为不存在；不得依据机构、领域、姓名等旁证推断关系",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "IN01-S03、IN01-S05、IN01-S06"
+    },
+    "BR-525": {
+      "text": "路径长度以合作边数定义；存在多条等长最短路径时须全部列出，或按约定规则展示并说明规则与总条数",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "IN01-S03、IN01-S08"
+    },
+    "BR-526": {
+      "text": "统计、排名、热点、合作网络与路径查询为访客可用的公开能力；访客不得看到待核验／争议关系明细、审核材料、未公开对象与个人敏感字段",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "本分册全部"
+    },
+    "BR-527": {
+      "text": "预印本与正式发表记录被确认同一时按一个成果实体计数；未确认时保留候选关系并分别计数，口径说明给出待确认候选数量",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR11-S07"
+    },
+    "BR-528": {
+      "text": "统计视图与网络视图须声明单次展示规模上限；超过时提示当前规模并引导收窄；展示子集须标注\"部分结果（已声明子集）\"，不得描述为完整结果（上限见 Q-6）",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR11-S10、FR12-S06、IN01-S01"
+    },
+    "BR-529": {
+      "text": "引用量按来源分别展示，不求和生成\"总引用量\"；本分册任何统计视图若展示引用相关数值须遵守（引用 V1.9 第 5.3 节）",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR11 相关视图"
+    },
+    "BR-530": {
+      "text": "学者档案被确认合并后，统计、排名、热点与合作网络须使用合并后的学者标识，不得同时保留重复节点，且不得出现自环",
+      "source": "docs/srs/modules/analytics-graph.md",
+      "basis": "FR12-S04、FR12-S08、FR12-S09、IN01-S07"
+    },
+    "BR-601": {
+      "text": "成果去重保留全部出处，不把来源条数当成果数",
+      "source": "docs/srs/modules/admin-audit.md",
+      "basis": "V1.9 FR09／FR15／FR14／NF03～NF06；DEC-01～03"
+    },
+    "BR-602": {
+      "text": "无有效稳定标识只能按多证据候选判定，不得仅凭标题自动合并",
+      "source": "docs/srs/modules/admin-audit.md",
+      "basis": "V1.9 FR09／FR15／FR14／NF03～NF06；DEC-01～03"
+    },
+    "BR-603": {
+      "text": "姓名相同不足以自动合并或确认学者归属",
+      "source": "docs/srs/modules/admin-audit.md",
+      "basis": "V1.9 FR09／FR15／FR14／NF03～NF06；DEC-01～03"
+    },
+    "BR-604": {
+      "text": "门户授权、认领申请、参与关系及成果变更状态分别表达",
+      "source": "docs/srs/modules/admin-audit.md",
+      "basis": "V1.9 FR09／FR15／FR14／NF03～NF06；DEC-01～03"
+    },
+    "BR-605": {
+      "text": "自动更新不得静默覆盖人工确认或审核结果，冲突保留公开版本和来源差异",
+      "source": "docs/srs/modules/admin-audit.md",
+      "basis": "V1.9 FR09／FR15／FR14／NF03～NF06；DEC-01～03"
+    },
+    "BR-606": {
+      "text": "来源停用或临时不可用不删除已收录成果，历史数据仍可浏览并标更新时间",
+      "source": "docs/srs/modules/admin-audit.md",
+      "basis": "V1.9 FR09／FR15／FR14／NF03～NF06；DEC-01～03"
+    },
+    "BR-608": {
+      "text": "业务审核通过不构成同行评审、学术质量或研究真实性认证",
+      "source": "docs/srs/modules/admin-audit.md",
+      "basis": "V1.9 FR09／FR15／FR14／NF03～NF06；DEC-01～03"
+    },
+    "BR-609": {
+      "text": "保留本地分类、来源原分类及映射，无法可靠映射标为待分类",
+      "source": "docs/srs/modules/admin-audit.md",
+      "basis": "V1.9 FR09／FR15／FR14／NF03～NF06；DEC-01～03"
+    },
+    "BR-611": {
+      "text": "冲突认领不自动转移管理权，未解决冲突不得普通批准",
+      "source": "docs/srs/modules/admin-audit.md",
+      "basis": "V1.9 FR09／FR15／FR14／NF03～NF06；DEC-01～03"
+    },
+    "BR-612": {
+      "text": "公开视图仅展示获准公开的元数据，待核验信息不得冒充已确认；后台受控证据按权限访问",
+      "source": "docs/srs/modules/admin-audit.md",
+      "basis": "V1.9 FR09／FR15／FR14／NF03～NF06；DEC-01～03"
+    },
+    "BR-613": {
+      "text": "真实与模拟数据显式标识，不用模拟记录冒充真实科研证据",
+      "source": "docs/srs/modules/admin-audit.md",
+      "basis": "V1.9 FR09／FR15／FR14／NF03～NF06；DEC-01～03"
+    },
+    "BR-614": {
+      "text": "数据最小化，认领审核材料受控访问，清理与访问细则待评审",
+      "source": "docs/srs/modules/admin-audit.md",
+      "basis": "V1.9 FR09／FR15／FR14／NF03～NF06；DEC-01～03"
+    },
+    "BR-615": {
+      "text": "治理结论生效后展示一致并保留变更记录；60秒仅是NF05约定范围内待评审目标，不是账号权限撤销宽限",
+      "source": "docs/srs/modules/admin-audit.md",
+      "basis": "V1.9 FR09／FR15／FR14／NF03～NF06；DEC-01～03"
+    },
+    "BR-616": {
+      "text": "O02仅在选择实施且明确同意后使用必要行为，提供本人偏好查看与清除",
+      "source": "docs/srs/modules/admin-audit.md",
+      "basis": "V1.9 FR09／FR15／FR14／NF03～NF06；DEC-01～03"
+    }
+  },
+  "diagrams": [
+    {
+      "id": "DGM-ACTIVITY-02",
+      "source": "docs/uml/analytics/DGM-ACTIVITY-02-metrics-refresh.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    },
+    {
+      "id": "DGM-ACTIVITY-03",
+      "source": "docs/uml/analytics/DGM-ACTIVITY-03-collab-path.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    },
+    {
+      "id": "DGM-ACTIVITY-04",
+      "source": "docs/uml/analytics/DGM-ACTIVITY-04-institution-ranking.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    },
+    {
+      "id": "DGM-STATE-03",
+      "source": "docs/uml/analytics/DGM-STATE-03-metrics-visibility.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    },
+    {
+      "id": "DGM-USECASE-02",
+      "source": "docs/uml/analytics/DGM-USECASE-02-analytics.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    },
+    {
+      "id": "DGM-ACTIVITY-01",
+      "source": "docs/uml/claim/DGM-ACTIVITY-01-claim-review.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    },
+    {
+      "id": "DGM-STATE-02",
+      "source": "docs/uml/claim/DGM-STATE-02-claim-request.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    },
+    {
+      "id": "DGM-USECASE-03",
+      "source": "docs/uml/collection/collection-local-usecase.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    },
+    {
+      "id": "DGM-STATE-01",
+      "source": "docs/uml/collection/collection-task-state.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    },
+    {
+      "id": "DGM-ACTIVITY-05",
+      "source": "docs/uml/collection/collection-update-activity.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    },
+    {
+      "id": "DGM-ACTIVITY-08",
+      "source": "docs/uml/governance/dedup-candidate-activity.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    },
+    {
+      "id": "DGM-STATE-04",
+      "source": "docs/uml/governance/governance-exception-state.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    },
+    {
+      "id": "DGM-ACTIVITY-06",
+      "source": "docs/uml/governance/governance-overview-activity.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    },
+    {
+      "id": "DGM-ACTIVITY-07",
+      "source": "docs/uml/governance/identity-disambiguation-activity.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    },
+    {
+      "id": "DGM-SEQ-01",
+      "source": "docs/uml/governance/relation-decision-sequence.puml",
+      "stage": "后续分析参考"
+    },
+    {
+      "id": "DGM-STATE-05",
+      "source": "docs/uml/governance/scholar-achievement-relation-state.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    },
+    {
+      "id": "DGM-USECASE-01",
+      "source": "docs/uml/usecase/overall-usecase.puml",
+      "stage": "需求建模（业务待决以正文为准）"
+    }
+  ]
+}

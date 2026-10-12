@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | 01 | FR01、FR02、O01、O02 | [搜索与推荐](search-recommendation.md) | 保留此前审核稿；06 对照稿不能替换 |
 | 02 | FR08、FR10、FR16 | [采集与更新](collection-update.md) / [追踪](collection-update-traceability.md) | 保留此前审核稿及成员02更新的原生 UML |
-| 03 | FR09、FR15 | [清洗去重](governance-dedup.md) / [消歧归属](scholar-disambiguation.md) | 采纳成员03原稿；图源码 [governance](../../uml/governance/)，编号待联合评审 |
+| 03 | FR09、FR15 | [清洗去重](governance-dedup.md) / [消歧归属](scholar-disambiguation.md) | 采纳成员03原稿；图源码 [governance](../../uml/governance/)，编号已统一，业务待联合评审 |
 | 04 | FR03～FR07 | [门户与认领](scholar-claim.md) | 保留此前审核稿；权限状态不得被其他模块改写 |
 | 05 | FR11～FR13、IN01 | [统计与合作网络](analytics-graph.md) | 保留此前审核稿，创新最短路径逐跳仅支持**共同论文**证据 |
 | 06 | FR14、NF01～NF08 | [后台与审计](admin-audit.md) / [非功能需求](nonfunctional.md) | 只采用其负责范围；他生成的整套 SRS 的其他 FR 仅是独立对照稿 |
@@ -17,7 +17,7 @@
 
 1. **唯一基线**：V1.9 优先于成员草稿；NF02 P95、NF05 60s 仍为待评审目标。
 2. **模块身份**：每份正式模块首页统一注明负责成员、FR/NF 范围、Draft、基线与评审入口。保留原提交的条目、AC 与版本历史，不因格式统一擅自改写业务含义。
-3. **全局追踪**：FRxx-Syy / AC-... 保持所属成员原标识；UC、DGM 与公共 BR 若跨模块重号，只标记临时，不擅自确定统一编号。
+3. **全局追踪**：FRxx-Syy / AC-... 保持所属成员原标识；UC、DGM 与公共 BR 统一采用[全局注册表](../global-id-registry.md)，旧编号仅在映射及历史说明中出现。
 4. **图资产**：唯一图源在 `docs/uml/<模块>/`；其 `generated/` SVG 只作生成副本。成员03源码使用独立文件名以免覆盖成员05的图；后续统一图号须联动所有文本引用。
 5. **权限与数据**：用户账号≠学者档案；认领管理授权≠学术归属确认；来源记录≠去重成果；学者—成果参与关系≠成果实体。管理员审核≠本人确认或学术质量背书。
 6. **阶段边界**：本阶段交付需求/用例/业务活动与状态、验收和核心规则 SPEC 初稿，不得将未实测性能、来源许可证、代码覆盖率写成已通过。
@@ -25,10 +25,10 @@
 
 ## 本次整合的文件结构
 
-- [六人组联合 SRS Draft 入口](../CognitaNexus-SRS-Draft.md)
+- [完整共同 SRS Review Candidate](../CognitaNexus-SRS-V1.0.md)
 - [成员03 的用例原稿及编号差异](../review/member03-governance-usecases.md)
 - [成员03 的公共规则候选](../review/member03-governance-rules.md)
-- [核心规则 SPEC 第一稿](../../spec/core-rules-draft.md)
+- [核心规则 SPEC 第一稿](../../spec/CognitaNexus-Core-SPEC-V1.0.md)
 - [联合评审议题/问题清单](../../reports/srs/joint-review-draft-2026-10-11.md)
 
 **注意：** 此表格不是 6 名成员本人均已签字的评审记录；实际签认及决策结论以会后记录为准。

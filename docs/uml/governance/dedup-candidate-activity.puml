@@ -1,9 +1,9 @@
 @startuml
-' DGM-ACTIVITY-04 成果去重候选判定活动图
+' DGM-ACTIVITY-08 成果去重候选判定活动图
 ' 对应需求：FR09-S06、FR09-S07、FR09-S03；关联用例：UC-09
-' 对应正文：docs/srs/modules/FR09-dedup-normalization.md
-' 说明：本图为 FR09 交付的增量图，与 DGM-ACTIVITY-02 的分工是——
-'       DGM-ACTIVITY-02 描述治理总体流程；本图只展开"去重判定"这一段的证据与分支。
+' 对应正文：docs/srs/modules/governance-dedup.md
+' 说明：本图为 FR09 交付的增量图，与 DGM-ACTIVITY-06 的分工是——
+'       DGM-ACTIVITY-06 描述治理总体流程；本图只展开"去重判定"这一段的证据与分支。
 !pragma layout smetana
 
 skinparam monochrome true
@@ -49,7 +49,7 @@ partition "系统（无标识候选判定）" {
     else (否)
       if (仅标题相似?) then (是)
         :不合并，生成候选匹配
-        （BR-DUP-05）;
+        （BR-305）;
       else (否)
         :生成待核验记录
         （证据不足或证据冲突）;
@@ -70,7 +70,7 @@ partition "系统（版本与计数）" {
     （标注处理状态：待核验）;
   endif
   :保留全部出处与来源标识
-  （BR-DUP-02）;
+  （BR-302）;
 }
 
 partition "管理员（候选核验）" {
@@ -82,14 +82,14 @@ partition "管理员（候选核验）" {
     :确认非同一成果并记录排除依据;
   endif
   :写入治理记录
-  （FR09-S12、BR-AUDIT-01）;
+  （FR09-S12、BR-381）;
 }
 
 partition "系统（幂等保护）" {
   :同一来源记录重复到达时记录重复到达事件
   （FR09-S10）;
   :成果实体计数保持不变
-  （BR-DUP-11）;
+  （BR-311）;
 }
 
 stop

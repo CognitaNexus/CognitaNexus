@@ -7,13 +7,13 @@
 | 需求调研 | [需求分析与可行性报告](requirements/学术成果分享平台需求分析与可行性报告.md) | 正文 V1.9，待小组评审；当前需求依据 |
 | 调研依据 | [调研与可行性论证附录](requirements/学术成果分享平台调研与可行性论证附录.md) | 辅助追溯；与基线不一致时以基线为准 |
 | SRS 规范 | [SRS 编写与需求建模规范](srs/CognitaNexus_SRS编写与需求建模规范_V1.0.md) | V1.0 |
-| 模块 SRS | [六人模块导航](srs/modules/README.md) | 分册 Draft，待联合评审 |
-| 联合 SRS | [六人整合草案](srs/CognitaNexus-SRS-Draft.md) | Integration Draft；不是共同 SRS V1.0 |
+| 模块 SRS | [六人模块导航](srs/modules/README.md) | Review Candidate，待联合评审 |
+| 联合 SRS | [完整共同SRS](srs/CognitaNexus-SRS-V1.0.md) · [Word](srs/CognitaNexus-SRS-V1.0.docx) | V1.0 Review Candidate，未冻结 |
 | 核心 SPEC | [候选稿](spec/CognitaNexus-Core-SPEC-V1.0.md) · [追踪](spec/spec-traceability.md) · [审查报告](spec/spec-review-report.md) | Review Candidate；规则未冻结 |
 | UML | [总体用例图图源](uml/usecase/overall-usecase.puml) · [采集](uml/collection/) · [认领](uml/claim/) · [治理](uml/governance/) · [统计](uml/analytics/) | `.puml` 为维护源；生成图在对应目录 |
 | 评审 | [跨模块联合审查草案](reports/srs/joint-review-draft-2026-10-11.md) | 待决记录，不代表会议决议 |
 
-共同 SRS V1.0 尚未形成；现有整合草案和模块追踪矩阵不代表业务规则已冻结。
+完整共同SRS V1.0已形成评审候选；[全局编号表](srs/global-id-registry.md)及[整改验证报告](reports/srs/integration-validation-2026-10-12.md)记录整改范围。候选版和追踪矩阵不代表规则冻结或业务验收通过。
 
 ## 目录职责
 
@@ -48,7 +48,7 @@
 
 ## 已知引用问题
 
-- 基线 §2.1 引用的 `学术成果分享平台调研与可行性论证附录_V1.9.md` 不存在。请使用本页的附录入口；本次不修改基线正文。
+- 基线§2.1附录链接已修复为实际路径，仅修复链接，未修改基线业务语义。
 - 编写规范中使用带 `_V1.9` 后缀的基线示例名称，实际文件不带该后缀，以文件正文版本为准。
 - 规范内的总 SRS、其他模块及图形路径是交付模板，不代表文件已经存在。
 - 此前工作区已删除的两份 PDF 已作为独立提交记录保留；当前版本以 Markdown 文档为阅读入口，历史 PDF 可从 Git 历史追溯。
