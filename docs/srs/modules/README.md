@@ -2,6 +2,8 @@
 
 **基线：** [V1.9](../../requirements/学术成果分享平台需求分析与可行性报告.md) ｜ **模板：** [SRS 规范 V1.0](../CognitaNexus_SRS编写与需求建模规范_V1.0.md) ｜ **状态：** 仅为需求建模阶段的六人组联合评审候选，不代表正式冻结。
 
+> **Supporting / 详细来源与追踪。** 当前唯一工程实施候选为 [共同 SRS V1.1](../CognitaNexus-Shared-SRS-V1.1-Implementation-RC.md)：Review Candidate / 未经两组正式签认 / 非 Frozen。模块保留原文、原编号与待决规则；与当前工程口径不同之处交联合评审，不反向覆盖 V1.1。核心规则同时阅读 [SPEC V1.0](../../spec/CognitaNexus-Core-SPEC-V1.0.md) 与 [V1.1 对齐说明](../../spec/implementation-alignment-V1.1-RC.md)。全局入口见 [文档导航](../../README.md)。
+
 ## 六人分工、模块正式输入
 
 | 负责人 | 需求 | 主要源文件 | 合并策略 |
@@ -25,7 +27,7 @@
 
 ## 本次整合的文件结构
 
-- [完整共同 SRS Review Candidate](../CognitaNexus-SRS-V1.0.md)
+- [历史六人共同 SRS V1.0](../CognitaNexus-SRS-V1.0.md)：Historical / 仅用于来源追踪，不作为当前开发基线
 - [成员03 的用例原稿及编号差异](../review/member03-governance-usecases.md)
 - [成员03 的公共规则候选](../review/member03-governance-rules.md)
 - [核心规则 SPEC 第一稿](../../spec/CognitaNexus-Core-SPEC-V1.0.md)
