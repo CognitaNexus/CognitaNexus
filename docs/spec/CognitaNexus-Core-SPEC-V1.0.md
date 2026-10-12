@@ -1,3 +1,5 @@
+> **工程范围对齐通知（2026-10-12，Review Candidate）：** 本核心 SPEC V1.0 为数据清洗/去重/消歧/检索规则的原有算法候选，旧的跨模块描述不自动扩展到所有四类成果建边。现行工程建议 [共同 SRS V1.1](../srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.md) 明确：FR12/IN01 均使用合格共同论文建边、IN01 等长路径只显示确定性的一条、推荐 O01/O02 延期；实现时依 [SPEC 工程对齐补充](implementation-alignment-V1.1-RC.md) 判断，不得把旧参数样例视为已获批准。
+
 # CognitaNexus 核心模块软件算法规格说明书（V1.0 · Review Candidate）
 
 **系统名称：** 学术成果分享平台 CognitaNexus  | **课程作业：** 核心模块 SPEC（作业二）  | **日期：** 2026-10-12  | **状态：** Draft / Review Candidate，未签认、未冻结

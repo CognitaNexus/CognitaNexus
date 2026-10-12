@@ -1,3 +1,5 @@
+> **历史待决清单提示（2026-10-12 工程评审后）：** 以下 D-01～D-12 为早期跨组冲突登记，**不是现行唯一实施口径**。工程实现建议已统一写入 [V1.1 共同 SRS](../CognitaNexus-Shared-SRS-V1.1-Implementation-RC.md) 和 [工程可行性/12项取舍](../../reports/srs/engineering-feasibility-scope-review-2026-10-12.md)，FR12 当前建议**共同论文建边**，但两个组仍须正式签认。本表保留原始 A/B 争议及负责人审计历史，不得据本表将 A 另行并列实现。
+
 # CognitaNexus × OvO 共同需求待决事项（2026-10-12）
 
 > 状态：**全部待两组联合签认**。负责人栏指建议参与方，不代表已取得授权。两组的旧需求仍以各自原仓库正文为准。本清单与[完整性审查报告](../../reports/srs/cross-team-consistency-review-2026-10-12.md)及[124条跨组子需求对照](subrequirement-crosswalk-2026-10-12.md)配套使用。

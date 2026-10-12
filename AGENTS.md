@@ -14,6 +14,8 @@ CognitaNexus 是学术成果分享平台课程项目，以学者为中心聚合�
 - [需求基线：正文 V1.9](docs/requirements/学术成果分享平台需求分析与可行性报告.md)
 - [调研与可行性论证附录](docs/requirements/学术成果分享平台调研与可行性论证附录.md)
 - [SRS 编写与需求建模规范 V1.0](docs/srs/CognitaNexus_SRS编写与需求建模规范_V1.0.md)
+- **[CognitaNexus × OvO 双组工程实施共同 SRS V1.1 RC](docs/srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.md)**：开发阶段唯一工程候选阅读入口；仍须双方正式签认，不得标记 Frozen。
+- [范围可行性决策与历史 124/287 编号去向](docs/reports/srs/engineering-feasibility-scope-review-2026-10-12.md)；旧长版 SRS 为追溯材料，不可并列作为当前开发指令。
 
 依据优先级与处理原则：
 1. 课程任务书的明确硬性要求优先；未取得原文时请求补充，不编造内容或文件路径。

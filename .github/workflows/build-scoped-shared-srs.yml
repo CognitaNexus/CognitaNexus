@@ -1,0 +1,95 @@
+name: Build feasibility-scoped shared SRS
+on:
+  push:
+    branches:
+      - docs/feasibility-scoped-shared-srs-20261012
+  workflow_dispatch:
+concurrency:
+  group: scoped-srs-build-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: write
+jobs:
+  document-qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Install document and PlantUML tooling
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pandoc libreoffice-writer poppler-utils fonts-noto-cjk graphviz plantuml
+      - name: Regenerate two scoped UML SVG files from PlantUML
+        run: |
+          plantuml -charset UTF-8 -tsvg -o generated -failfast2 docs/uml/analytics/DGM-ACTIVITY-03-collab-path.puml docs/uml/analytics/DGM-USECASE-02-analytics.puml
+      - name: Verify SRS and legacy trace statically
+        run: |
+          mkdir -p docs/reports/srs
+          python3 scripts/docs/verify_scoped_srs.py | tee docs/reports/srs/implementation-scope-validation-2026-10-12.json
+      - name: Produce Word from single Markdown source
+        run: |
+          cat > /tmp/fit-scoped-srs-uml.lua <<'LUA'
+          function Image(el)
+            if el.src:match('DGM%-ACTIVITY%-03%-collab%-path%.svg') then
+              el.attributes['height'] = '18cm'
+              el.attributes['width'] = '10.1cm'
+            end
+            return el
+          end
+          LUA
+          pandoc --resource-path=docs/srs:docs:. --lua-filter=/tmp/fit-scoped-srs-uml.lua -f gfm -t docx -s docs/srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.md -o docs/srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.docx
+          unzip -t docs/srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.docx | tail -2
+      - name: Verify document AC and UML images
+        run: |
+          python3 - <<'PY'
+          import re,zipfile,xml.etree.ElementTree as ET
+          from pathlib import Path
+          p=Path('docs/srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.docx')
+          md=Path('docs/srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.md').read_text()
+          with zipfile.ZipFile(p) as z:
+              assert z.testzip() is None
+              text=z.read('word/document.xml').decode('utf-8')
+              ET.fromstring(text)
+              media=[x for x in z.namelist() if x.startswith('word/media/')]
+          ids=lambda t:set(re.findall(r'AC-IMPL-(?:FR|NF|IN)\d{2}-\d{2}',t))
+          assert len(ids(md))==46 and ids(md)==ids(text)
+          assert len(media)>=2, f'UML images missing: {media}'
+          import re
+          sizes=[(int(x),int(y)) for x,y in re.findall(r'<wp:extent cx="(\d+)" cy="(\d+)"',text)]
+          assert len(sizes)>=2, sizes
+          assert max(y for x,y in sizes)<8000000, f'oversized UML image: {sizes}'
+          print('PASS 46 normative AC and',len(media),'embedded UML media')
+          PY
+      - name: Render Word to PDF and PNG samples
+        run: |
+          mkdir -p /tmp/impl-srs-qa
+          libreoffice -env:UserInstallation=file:///tmp/lo-impl-srs --headless --convert-to pdf --outdir /tmp/impl-srs-qa docs/srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.docx
+          FILE=/tmp/impl-srs-qa/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.pdf
+          PAGES=$(pdfinfo "$FILE" | awk '/^Pages:/ {print $2}')
+          echo "Rendered pages: $PAGES"
+          test "$PAGES" -ge 12
+          test "$PAGES" -le 100
+          pdfinfo "$FILE" | grep Pages:
+          pdftotext "$FILE" /tmp/impl-srs-qa/text.txt
+          grep -q 'CognitaNexus' /tmp/impl-srs-qa/text.txt
+          pdftoppm -f 1 -l 1 -r 100 -png -singlefile "$FILE" /tmp/impl-srs-qa/first
+          HALF=$((PAGES / 2))
+          pdftoppm -f "$HALF" -l "$HALF" -r 100 -png -singlefile "$FILE" /tmp/impl-srs-qa/middle
+          pdftoppm -f "$PAGES" -l "$PAGES" -r 100 -png -singlefile "$FILE" /tmp/impl-srs-qa/last
+          test -s /tmp/impl-srs-qa/first.png
+      - name: Commit generated Word, UML and validation
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.docx docs/uml/analytics/generated/DGM-ACTIVITY-03-collab-path.svg docs/uml/analytics/generated/DGM-USECASE-02-analytics.svg docs/reports/srs/implementation-scope-validation-2026-10-12.json
+          git diff --cached --quiet || (git commit -m 'docs(srs): render V1.1 implementation RC with regenerated UML and static checks' && git push)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: implementation-srs-document-qa
+          path: |
+            /tmp/impl-srs-qa/*.png
+            /tmp/impl-srs-qa/*.pdf
+            docs/srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.docx
+          if-no-files-found: ignore

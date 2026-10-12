@@ -1,0 +1,14 @@
+{
+  "status": "DOCUMENT_STATIC_PASS_ONLY",
+  "chapters": 10,
+  "functional_requirements": 16,
+  "nonfunctional_requirements": 8,
+  "normative_candidate_ac": 46,
+  "legacy_ovo_requirements_preserved": 124,
+  "legacy_ovo_ac_cases_preserved": 287,
+  "resolved_relative_links": 9,
+  "human_joint_approval": "NOT_VERIFIED",
+  "application_test": "NOT_EXECUTED",
+  "real_data_10000": "NOT_VERIFIED",
+  "codearts_and_performance": "NOT_VERIFIED"
+}
