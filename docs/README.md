@@ -8,12 +8,14 @@
 | 调研依据 | [调研与可行性论证附录](requirements/学术成果分享平台调研与可行性论证附录.md) | 辅助追溯；与基线不一致时以基线为准 |
 | SRS 规范 | [SRS 编写与需求建模规范](srs/CognitaNexus_SRS编写与需求建模规范_V1.0.md) | V1.0 |
 | 模块 SRS | [六人模块导航](srs/modules/README.md) | Review Candidate，待联合评审 |
-| 联合 SRS | [完整共同SRS](srs/CognitaNexus-SRS-V1.0.md) · [Word](srs/CognitaNexus-SRS-V1.0.docx) | V1.0 Review Candidate，未冻结 |
+| **现行双组 SRS 工程候选** | **[V1.1 实施版 Markdown](srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.md)** · [Word](srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.docx) | Review Candidate，唯一工程建议主稿；待双组签认，未冻结 |
+| 历史汇编 | [先前双组 V1.0 长版](srs/CognitaNexus-Shared-SRS-V1.0-RC.md) · [六人稿](srs/CognitaNexus-SRS-V1.0.md) | 来源/审计，不再并行作为实施规范 |
+| 工程可行性与范围 | [双组差异/12项取舍/工期](reports/srs/engineering-feasibility-scope-review-2026-10-12.md) · [124+287来源决策](srs/integration/engineering-scope-trace-v1.1-rc.md) | 工程建议，待双组确认 |
 | 核心 SPEC | [候选稿](spec/CognitaNexus-Core-SPEC-V1.0.md) · [追踪](spec/spec-traceability.md) · [审查报告](spec/spec-review-report.md) | Review Candidate；规则未冻结 |
 | UML | [总体用例图图源](uml/usecase/overall-usecase.puml) · [采集](uml/collection/) · [认领](uml/claim/) · [治理](uml/governance/) · [统计](uml/analytics/) | `.puml` 为维护源；生成图在对应目录 |
 | 评审 | [跨模块联合审查草案](reports/srs/joint-review-draft-2026-10-11.md) | 待决记录，不代表会议决议 |
 
-完整共同SRS V1.0已形成评审候选；[全局编号表](srs/global-id-registry.md)及[整改验证报告](reports/srs/integration-validation-2026-10-12.md)记录整改范围。候选版和追踪矩阵不代表规则冻结或业务验收通过。
+当前 V1.1 Implementation RC 是工程建议的单一实施阅读入口；旧 V1.0 514 页汇编为历史追溯，不再并列作为当前需求指令。[全局编号表](srs/global-id-registry.md)及[整改验证报告](reports/srs/integration-validation-2026-10-12.md)记录整改范围。候选版和追踪矩阵不代表规则冻结或业务验收通过。
 
 ## 目录职责
 
