@@ -13,14 +13,11 @@
 
 ## 阅读入口
 
-1. [需求基线 V1.9](docs/requirements/学术成果分享平台需求分析与可行性报告.md)
-2. [调研与可行性论证附录](docs/requirements/学术成果分享平台调研与可行性论证附录.md)
-3. [SRS 编写与需求建模规范 V1.0](docs/srs/CognitaNexus_SRS编写与需求建模规范_V1.0.md)
-4. [六人模块 SRS 导航](docs/srs/modules/README.md)
-5. **[工程可实施双组共同 SRS V1.1 RC](docs/srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.md)** · [对应 Word](docs/srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.docx)；[工程可行性评审与12项取舍](docs/reports/srs/engineering-feasibility-scope-review-2026-10-12.md)
-6. [核心 SPEC 候选稿](docs/spec/CognitaNexus-Core-SPEC-V1.0.md)
-7. **[OvO 124 条子需求/287 条 AC 逐条收敛来源表](docs/srs/integration/engineering-scope-trace-v1.1-rc.md)** · [历史自动归并 V1.0](docs/srs/integration/shared-ac-resolution-v1.0-rc.md)（仅审计，不作为现行实施）
-8. [文档目录与维护约定](docs/README.md)
+**[文档导航：当前规范、追踪、UML、评审与历史](docs/README.md)** 是文档单一入口。
+
+当前阅读顺序：需求 V1.9 → 共同 SRS V1.1 Implementation RC → 核心 SPEC V1.0 + V1.1 工程对齐说明。共同 SRS 为 **Review Candidate / 未经两组正式签认 / 非 Frozen**。历史六人稿及双组 V1.0：**Historical / 仅用于来源追踪，不作为当前开发基线。**
+
+[配置管理规范](docs/configuration-management.md) · [盘点与整理方案](docs/reports/document-management/inventory-and-plan-2026-10-12.md) · [整理验证](docs/reports/document-management/validation-2026-10-12.md)
 
 ## 项目结构
 

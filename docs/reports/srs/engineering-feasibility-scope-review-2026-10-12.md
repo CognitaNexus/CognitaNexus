@@ -1,6 +1,6 @@
 # CognitaNexus × OvO 软件工程可行性与需求收敛评审（2026-10-12）
 
-**状态：工程实施口径建议 / Review Candidate（非两组签认、非 Frozen）。** 评审对象：CognitaNexus 2026-10-12 合并 V1.0 版与 OvO V0.3；上位依据为 [V1.9](../requirements/学术成果分享平台需求分析与可行性报告.md)。**“精简”不得删除 V1.9 的 FR01～FR16、NF01～NF08 或至少一项创新。**
+**状态：工程实施口径建议 / Review Candidate（非两组签认、非 Frozen）。** 评审对象：CognitaNexus 2026-10-12 合并 V1.0 版与 OvO V0.3；上位依据为 [V1.9](../../requirements/学术成果分享平台需求分析与可行性报告.md)。**“精简”不得删除 V1.9 的 FR01～FR16、NF01～NF08 或至少一项创新。**
 
 ## 1. 评审结论
 
@@ -75,6 +75,6 @@
 
 ## 7. 文档单一真源与签认要求
 
-实施阅读主稿：[工程收敛版共同 SRS V1.1 RC](../srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.md)。历史文件 [V1.0 双组 514页汇编](../srs/CognitaNexus-Shared-SRS-V1.0-RC.md)、[第一组 V1.0](../srs/CognitaNexus-SRS-V1.0.md)、[OvO V0.3 原仓库](https://github.com/FloatingSoul423/OvO_-/tree/dfc27e9cc6de744f5f11819c832a2d7baf24c230/docs/srs) 仅作来源追踪，不与本版同时作为当前开发任务定义。V1.9 上位基线和核心 SPEC 仍分别保留；若发现本轮候选边界触及 V1.9，须在联合评审后同步变更。
+实施阅读主稿：[工程收敛版共同 SRS V1.1 RC](../../srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.md)。历史文件 [V1.0 双组 514页汇编](../../srs/CognitaNexus-Shared-SRS-V1.0-RC.md)、[第一组 V1.0](../../srs/CognitaNexus-SRS-V1.0.md)、[OvO V0.3 原仓库](https://github.com/FloatingSoul423/OvO_-/tree/dfc27e9cc6de744f5f11819c832a2d7baf24c230/docs/srs) 仅作来源追踪，不与本版同时作为当前开发任务定义。V1.9 上位基线和核心 SPEC 仍分别保留；若发现本轮候选边界触及 V1.9，须在联合评审后同步变更。
 
 **审批记录（尚未签署）：** CognitaNexus 组长／模块负责人：待签；OvO 组长／模块负责人：待签；课程任务书最终核对：待做。

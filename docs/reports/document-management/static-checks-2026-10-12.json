@@ -1,0 +1,36 @@
+{
+  "status": "STATIC_PASS_ONLY",
+  "relative_links": 1002,
+  "uml_svg_pairs": 17,
+  "word": {
+    "docs/spec/CognitaNexus-Core-SPEC-V1.0.docx": {
+      "missing_source_ac": [],
+      "media": 0,
+      "source_alignment_notice_missing": true,
+      "scope": "ZIP/XML/AC only; not full text or visual equivalence"
+    },
+    "docs/srs/CognitaNexus-SRS-V1.0.docx": {
+      "missing_source_ac": [],
+      "media": 17,
+      "source_alignment_notice_missing": false,
+      "scope": "ZIP/XML/AC only; not full text or visual equivalence"
+    },
+    "docs/srs/CognitaNexus-Shared-SRS-V1.0-RC.docx": {
+      "missing_source_ac": [],
+      "media": 17,
+      "source_alignment_notice_missing": false,
+      "scope": "ZIP/XML/AC only; not full text or visual equivalence"
+    },
+    "docs/srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.docx": {
+      "missing_source_ac": [],
+      "media": 2,
+      "source_alignment_notice_missing": false,
+      "scope": "ZIP/XML/AC only; not full text or visual equivalence"
+    }
+  },
+  "local_source_dependencies": [],
+  "errors": [],
+  "external_urls_and_anchors": "NOT_CHECKED",
+  "human_approval": "NOT_VERIFIED",
+  "runtime_tests": "NOT_EXECUTED"
+}

@@ -130,3 +130,11 @@ README 与目录清单可能落后于工作区，应核对实际文件；不得�
 验证说明须区分文档检查、图形渲染、单元测试、集成测试和性能实测。
 未执行、执行失败或环境受限的验证如实说明，不声称测试已通过或业务已验收。
 保持交付局部、可复核；不以完成当前任务为由自动开展下一阶段工作。
+
+
+## 9. 文档配置管理入口
+
+- 分类、当前阅读链和完整清单以 [docs/README.md](docs/README.md) 为导航单一入口；维护遵循 [文档配置管理规范](docs/configuration-management.md)。
+- 核心 SPEC V1.0 必须结合 [V1.1 对齐说明](docs/spec/implementation-alignment-V1.1-RC.md)；旧模块和追踪的历史含义保留，不替代当前实施候选。
+- 历史稿统一标为 Historical / 仅用于来源追踪，不作为当前开发基线；V1.1 为 Review Candidate / 未经两组正式签认 / 非 Frozen。
+- 常规检查运行 `python3 scripts/docs/check_documentation.py` 与 `python3 scripts/docs/verify_scoped_srs.py`；历史生成/验证脚本可能覆盖历史正文或报告，先读工具说明。正式生成物保持原件，构建至临时目录，CI 仅上传 artifact。
