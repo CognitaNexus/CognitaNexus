@@ -1,3 +1,5 @@
+> **历史汇编提示（2026-10-12）：** 本 V1.0 514 页稿保留用于 CognitaNexus/OvO 双组来源追踪，**不是当前工程实施的单一规范真源**。当前工程收敛版见 [V1.1 Implementation RC](CognitaNexus-Shared-SRS-V1.1-Implementation-RC.md)。旧稿 FR12 四类成果建边方案和部分 260 个自动增加 AC 属历史候选；实际本期建议口径以 V1.1 为准，尚待两组签认。
+
 <!-- SHARED-SRS-OVO-V1-RC GENERATED EDITION 2026-10-12 -->
 # CognitaNexus × OvO 共同软件需求规格说明书（V1.0 Review Candidate）
 
