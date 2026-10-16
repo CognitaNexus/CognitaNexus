@@ -1,0 +1,70 @@
+# ===== 构建产物 =====
+target/
+build/
+dist/
+out/
+*.class
+*.jar
+*.war
+!.mvn/wrapper/maven-wrapper.jar
+
+# ===== 前端 =====
+node_modules/
+.vite/
+.pnpm-store/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ===== 环境与密钥（严禁入库）=====
+.env
+.env.local
+.env.*.local
+*.jks
+*.p12
+*.pem
+*.key
+secrets/
+
+# ===== 数据库与运行时数据 =====
+*.db
+*.sqlite
+*.sqlite3
+*.mv.db
+*.trace.db
+data/
+logs/
+*.log
+pgdata/
+
+# ===== 本地原始材料与本地产物（不入库）=====
+.local/
+tmp/
+temp/
+*.tmp
+
+# ===== IDE =====
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+!.vscode/extensions.json
+.settings/
+.project
+.classpath
+*.swp
+*.swo
+
+# ===== 操作系统 =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== 测试与覆盖率产物 =====
+coverage/
+jacoco.exec
+*.exec
+test-output/
+allure-results/
