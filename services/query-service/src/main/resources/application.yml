@@ -1,0 +1,110 @@
+server:
+  port: 8083
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+
+spring:
+  application:
+    name: query-service
+  profiles:
+    active: local
+
+  datasource:
+    # 运行账号：仅 DML，无 DDL 权限（架构 §12.1）
+    url: jdbc:postgresql://127.0.0.1:5432/query_db
+    username: query_app
+    password: ${CN_QUERY_DB_PASSWORD:cn_query_app_dev}
+    hikari:
+      maximum-pool-size: 16
+      minimum-idle: 3
+      connection-timeout: 5000
+      pool-name: query-pool
+
+  flyway:
+    enabled: true
+    # 迁移账号与运行账号分离
+    url: jdbc:postgresql://127.0.0.1:5432/query_db
+    user: query_owner
+    password: ${CN_QUERY_DB_OWNER_PASSWORD:cn_query_owner_dev}
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    validate-on-migrate: true
+
+  # 可丢弃派生缓存使用 redis-cache 实例（架构 §8.1）。
+  # 会话类数据不在本服务，因此这里只连 6380，不连 redis-session。
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6380
+      password: ${CN_CACHE_REDIS_PASSWORD:cn_cache_local_dev}
+      timeout: 2s
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+
+  jackson:
+    default-property-inclusion: non_null
+    deserialization:
+      fail-on-unknown-properties: false
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+    # 查询行对象使用 record，按参数名自动装配构造器
+    arg-name-based-constructor-auto-mapping: true
+    default-fetch-size: 200
+    default-statement-timeout: 20
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+
+cn:
+  internal:
+    service-tokens:
+      # core 投递事件时携带的令牌，取自 core 侧 cn.internal.service-tokens.query，
+      # 也就是「query 这个接收者」的令牌，而不是为 core 自身另签一个。
+      # 两侧必须配成同一个值，否则事件会被 403 拒收，而现象只是水位不动。
+      core: ${CN_QUERY_SERVICE_TOKEN:cn_query_service_dev}
+  core:
+    # 公开查询每次都需要向 core 核实权威公开水位（架构 §7.2）。
+    # 超时必须显式设置：屏障校验在公开请求的必经路径上，缺读超时会让 core 的慢响应拖垮公开查询线程。
+    base-url: ${CN_CORE_BASE_URL:http://127.0.0.1:8081}
+    service-name: query
+    service-token: ${CN_QUERY_SERVICE_TOKEN:cn_query_service_dev}
+    connect-timeout: 2s
+    request-timeout: 3s
+  projection:
+    # 必须与 core 的 cn.outbox.consumer-endpoints.query 键一致，否则事件会以别的 consumerId 落库，
+    # 表现为「收到了但水位不动」。
+    consumer-id: query
+    publish-batch-per-batch: 500
+    failure-backoff-seconds: 5
+    # 单篇成果参与建边的作者上限。超过上限时隔离事件并记录，不做静默截断（架构 §9.3）。
+    max-authors-per-achievement-for-edges: 200
+    worker-enabled: true
+    worker-interval-ms: 2000
+    # 图与检索的初始上限：可调起始值，不是性能承诺，须在压测后按测量结果调整（架构 §9.3、§13.2）
+    graph-max-nodes: 20000
+    graph-max-edges: 100000
+    graph-budget-millis: 1000
+    search-max-offset: 10000
+    search-default-page-size: 20
+    search-max-page-size: 100
+
+logging:
+  level:
+    root: INFO
+    com.cognitanexus: INFO
+    org.springframework.jdbc.core: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-}] %logger{36} - %msg%n"

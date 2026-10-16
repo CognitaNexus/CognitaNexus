@@ -1,0 +1,110 @@
+server:
+  port: 8081
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+
+spring:
+  application:
+    name: core-service
+  profiles:
+    active: local
+
+  datasource:
+    # 运行账号：仅 DML，无 DDL 权限（架构 §12.1）
+    url: jdbc:postgresql://127.0.0.1:5432/core_db
+    username: core_app
+    password: ${CN_CORE_DB_PASSWORD:cn_core_app_dev}
+    hikari:
+      maximum-pool-size: 12
+      minimum-idle: 2
+      connection-timeout: 5000
+      pool-name: core-pool
+
+  flyway:
+    enabled: true
+    # 迁移账号与运行账号分离
+    url: jdbc:postgresql://127.0.0.1:5432/core_db
+    user: core_owner
+    password: ${CN_CORE_DB_OWNER_PASSWORD:cn_core_owner_dev}
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    validate-on-migrate: true
+
+  # 会话存储于 redis-session 实例（架构 §8.1）
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      password: ${CN_SESSION_REDIS_PASSWORD:cn_session_local_dev}
+      timeout: 2s
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+
+  session:
+    store-type: redis
+    timeout: 2h
+    redis:
+      namespace: 'cn:local:core:session'
+
+  jackson:
+    default-property-inclusion: non_null
+    deserialization:
+      fail-on-unknown-properties: false
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+    # 查询行对象使用 record，按参数名自动装配构造器
+    arg-name-based-constructor-auto-mapping: true
+    default-fetch-size: 100
+    default-statement-timeout: 10
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+
+cn:
+  bootstrap:
+    # 首个平台管理员引导。仅在库中不存在活跃平台管理员时执行一次，之后自动跳过。
+    # 口令必须由环境变量 CN_BOOTSTRAP_ADMIN_PASSWORD 覆盖；此处默认值仅供本地开发。
+    platform-admin-username: ${CN_BOOTSTRAP_ADMIN_USERNAME:cnadmin}
+    platform-admin-password: ${CN_BOOTSTRAP_ADMIN_PASSWORD:cn-admin-Dev-2026}
+    platform-admin-display-name: ${CN_BOOTSTRAP_ADMIN_DISPLAY_NAME:平台管理员}
+  internal:
+    service-tokens:
+      ingestion: ${CN_INGESTION_SERVICE_TOKEN:cn_ingestion_service_dev}
+      query: ${CN_QUERY_SERVICE_TOKEN:cn_query_service_dev}
+  outbox:
+    # 投递器：领取待投递事件并推送至查询服务
+    dispatcher-enabled: true
+    batch-size: 200
+    max-attempts: 12
+    consumer-endpoints:
+      query: ${CN_QUERY_INBOX_URL:http://127.0.0.1:8083/internal/v1/inbox/batches}
+  governance:
+    # 自动合并只允许稳定标识一致且证据相容；其余一律产生候选
+    auto-merge-requires-stable-identifier: true
+  storage:
+    claim-evidence-dir: ${CN_CLAIM_EVIDENCE_DIR:D:/dev-tools/cn-storage/claim-evidence}
+  paging:
+    default-page-size: 20
+    max-page-size: 100
+    max-offset: 10000
+
+logging:
+  level:
+    root: INFO
+    com.cognitanexus: INFO
+    org.springframework.jdbc.core: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-}] %logger{36} - %msg%n"

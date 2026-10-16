@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven 构建参数（容器构建用）。
+
+  与开发机上的 D:/dev-tools/settings.xml 的差别只有一处：不指定 localRepository。
+  容器内的本地仓库固定在 ~/.m2/repository，由 Docker 层缓存承担复用；把开发机的绝对路径
+  写进来，会让镜像构建依赖一个卷挂载，构建就不再可重复。
+
+  镜像源在开发机与构建环境之间必须一致，否则会出现「本机能编译、镜像里拉不到包」这类
+  只在其中一个环境复现的问题。
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+
+  <mirrors>
+    <mirror>
+      <id>aliyun-central</id>
+      <name>Aliyun Public Repository</name>
+      <url>https://maven.aliyun.com/repository/public</url>
+      <mirrorOf>central</mirrorOf>
+    </mirror>
+  </mirrors>
+
+  <profiles>
+    <profile>
+      <id>jdk21</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+        <jdk>21</jdk>
+      </activation>
+      <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+      </properties>
+    </profile>
+  </profiles>
+</settings>

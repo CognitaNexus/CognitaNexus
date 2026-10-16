@@ -1,0 +1,171 @@
+package com.cognitanexus.core.identity.infrastructure;
+
+import com.cognitanexus.core.identity.domain.Account;
+import com.cognitanexus.core.identity.domain.AccountCredentials;
+import com.cognitanexus.core.identity.domain.AccountStatus;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import org.apache.ibatis.annotations.Insert;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
+
+/**
+ * 账号持久化。
+ *
+ * <p>依据：编码规范 §5.1。必须使用参数绑定 #{}；禁止 SELECT *；跨表查询明确基数。
+ */
+@Mapper
+public interface AccountMapper {
+
+  /** 账号行。 */
+  record AccountRow(
+      String id,
+      String username,
+      String usernameNorm,
+      String passwordHash,
+      String displayName,
+      String status,
+      long authVersion,
+      int failedLoginAttempts,
+      Instant lockedUntil) {}
+
+  @Select(
+      """
+      SELECT id, username, username_norm, password_hash, display_name, status, auth_version,
+             failed_login_attempts, locked_until
+      FROM iam_account WHERE id = #{id}
+      """)
+  Optional<AccountRow> findById(@Param("id") String id);
+
+  @Select(
+      """
+      SELECT id, username, username_norm, password_hash, display_name, status, auth_version,
+             failed_login_attempts, locked_until
+      FROM iam_account WHERE username_norm = #{usernameNorm}
+      """)
+  Optional<AccountRow> findByUsernameNorm(@Param("usernameNorm") String usernameNorm);
+
+  @Select(
+      """
+      SELECT id, username, username_norm, password_hash, display_name, status, auth_version,
+             failed_login_attempts, locked_until
+      FROM iam_account ORDER BY created_at, id LIMIT #{limit}
+      """)
+  List<AccountRow> listAll(@Param("limit") int limit);
+
+  @Insert(
+      """
+      INSERT INTO iam_account
+        (id, username, username_norm, password_hash, display_name, status, auth_version)
+      VALUES
+        (#{id}, #{username}, #{usernameNorm}, #{passwordHash}, #{displayName}, 'ACTIVE', 1)
+      ON CONFLICT (username_norm) DO NOTHING
+      """)
+  int insert(
+      @Param("id") String id,
+      @Param("username") String username,
+      @Param("usernameNorm") String usernameNorm,
+      @Param("passwordHash") String passwordHash,
+      @Param("displayName") String displayName);
+
+  /**
+   * 停用账号并提升认证版本。
+   *
+   * <p>提升 authVersion 使既有会话即使仍存在于 Redis 也不可用（架构 V0.2 §10.2）。
+   * 条件 status='ACTIVE' 使重复停用不产生额外的版本提升。
+   */
+  @Update(
+      """
+      UPDATE iam_account
+      SET status = 'DISABLED', auth_version = auth_version + 1, updated_at = now()
+      WHERE id = #{accountId} AND status = 'ACTIVE'
+      """)
+  int disable(@Param("accountId") String accountId);
+
+  @Insert(
+      """
+      INSERT INTO iam_account_role (account_id, role) VALUES (#{accountId}, #{role})
+      ON CONFLICT (account_id, role) DO NOTHING
+      """)
+  int insertRole(@Param("accountId") String accountId, @Param("role") String role);
+
+  @Select("SELECT role FROM iam_account_role WHERE account_id = #{accountId} ORDER BY role")
+  Set<String> findRoles(@Param("accountId") String accountId);
+
+  /**
+   * 统计持有指定角色的账号数。
+   *
+   * <p>仅用于平台引导判定「是否已存在平台管理员」。不返回账号明细，避免把引导流程变成
+   * 绕过授权体系的账号枚举入口。
+   */
+  @Select(
+      """
+      SELECT count(*) FROM iam_account_role r
+      JOIN iam_account a ON a.id = r.account_id
+      WHERE r.role = #{role} AND a.status = 'ACTIVE'
+      """)
+  long countActiveByRole(@Param("role") String role);
+
+  @Update(
+      """
+      UPDATE iam_account
+      SET failed_login_attempts = 0, locked_until = NULL, last_login_at = now(), updated_at = now()
+      WHERE id = #{accountId}
+      """)
+  int recordLoginSuccess(@Param("accountId") String accountId);
+
+  /**
+   * 记一次登录失败并在达到阈值时锁定。
+   *
+   * <p>失败计数与锁定判断在一条语句内完成，避免「先读后写」在并发爆破下互相覆盖。
+   */
+  @Update(
+      """
+      UPDATE iam_account
+      SET failed_login_attempts = failed_login_attempts + 1,
+          locked_until = CASE
+            WHEN failed_login_attempts + 1 >= #{lockThreshold}
+            THEN now() + (interval '1 second' * #{lockSeconds})
+            ELSE locked_until
+          END,
+          updated_at = now()
+      WHERE id = #{accountId}
+      """)
+  int recordLoginFailure(
+      @Param("accountId") String accountId,
+      @Param("lockThreshold") int lockThreshold,
+      @Param("lockSeconds") int lockSeconds);
+
+  @Select("SELECT now()")
+  Instant now();
+
+  default Account toDomain(AccountRow row, Set<String> roles) {
+    return new Account(
+        row.id(),
+        row.username(),
+        row.usernameNorm(),
+        row.passwordHash(),
+        row.displayName(),
+        AccountStatus.of(row.status()),
+        row.authVersion(),
+        roles);
+  }
+
+  default AccountCredentials toCredentials(AccountRow row, Set<String> roles) {
+    return new AccountCredentials(
+        row.id(),
+        row.username(),
+        row.usernameNorm(),
+        row.passwordHash(),
+        row.displayName(),
+        AccountStatus.of(row.status()),
+        row.authVersion(),
+        roles,
+        row.failedLoginAttempts(),
+        row.lockedUntil());
+  }
+}

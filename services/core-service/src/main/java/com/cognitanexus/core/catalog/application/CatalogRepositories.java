@@ -1,0 +1,294 @@
+package com.cognitanexus.core.catalog.application;
+
+import com.cognitanexus.core.catalog.domain.Achievement;
+import com.cognitanexus.core.catalog.domain.AchievementDetails;
+import com.cognitanexus.core.catalog.domain.Contribution;
+import com.cognitanexus.core.catalog.domain.FieldProvenance;
+import com.cognitanexus.core.catalog.domain.IdentifierKind;
+import com.cognitanexus.core.catalog.domain.Scholar;
+import com.cognitanexus.core.catalog.domain.SourceRecord;
+import com.cognitanexus.sharedkernel.AchievementType;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * 目录模块的持久化出站端口。
+ *
+ * <p>依据：编码规范 §2.2。端口在应用层定义、由基础设施实现；应用层不感知 MyBatis。
+ */
+public interface CatalogRepositories {
+
+  /** 来源配置。来源许可与允许展示规则以 core 为权威（架构 §4.2）。 */
+  interface SourceConfigRepository {
+
+    record SourceConfig(
+        String id,
+        String sourceCode,
+        String displayName,
+        boolean enabled,
+        String licenseScope,
+        String baseUrl,
+        int configVersion,
+        List<String> allowedFields) {}
+
+    Optional<SourceConfig> findByCode(String sourceCode);
+
+    Optional<SourceConfig> findById(String id);
+
+    List<SourceConfig> listAll();
+
+    /**
+     * 登记一个来源配置。
+     *
+     * <p>同 source_code 已存在时返回 false 且不做任何修改：来源的许可范围与字段白名单属于
+     * 需要评审的事实，不能被一次重复登记悄悄重置。
+     */
+    boolean register(
+        String id,
+        String sourceCode,
+        String displayName,
+        boolean enabled,
+        String licenseScope,
+        String baseUrl,
+        List<String> allowedFields);
+
+    /** 更新启用状态；来源停用后不得再以旧副本启动新任务。 */
+    int setEnabled(String sourceId, boolean enabled);
+
+    /** 更新字段白名单并提升配置版本；白名单变化后适配器必须按新版本执行。 */
+    int updateAllowedFields(String sourceId, List<String> allowedFields);
+  }
+
+  /** 原始来源记录。原值只追加；幂等重复不改原值。 */
+  interface SourceRecordRepository {
+
+    /** 首次接收返回 true；相同交接键已存在返回 false，此时不修改任何原值。 */
+    boolean insertIfAbsent(SourceRecord record);
+
+    Optional<SourceRecord> findByHandoffKey(
+        String sourceId, String sourceRecordId, String contentFingerprint);
+
+    /** 已有接收结果：用交接键反查当时落到的成果，使重复交接能返回原接收结果。 */
+    Optional<String> findLinkedAchievementId(String sourceId, String sourceRecordId);
+
+    long countAll();
+  }
+
+  /** 成果仓储。 */
+  interface AchievementRepository {
+
+    void insert(Achievement achievement);
+
+    Optional<Achievement> findById(String id);
+
+    /** 解析合并重定向：旧标识必须跳到幸存实体，不能让旧链接指向错误对象。 */
+    Optional<String> resolveSurvivorId(String achievementId);
+
+    void insertPaper(AchievementDetails.Paper paper);
+
+    void insertPatent(AchievementDetails.Patent patent);
+
+    void insertProject(AchievementDetails.ResearchProject project);
+
+    void insertAward(AchievementDetails.Award award);
+
+    Optional<AchievementDetails.Paper> findPaper(String achievementId);
+
+    /**
+     * 刷新既有成果的单一来源指标（引用量与来源），返回受影响行数。
+     *
+     * <p>为什么需要单独一条通路：来源记录会以新版本再次到达同一个稳定标识（DOI）上，此时实体本身
+     * 已经存在，接收流程走的是「追加来源归属」分支，不会重建扩展表——引用量因此永远停在首次接入
+     * 那一刻，公开统计里也就永远没有数据。
+     *
+     * <p>SQL 内自带人工修订保护：只要该字段在 core_field_provenance 中已是 MANUAL 或 REVIEWED，
+     * 本次更新不命中任何行。把保护写在 SQL 里而不是先读后判，是为了让「读」与「写」之间不留
+     * 可被并发人工提交插队的窗口。
+     *
+     * @return 1 表示已刷新；0 表示成果不存在、非论文类型，或指标已被人工修订保护
+     */
+    int refreshPaperMetrics(String achievementId, Integer citationCount, String citationSource);
+
+    Optional<AchievementDetails.Patent> findPatent(String achievementId);
+
+    Optional<AchievementDetails.ResearchProject> findProject(String achievementId);
+
+    Optional<AchievementDetails.Award> findAward(String achievementId);
+
+    /** 条件更新生效状态与可见性；受影响行数必须为 1，否则说明版本或状态已被他人改变。 */
+    int updatePublicationState(
+        String achievementId, String effectiveStatus, String visibility, long expectedVersion);
+
+    Optional<String> findAchievementIdByDoiNorm(String doiNorm);
+
+    Optional<String> findAchievementIdByApplicationNoNorm(String applicationNoNorm);
+
+    Optional<String> findAchievementIdByProjectNoNorm(String projectNoNorm);
+
+    void linkSource(
+        String id,
+        String achievementId,
+        String sourceRecordId,
+        String sourceId,
+        Instant sourceUpdatedAt,
+        Instant receivedAt);
+
+    /** 标题相似候选检索，走三元组索引；仅用于生成候选，不用于自动合并。 */
+    List<Achievement> findSimilarByTitle(String titleNorm, double threshold, int limit);
+
+    /** 精确同标题匹配（归一后完全一致）。 */
+    List<Achievement> findByExactTitle(String titleNorm, int limit);
+
+    long countByNatureAndStatus(String dataNature, String effectiveStatus);
+
+    List<Achievement> listByStatus(String effectiveStatus, int limit, int offset);
+
+    long countByStatus(String effectiveStatus);
+
+    List<Achievement> listPublicForExport(int limit, int offset);
+
+    long countPublicForExport();
+
+    /** 唯一来源为指定来源且当前公开的成果标识；用于撤销展示许可时收紧可见性。 */
+    List<String> findExclusivelyFromSource(String sourceId, int limit);
+
+    /** 收紧可见性；只降不升，且仅在当前可见性不同时产生一次版本变更。 */
+    int tightenVisibility(String achievementId, String visibility);
+  }
+
+  /** 学者仓储。同名不直接合并：这里只提供精确匹配候选，置信判断在治理层。 */
+  interface ScholarRepository {
+
+    void insert(Scholar scholar);
+
+    Optional<Scholar> findById(String id);
+
+    List<Scholar> findByExactNameNorm(String nameNorm, int limit);
+
+    Optional<String> findScholarIdByOrcid(String orcidNorm);
+
+    Optional<String> findScholarIdByOpenAlexId(String openAlexIdNorm);
+
+    void insertNameVariant(
+        String id, String scholarId, String variant, String variantNorm, String evidence);
+
+    void upsertOrganizationHint(String scholarId, String organizationName);
+
+    Optional<String> resolveSurvivorId(String scholarId);
+
+    int updateClaimedStatus(String scholarId, String claimedStatus, long expectedVersion);
+
+    /**
+     * 认领状态流转：只有指定前置状态才可迁移。
+     *
+     * <p>用前置条件而不是无条件赋值，是为了让并发场景下的「先到者生效、后到者失败」
+     * 表现为可解释的 0 行影响，而不是后写覆盖先写。
+     */
+    int transitionClaimedStatus(String scholarId, String fromStatus, String toStatus);
+
+    /** 写入经审核的研究方向简介。 */
+    int updateResearchSummary(String scholarId, String researchSummary);
+
+    /** 写入经审核的机构归属。 */
+    int updateOrganizationName(String scholarId, String organizationName);
+
+    long countAll();
+  }
+
+  /** 参与关系仓储。一个学者对同一成果最多一条关系。 */
+  interface ContributionRepository {
+
+    /** 首次建立返回 true；已存在返回 false（不新增第二条关系，也不重复计数）。 */
+    boolean insertIfAbsent(Contribution contribution);
+
+    List<Contribution> listByAchievement(String achievementId);
+
+    /** 定位某学者在某成果上的关系标识；未建立关系时返回 empty。 */
+    Optional<String> findContributionId(String scholarId, String achievementId);
+
+    List<Contribution> listByScholar(String scholarId);
+
+    void linkOrganization(String contributionId, String organizationId);
+
+    /**
+     * 该参与关系在成果发生时的机构规范名，可零个或多个。
+     *
+     * <p>供公开投影载荷使用：查询侧按「成果发生时机构」统计，缺失即未知、单列不计入已知排名
+     * （架构 §9.2）。不能用学者当前任职机构代替发生时机构。
+     */
+    List<String> listOrganizationNames(String contributionId);
+
+    long countContributions();
+  }
+
+  /** 领域（分类）仓储。无法可靠映射时标记待分类，不强行归类（SRS 5.3）。 */
+  interface TopicRepository {
+
+    record Topic(String id, String canonicalName, String nameNorm, String sourceCategory) {}
+
+    /** 按规范名查找或创建；返回 topicId。 */
+    String findOrCreate(String canonicalName);
+
+    Optional<Topic> findTopic(String id);
+
+    void link(String achievementId, String topicId, String sourceCategory);
+
+    List<String> listTopicIdsOf(String achievementId);
+
+    long countTopics();
+  }
+
+  /** 机构仓储。 */
+  interface OrganizationRepository {
+
+    /** 按规范名查找或创建；返回 organizationId。缺失标未知，不静默使用当前任职机构。 */
+    String findOrCreate(String canonicalName, String countryCode);
+
+    Optional<String> findIdByNameNorm(String nameNorm);
+  }
+
+  /** 稳定标识注册。注册键 = 实体类型 + 标识种类 + 作用域 + 规范值（架构 §5.3）。 */
+  interface IdentifierRegistryRepository {
+
+    /** 查找已注册的规范实体；未注册返回 empty。 */
+    Optional<String> findEntityId(
+        String entityType, IdentifierKind kind, String scope, String normalizedValue);
+
+    /** 注册绑定；返回 false 表示该注册键已被其他实体占用（冲突须转为治理候选）。 */
+    boolean register(
+        String id,
+        String entityType,
+        String entityId,
+        IdentifierKind kind,
+        String scope,
+        String normalizedValue);
+  }
+
+  /** 字段级溯源。自动更新只写 SOURCE 级，不得覆盖人工与已审核值。 */
+  interface FieldProvenanceRepository {
+
+    void upsertSource(
+        String entityType,
+        String entityId,
+        String fieldName,
+        String valueText,
+        String sourceRecordId);
+
+    Optional<FieldProvenance> find(String entityType, String entityId, String fieldName);
+
+    List<FieldProvenance> listByEntity(String entityType, String entityId);
+
+    /**
+     * 写入人工或已审核值。
+     *
+     * <p>一旦升级为 MANUAL/REVIEWED，后续来源自动更新不得再覆盖该字段
+     * （BR-IMP-04、AC-IMPL-FR10-01）。
+     */
+    void upsertReviewed(
+        String entityType, String entityId, String fieldName, String valueLevel, String valueText);
+  }
+
+  /** 类型一致性校验：成果类型的扩展是否存在，用于不变量自检。 */
+  int countExtensions(String achievementId, AchievementType type);
+}

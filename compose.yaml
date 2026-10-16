@@ -1,0 +1,218 @@
+# CognitaNexus 本地一键起全栈。
+#
+# 拓扑（架构设计说明书 §12.1）：PostgreSQL 16 承载三个独立数据库，Redis 分「会话」与
+# 「可丢弃缓存」两个实例，三个 Spring Boot 服务各自独立进程与数据源，前端由 nginx 提供
+# 静态文件并同源反向代理三个后端。
+#
+# 三个服务之间**没有共享数据库**，也没有共享数据卷：它们只通过 HTTP 内部端点与投递事件
+# 通信。这一点在 compose 里体现为三个独立数据源与三套迁移历史，而不是一个问题。
+#
+# ⚠️ 本机 Docker Desktop 依赖 WSL2，而本机 WSL 被安全策略拦截，因此**这份 compose 未在本机
+#    验证过**。本机实际运行走 ops/local 下的原生二进制脚本；服务器部署使用本文件。
+#    未验证项在 README 的「部署」一节逐条列出。
+#
+# 用法：
+#   cp .env.example .env      # 至少改掉所有 *_PASSWORD 与 CN_*_SERVICE_TOKEN
+#   docker compose up -d --build
+#   docker compose ps
+
+name: cognitanexus
+
+services:
+  # ------------------------------ 基础设施 ------------------------------
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${CN_PG_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${CN_PG_SUPERUSER_PASSWORD:-cn_postgres_dev}
+      # 迁移账号与运行账号的口令，供首次初始化脚本创建角色时读取
+      CN_CORE_DB_OWNER_PASSWORD: ${CN_CORE_DB_OWNER_PASSWORD:-cn_core_owner_dev}
+      CN_CORE_DB_PASSWORD: ${CN_CORE_DB_PASSWORD:-cn_core_app_dev}
+      CN_INGESTION_DB_OWNER_PASSWORD: ${CN_INGESTION_DB_OWNER_PASSWORD:-cn_ingestion_owner_dev}
+      CN_INGESTION_DB_PASSWORD: ${CN_INGESTION_DB_PASSWORD:-cn_ingestion_app_dev}
+      CN_QUERY_DB_OWNER_PASSWORD: ${CN_QUERY_DB_OWNER_PASSWORD:-cn_query_owner_dev}
+      CN_QUERY_DB_PASSWORD: ${CN_QUERY_DB_PASSWORD:-cn_query_app_dev}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # 只在数据卷为空时执行一次。角色与库的创建刻意不放进应用的 Flyway：
+      # Flyway 的账号本身要先能连上库，这是一个先有鸡后有蛋的问题。
+      - ./ops/compose/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      # 用 pg_isready 而不是 tcp 探测：端口接受连接时数据库可能仍在做恢复。
+      test: ['CMD-SHELL', 'pg_isready -U ${CN_PG_SUPERUSER:-postgres} -d postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # 仅在开发期映射到宿主机，方便用本机 psql 排查。服务器覆盖配置里不映射。
+    ports:
+      - '127.0.0.1:${CN_PG_PORT:-5432}:5432'
+
+  redis-session:
+    image: redis:8-alpine
+    restart: unless-stopped
+    # 会话是「丢了就要重新登录」的数据，因此单独实例、单一用途，不与缓存混在一个实例里
+    # 靠 db 编号区分——db 编号不构成隔离，maxmemory 淘汰是实例级的。
+    command:
+      - redis-server
+      - --requirepass
+      - ${CN_SESSION_REDIS_PASSWORD:-cn_session_local_dev}
+      - --appendonly
+      - 'yes'
+      - --appendfsync
+      - everysec
+    volumes:
+      - session-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$$CN_SESSION_REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    environment:
+      CN_SESSION_REDIS_PASSWORD: ${CN_SESSION_REDIS_PASSWORD:-cn_session_local_dev}
+    ports:
+      - '127.0.0.1:${CN_SESSION_REDIS_PORT:-6379}:6379'
+
+  redis-cache:
+    image: redis:8-alpine
+    restart: unless-stopped
+    # 缓存实例只有可丢弃派生数据，因此不落盘（appendonly no）。落盘会让人误以为这份数据
+    # 值得抢救，而真正的一致性来源是 PostgreSQL 里的投影表。
+    command:
+      - redis-server
+      # 容器内也监听 6380：与本地原生部署的端口号保持一致。若容器内用默认 6379 而宿主映射
+      # 6380，则「同一个服务在两个环境里端口不同」，排查连接问题时每次都要先分辨自己在哪。
+      - --port
+      - '6380'
+      - --requirepass
+      - ${CN_CACHE_REDIS_PASSWORD:-cn_cache_local_dev}
+      - --appendonly
+      - 'no'
+      - --maxmemory
+      - ${CN_CACHE_MAXMEMORY:-256mb}
+      - --maxmemory-policy
+      - allkeys-lru
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -p 6380 -a "$$CN_CACHE_REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    environment:
+      CN_CACHE_REDIS_PASSWORD: ${CN_CACHE_REDIS_PASSWORD:-cn_cache_local_dev}
+    ports:
+      - '127.0.0.1:${CN_CACHE_REDIS_PORT:-6380}:6380'
+
+  # ------------------------------ 应用 ------------------------------
+
+  core-service:
+    build:
+      # 构建上下文是仓库根：三个服务都依赖 libraries/shared-kernel 与父 POM。
+      context: .
+      dockerfile: services/core-service/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-session:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/core_db
+      SPRING_DATASOURCE_USERNAME: core_app
+      SPRING_DATASOURCE_PASSWORD: ${CN_CORE_DB_PASSWORD:-cn_core_app_dev}
+      # 迁移用另一组账号：运行账号没有 DDL 权限，用它会直接失败。
+      SPRING_FLYWAY_URL: jdbc:postgresql://postgres:5432/core_db
+      SPRING_FLYWAY_USER: core_owner
+      SPRING_FLYWAY_PASSWORD: ${CN_CORE_DB_OWNER_PASSWORD:-cn_core_owner_dev}
+      SPRING_DATA_REDIS_HOST: redis-session
+      SPRING_DATA_REDIS_PORT: '6379'
+      CN_SESSION_REDIS_PASSWORD: ${CN_SESSION_REDIS_PASSWORD:-cn_session_local_dev}
+      # 三个服务之间的事件投递目标，用 compose 服务名
+      CN_QUERY_INBOX_URL: http://query-service:8083/internal/v1/inbox/batches
+      CN_QUERY_SERVICE_TOKEN: ${CN_QUERY_SERVICE_TOKEN:-cn_query_service_dev}
+      CN_INGESTION_SERVICE_TOKEN: ${CN_INGESTION_SERVICE_TOKEN:-cn_ingestion_service_dev}
+      CN_CLAIM_EVIDENCE_DIR: /app/storage/claim-evidence
+      # 引导管理员口令必须显式给出：留空会让容器以开发默认口令启动一个可写平台。
+      CN_BOOTSTRAP_ADMIN_USERNAME: ${CN_BOOTSTRAP_ADMIN_USERNAME:-cnadmin}
+      CN_BOOTSTRAP_ADMIN_PASSWORD: ${CN_BOOTSTRAP_ADMIN_PASSWORD:?必须在 .env 中设置 CN_BOOTSTRAP_ADMIN_PASSWORD}
+    volumes:
+      - claim-evidence:/app/storage
+    ports:
+      - '127.0.0.1:${CN_CORE_PORT:-8081}:8081'
+
+  query-service:
+    build:
+      context: .
+      dockerfile: services/query-service/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      core-service:
+        # 公开查询每次都要向 core 核实权威公开水位；core 未就绪时启动起来也只会全线报错。
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/query_db
+      SPRING_DATASOURCE_USERNAME: query_app
+      SPRING_DATASOURCE_PASSWORD: ${CN_QUERY_DB_PASSWORD:-cn_query_app_dev}
+      SPRING_FLYWAY_URL: jdbc:postgresql://postgres:5432/query_db
+      SPRING_FLYWAY_USER: query_owner
+      SPRING_FLYWAY_PASSWORD: ${CN_QUERY_DB_OWNER_PASSWORD:-cn_query_owner_dev}
+      SPRING_DATA_REDIS_HOST: redis-cache
+      SPRING_DATA_REDIS_PORT: '6380'
+      CN_CACHE_REDIS_PASSWORD: ${CN_CACHE_REDIS_PASSWORD:-cn_cache_local_dev}
+      CN_CORE_BASE_URL: http://core-service:8081
+      # 必须与 cn.outbox.consumer-endpoints 下的键同名，否则事件以别的 consumerId 落库，
+      # 现象是「收到了但水位不动」。
+      CN_QUERY_SERVICE_TOKEN: ${CN_QUERY_SERVICE_TOKEN:-cn_query_service_dev}
+    ports:
+      - '127.0.0.1:${CN_QUERY_PORT:-8083}:8083'
+
+  ingestion-service:
+    build:
+      context: .
+      dockerfile: services/ingestion-service/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      core-service:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ingestion_db
+      SPRING_DATASOURCE_USERNAME: ingestion_app
+      SPRING_DATASOURCE_PASSWORD: ${CN_INGESTION_DB_PASSWORD:-cn_ingestion_app_dev}
+      SPRING_FLYWAY_URL: jdbc:postgresql://postgres:5432/ingestion_db
+      SPRING_FLYWAY_USER: ingestion_owner
+      SPRING_FLYWAY_PASSWORD: ${CN_INGESTION_DB_OWNER_PASSWORD:-cn_ingestion_owner_dev}
+      SPRING_DATA_REDIS_HOST: redis-cache
+      SPRING_DATA_REDIS_PORT: '6380'
+      CN_CACHE_REDIS_PASSWORD: ${CN_CACHE_REDIS_PASSWORD:-cn_cache_local_dev}
+      CN_CORE_BASE_URL: http://core-service:8081
+      CN_CORE_SERVICE_TOKEN: ${CN_CORE_SERVICE_TOKEN:-cn_core_service_dev}
+      CN_INGESTION_SERVICE_TOKEN: ${CN_INGESTION_SERVICE_TOKEN:-cn_ingestion_service_dev}
+      # 采集器对外自我标识。Crossref 与 OpenAlex 都要求可联系的 UA，留默认值会被限流。
+      CN_COLLECT_USER_AGENT: ${CN_COLLECT_USER_AGENT:-CognitaNexus/0.2 (mailto:cn-admin@example.edu.cn)}
+    ports:
+      - '127.0.0.1:${CN_INGESTION_PORT:-8082}:8082'
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - core-service
+      - query-service
+      - ingestion-service
+    ports:
+      - '${CN_WEB_PORT:-8080}:80'
+
+volumes:
+  pgdata:
+  session-data:
+  claim-evidence:

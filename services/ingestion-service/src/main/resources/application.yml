@@ -1,0 +1,110 @@
+server:
+  port: 8082
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+
+spring:
+  application:
+    name: ingestion-service
+  profiles:
+    active: local
+
+  datasource:
+    # 运行账号：仅 DML，无 DDL 权限（架构 §12.1）
+    url: jdbc:postgresql://127.0.0.1:5432/ingestion_db
+    username: ingestion_app
+    password: ${CN_INGESTION_DB_PASSWORD:cn_ingestion_app_dev}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 5000
+      pool-name: ingestion-pool
+
+  flyway:
+    enabled: true
+    url: jdbc:postgresql://127.0.0.1:5432/ingestion_db
+    user: ingestion_owner
+    password: ${CN_INGESTION_DB_OWNER_PASSWORD:cn_ingestion_owner_dev}
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    validate-on-migrate: true
+
+  # 采集侧只用到可淘汰缓存：限流计数与抓取去抖。不使用 redis-session。
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6380
+      password: ${CN_CACHE_REDIS_PASSWORD:cn_cache_local_dev}
+      timeout: 2s
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 4
+
+  jackson:
+    default-property-inclusion: non_null
+    deserialization:
+      fail-on-unknown-properties: false
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+    arg-name-based-constructor-auto-mapping: true
+    default-fetch-size: 100
+    default-statement-timeout: 15
+  # 自定义类型处理器必须显式声明扫描包，否则不会被注册（starter 默认不扫描业务包）。
+  # 漏配的后果不是「报错说缺处理器」，而是取结果时按 Object 处理并把 java.sql.Array
+  # 直接塞给 String[] 构造参数，表现为反射层的 argument type mismatch，很难从消息看出根因。
+  type-handlers-package: com.cognitanexus.ingestion
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+
+cn:
+  internal:
+    # 本服务在内部端点被调用时用于校验对端身份的令牌（core 投递事件、运维脚本）
+    service-tokens:
+      core: ${CN_CORE_SERVICE_TOKEN:cn_core_service_dev}
+  core:
+    base-url: ${CN_CORE_BASE_URL:http://127.0.0.1:8081}
+    # 以什么身份调用 core 的内部接口；core 侧按此名查对应令牌
+    service-name: ingestion
+    service-token: ${CN_INGESTION_SERVICE_TOKEN:cn_ingestion_service_dev}
+    connect-timeout: 3s
+    read-timeout: 20s
+  collect:
+    # 交接批次规模：架构 §6.2 建议初始 100 条、请求体不超过 2 MiB，均为可调工程默认值
+    batch-size: 100
+    max-batch-bytes: 2097152
+    # 单次任务最多抓取多少页，防止误配 query 导致无限抓取
+    max-pages-per-run: 40
+    lease-seconds: 120
+    worker-enabled: true
+    worker-interval-ms: 2000
+    max-handoff-attempts: 8
+    adapter:
+      # 采集器对上游的自我标识；Crossref 与 OpenAlex 都要求可联系的 UA
+      user-agent: ${CN_COLLECT_USER_AGENT:CognitaNexus/0.2 (mailto:cn-admin@example.edu.cn)}
+      request-timeout: 20s
+      max-response-bytes: 4194304
+  paging:
+    default-page-size: 20
+    max-page-size: 100
+    max-offset: 10000
+
+logging:
+  level:
+    root: INFO
+    com.cognitanexus: INFO
+    org.springframework.jdbc.core: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-}] %logger{36} - %msg%n"

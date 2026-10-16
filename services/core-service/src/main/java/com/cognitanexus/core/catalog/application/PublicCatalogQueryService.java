@@ -1,0 +1,279 @@
+package com.cognitanexus.core.catalog.application;
+
+import com.cognitanexus.core.catalog.application.CatalogRepositories.AchievementRepository;
+import com.cognitanexus.core.catalog.application.CatalogRepositories.ContributionRepository;
+import com.cognitanexus.core.catalog.application.CatalogRepositories.ScholarRepository;
+import com.cognitanexus.core.catalog.application.CatalogRepositories.TopicRepository;
+import com.cognitanexus.core.catalog.domain.Achievement;
+import com.cognitanexus.core.catalog.domain.Contribution;
+import com.cognitanexus.core.catalog.domain.Scholar;
+import com.cognitanexus.sharedkernel.BusinessException;
+import com.cognitanexus.sharedkernel.RelationState;
+import com.cognitanexus.sharedkernel.Visibility;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 公开详情读取。
+ *
+ * <p>依据：架构 V0.2 §5.4、§10.1。公开详情只返回当前可公开对象；被合并实体的标识跳到最终实体，
+ * 不返回旧内容让旧链接指向错误对象。
+ *
+ * <p>参与关系按状态如实呈现：只有 AUTO 与 SELF_CONFIRMED 显示为确定归属，待核验/争议/已排除必须
+ * 在响应中标注状态，前端不得把它们渲染成已确认合作。
+ */
+@Service
+public class PublicCatalogQueryService {
+
+  private final AchievementRepository achievements;
+  private final ScholarRepository scholars;
+  private final ContributionRepository contributions;
+  private final TopicRepository topics;
+
+  public PublicCatalogQueryService(
+      AchievementRepository achievements,
+      ScholarRepository scholars,
+      ContributionRepository contributions,
+      TopicRepository topics) {
+    this.achievements = achievements;
+    this.scholars = scholars;
+    this.contributions = contributions;
+    this.topics = topics;
+  }
+
+  /** 成果详情。 */
+  @Transactional(readOnly = true)
+  public Map<String, Object> achievementDetail(String achievementId) {
+    Achievement achievement =
+        achievements
+            .findById(achievementId)
+            .orElseThrow(() -> BusinessException.notFound("成果不存在或尚不可见"));
+
+    if (achievement.merged()) {
+      String survivor =
+          achievements.resolveSurvivorId(achievementId).orElse(achievement.mergedIntoId());
+      Achievement target =
+          achievements
+              .findById(survivor)
+              .orElseThrow(() -> BusinessException.notFound("成果不存在或尚不可见"));
+      Map<String, Object> redirected = baseView(target);
+      redirected.put("redirectedFrom", achievementId);
+      redirected.put("redirectNote", "该成果已被合并，本响应指向合并后的实体");
+      return redirected;
+    }
+
+    if (!achievement.visibility().publiclyVisible()
+        || !achievement.effectiveStatus().publiclyEligible()) {
+      // 不存在与不可见对外不可区分，避免通过状态码探测受限对象
+      throw BusinessException.notFound("成果不存在或尚不可见");
+    }
+
+    Map<String, Object> view = baseView(achievement);
+    achievements
+        .findPaper(achievementId)
+        .ifPresent(
+            paper -> {
+              Map<String, Object> detail = new LinkedHashMap<>();
+              detail.put("doi", paper.doi());
+              detail.put("venue", paper.venue());
+              detail.put(
+                  "publishedDate",
+                  paper.publishedDate() == null ? null : paper.publishedDate().toString());
+              detail.put("preprintStatus", paper.preprintStatus());
+              detail.put("citationCount", paper.citationCount());
+              detail.put("citationSource", paper.citationSource());
+              detail.put("abstractText", paper.abstractText());
+              detail.put(
+                  "citationNote",
+                  paper.citationCount() == null ? "来源未提供引用量" : "引用量按单一来源展示，不与其它来源相加");
+              view.put("paper", detail);
+            });
+    achievements
+        .findPatent(achievementId)
+        .ifPresent(
+            patent -> {
+              Map<String, Object> detail = new LinkedHashMap<>();
+              detail.put("applicationNo", patent.applicationNo());
+              detail.put("publicationNo", patent.publicationNo());
+              detail.put("ipcCodes", patent.ipcCodes());
+              detail.put("applicantNames", patent.applicantNames());
+              detail.put(
+                  "filingDate",
+                  patent.filingDate() == null ? null : patent.filingDate().toString());
+              view.put("patent", detail);
+            });
+    achievements
+        .findProject(achievementId)
+        .ifPresent(
+            project -> {
+              Map<String, Object> detail = new LinkedHashMap<>();
+              detail.put("projectNo", project.projectNo());
+              detail.put("leaderName", project.leaderName());
+              detail.put("fundingAgency", project.fundingAgency());
+              detail.put("projectCategory", project.projectCategory());
+              // 不展示经费金额：默认不采集也不公开（BR-IMP-11）
+              detail.put("fundingNote", "本平台不展示经费金额");
+              view.put("project", detail);
+            });
+    achievements
+        .findAward(achievementId)
+        .ifPresent(
+            award -> {
+              Map<String, Object> detail = new LinkedHashMap<>();
+              detail.put("awardName", award.awardName());
+              detail.put("awardYear", award.awardYear());
+              detail.put("awardLevel", award.awardLevel());
+              detail.put("grantingBody", award.grantingBody());
+              view.put("award", detail);
+            });
+
+    view.put("topics", topicViews(achievementId));
+    view.put("contributors", contributorViews(achievementId));
+    return view;
+  }
+
+  /** 学者门户详情。未被认领的档案同样可读（AC-IMPL-FR03-01）。 */
+  @Transactional(readOnly = true)
+  public Map<String, Object> scholarDetail(String scholarId) {
+    Scholar scholar =
+        scholars.findById(scholarId).orElseThrow(() -> BusinessException.notFound("学者不存在"));
+    if (scholar.merged()) {
+      String survivor = scholars.resolveSurvivorId(scholarId).orElse(scholar.mergedIntoId());
+      Scholar target =
+          scholars.findById(survivor).orElseThrow(() -> BusinessException.notFound("学者不存在"));
+      Map<String, Object> view = scholarBaseView(target);
+      view.put("redirectedFrom", scholarId);
+      view.put("redirectNote", "该档案已被合并，本响应指向合并后的实体");
+      return view;
+    }
+    Map<String, Object> view = scholarBaseView(scholar);
+    view.put("contributions", scholarContributionViews(scholarId));
+    return view;
+  }
+
+  private Map<String, Object> baseView(Achievement achievement) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("id", achievement.id());
+    view.put("type", achievement.type().name());
+    view.put("typeLabel", achievement.type().label());
+    view.put("title", achievement.title());
+    view.put("dataNature", achievement.dataNature().name());
+    view.put("visibility", achievement.visibility().name());
+    view.put("effectiveStatus", achievement.effectiveStatus().name());
+    view.put("publicationYear", achievement.publicationYear().year());
+    view.put(
+        "yearPrecision",
+        achievement.publicationYear().precision() == null
+            ? null
+            : achievement.publicationYear().precision().name());
+    view.put("version", achievement.version());
+    view.put(
+        "dataNatureNote",
+        achievement.dataNature().eligibleForRealityView() ? null : "该条目的数据性质不是真实来源数据，不计入默认现实统计");
+    return view;
+  }
+
+  private Map<String, Object> scholarBaseView(Scholar scholar) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("id", scholar.id());
+    view.put("displayName", scholar.displayName());
+    view.put("organizationName", scholar.organizationName());
+    view.put("researchSummary", scholar.researchSummary());
+    view.put("claimedStatus", scholar.claimedStatus().name());
+    view.put("dataNature", scholar.dataNature().name());
+    view.put("version", scholar.version());
+    view.put(
+        "claimNote",
+        scholar.claimedStatus() == Scholar.ClaimedStatus.CLAIMED
+            ? "门户已有管理者；认领仅授予管理权，不代表成果真实性背书"
+            : null);
+    return view;
+  }
+
+  private List<Map<String, Object>> topicViews(String achievementId) {
+    List<Map<String, Object>> views = new ArrayList<>();
+    for (String topicId : topics.listTopicIdsOf(achievementId)) {
+      topics
+          .findTopic(topicId)
+          .ifPresent(
+              topic -> {
+                Map<String, Object> view = new LinkedHashMap<>();
+                view.put("id", topic.id());
+                view.put("canonicalName", topic.canonicalName());
+                view.put("sourceCategory", topic.sourceCategory());
+                views.add(view);
+              });
+    }
+    return views;
+  }
+
+  private List<Map<String, Object>> contributorViews(String achievementId) {
+    List<Map<String, Object>> views = new ArrayList<>();
+    for (Contribution contribution : contributions.listByAchievement(achievementId)) {
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("scholarId", contribution.scholarId());
+      view.put("role", contribution.role());
+      view.put("authorOrder", contribution.authorOrder());
+      view.put("relationState", contribution.relationState().name());
+      view.put("qualified", contribution.qualifiedForGraph());
+      view.put("relationNote", qualifiedNote(contribution.relationState()));
+      scholars
+          .findById(contribution.scholarId())
+          .ifPresent(
+              scholar -> {
+                view.put("displayName", scholar.displayName());
+                view.put("organizationName", scholar.organizationName());
+              });
+      views.add(view);
+    }
+    return views;
+  }
+
+  private List<Map<String, Object>> scholarContributionViews(String scholarId) {
+    List<Map<String, Object>> views = new ArrayList<>();
+    for (Contribution contribution : contributions.listByScholar(scholarId)) {
+      Achievement achievement = achievements.findById(contribution.achievementId()).orElse(null);
+      if (achievement == null
+          || !achievement.visibility().publiclyVisible()
+          || !achievement.effectiveStatus().publiclyEligible()
+          || achievement.merged()) {
+        continue;
+      }
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("achievementId", achievement.id());
+      view.put("title", achievement.title());
+      view.put("type", achievement.type().name());
+      view.put("publicationYear", achievement.publicationYear().year());
+      view.put("relationState", contribution.relationState().name());
+      view.put("qualified", contribution.qualifiedForGraph());
+      view.put("relationNote", qualifiedNote(contribution.relationState()));
+      views.add(view);
+    }
+    return views;
+  }
+
+  private String qualifiedNote(RelationState state) {
+    return switch (state) {
+      case AUTO -> "由稳定标识与相容证据自动建立的参与关系";
+      case SELF_CONFIRMED -> "本人已确认的参与关系";
+      case PENDING_VERIFY -> "待核验：证据不足，不作为确定合作";
+      case DISPUTED -> "存在争议：不作为确定合作";
+      case EXCLUDED -> "已排除：经审核判定该参与关系不成立";
+    };
+  }
+
+  /** 公开目录资格自检：用于管理端核对可见性问题。 */
+  @Transactional(readOnly = true)
+  public boolean publiclyVisible(String achievementId) {
+    return achievements
+        .findById(achievementId)
+        .filter(a -> a.visibility() == Visibility.PUBLIC)
+        .filter(a -> a.effectiveStatus().publiclyEligible())
+        .filter(a -> !a.merged())
+        .isPresent();
+  }
+}
