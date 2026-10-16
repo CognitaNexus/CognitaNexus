@@ -250,12 +250,31 @@ TOTAL_STAGED="$(json_get "$STAT_BODY" data.totalStaged)"
 TOTAL_HANDED="$(json_get "$STAT_BODY" data.totalHandedOff)"
 printf '        累计：抓取 %s 条，暂存 %s 条，已交接 %s 条，拒绝 %s 条\n' \
   "$(json_get "$STAT_BODY" data.totalFetched)" "$TOTAL_STAGED" "$TOTAL_HANDED" "$(json_get "$STAT_BODY" data.totalRejected)"
-# 断言用累计口径，不用「本轮」增量。
-# 原因是后台 CollectWorker 每 2 秒抢一次租约，任务往往在脚本发出手动驱动之前就已被它跑完；
-# 此时本轮回 0 是真话而不是故障。真正要证明的是「真实来源记录经暂存、交接落到了 core」，
-# 这件事由累计计数 + 第 11 节的 core 侧行数共同证明，与「谁跑的」无关。
-check_true '确实抓取到真实来源记录（累计暂存 > 0）' "$([ "${TOTAL_STAGED:-0}" -gt 0 ] && echo true || echo false)"
-check_true '确实交接给 core（累计已交接 > 0）' "$([ "${TOTAL_HANDED:-0}" -gt 0 ] && echo true || echo false)"
+# 断言用累计口径，不用「本轮」增量：后台 CollectWorker 每 2 秒抢一次租约，任务往往在脚本
+# 发出手动驱动之前就已被它跑完，此时本轮回 0 是真话而不是故障。
+#
+# 但也不能断言「累计暂存 > 0」。暂存去重是按**来源**做的（唯一键 source_config_id +
+# source_record_id + content_fingerprint），不是按任务。一旦该来源的记录已被先前任务全部
+# 入库，新任务重抓同一窗口必然全部命中稳定键——它就该是 0。把「上游此刻是否还有没入库的
+# 记录」写成断言，等于让一次上游内容变化把测试判红，而系统毫无问题。实测证据：新任务
+# 抓取 550 条、暂存 0 条，采集日志为「轮数=40 暂存=0 重复=400」。
+#
+# 本节改断两条真正属于本系统的性质：计数口径自洽，以及被修过的那条核心不变量——一个任务
+# 只能交接自己暂存的记录（修复前取件按来源而非按任务，兄弟任务互相领走记录，出现
+# 「已交接 > 暂存」的假账，历史残留至今仍违反这条）。
+# 「真实记录确实落到了 core」由第 11 节的 core 侧行数证明，不依赖本节的计数是否为 0。
+TOTAL_FETCHED="$(json_get "$STAT_BODY" data.totalFetched)"
+check_true '确实抓取到真实来源记录（累计抓取 > 0）' \
+  "$([ "${TOTAL_FETCHED:-0}" -gt 0 ] && echo true || echo false)"
+check_true '暂存不超过抓取（计数口径自洽）' \
+  "$([ "${TOTAL_STAGED:-0}" -le "${TOTAL_FETCHED:-0}" ] && echo true || echo false)"
+check_true '已交接不超过暂存（只交接本任务暂存的记录）' \
+  "$([ "${TOTAL_HANDED:-0}" -le "${TOTAL_STAGED:-0}" ] && echo true || echo false)"
+if [ "${TOTAL_STAGED:-0}" -eq 0 ]; then
+  printf '  \033[36mINFO\033[0m  本任务暂存 0 条：抓到的 %s 条全部命中既有稳定键（去重按来源，非按任务）。\n' \
+    "${TOTAL_FETCHED:-?}"
+  printf '  \033[36mINFO\033[0m  这是设计结果而非故障，真实落地看第 11 节 core 侧行数。\n'
+fi
 check '统计口径标注「已交接 ≠ 已发布」' 'true' \
   "$([ -n "$(json_get "$STAT_BODY" data.note)" ] && echo true || echo false)"
 
@@ -332,6 +351,19 @@ if command -v psql >/dev/null 2>&1 || [ -x /d/dev-tools/pgsql/bin/psql.exe ]; th
   fi
 else
   printf '  \033[33mSKIP\033[0m  psql 不可用，跳过交接归属一致性核对\n'
+fi
+
+# 收尾：暂停本次自检创建的任务。
+# 为什么必须收：本脚本每次运行都以带时间戳的 jobKey 新建一个任务，若不收，每个 RUNNING 任务
+# 都会被 CollectWorker 按 2 秒一轮持续驱动（抓取失败无退避），任务越积越多、来源被反复空扫，
+# 也让后续运行更难拿到静默窗口——实测一次运行就留下两个 RUNNING 任务在空转。
+# 暂停而非删除：暂停是可恢复的状态变更，且不丢任何已暂存记录。
+if [ -n "${JOB_ID:-}" ]; then
+  api_csrf
+  PAUSE_BODY="$(body_of POST "$ING/api/v1/admin/ingestion/jobs/$JOB_ID/pause" "$AJAR" \
+    -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $CSRF" \
+    -d '{"reason":"采集自检收尾：避免留下持续空转的任务"}')"
+  check '自检收尾暂停本次任务（不留下空转任务）' 'OK' "$(json_get "$PAUSE_BODY" code)"
 fi
 
 printf '\n\033[1m== 结果 ==\033[0m 通过 %s 项，失败 %s 项\n' "$PASS" "$FAIL"

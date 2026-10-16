@@ -22,6 +22,13 @@ const scope = useScopeStore()
 const route = useRoute()
 const router = useRouter()
 
+/** 跳转链接的目标。用 ref 拿到元素后直接 focus，比靠 href="#id" 更可靠。 */
+const mainEl = ref<HTMLElement | null>(null)
+
+function focusMain() {
+  mainEl.value?.focus()
+}
+
 const quickKeyword = ref('')
 
 /** 服务端声明自己能否对外服务；未取到时保持 null，不猜成「正常」。 */
@@ -77,6 +84,13 @@ onMounted(loadConsistency)
 
 <template>
   <div class="shell">
+    <!--
+      跳过导航：这个外壳的顶栏有品牌、检索框、口径选择、导航与账号区，键盘用户若想直接
+      读正文，得先 Tab 穿过十几个元素。跳转目标 main 带 tabindex="-1"，这样焦点能被程序化
+      移到正文上（不要写 tabindex="0"：那会把正文本身塞进 Tab 序列，Tab 一圈会多停一次）。
+    -->
+    <a class="skip-link" href="#main-content" @click.prevent="focusMain">跳转到主内容</a>
+
     <header class="topbar">
       <div class="topbar-inner">
         <RouterLink class="brand" to="/">
@@ -151,7 +165,7 @@ onMounted(loadConsistency)
       <div v-else-if="serving === null" class="strip warn">{{ servingDetail }}</div>
     </div>
 
-    <main class="page">
+    <main id="main-content" ref="mainEl" class="page" tabindex="-1">
       <RouterView :key="route.fullPath" />
     </main>
 

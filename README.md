@@ -61,20 +61,36 @@ academicplatform/
 
 本机 Docker Desktop 依赖 WSL2，而本机 WSL 被安全策略拦截，容器无法启动。因此本机开发使用 D 盘原生二进制运行 PostgreSQL 16 与 Redis 8，服务器部署使用 `compose.yaml`。
 
-```bash
-# 1) 基础设施（PostgreSQL 5432 + redis-session 6379 + redis-cache 6380）
-bash ops/local/start-infra.sh
+### 一次起整栈（推荐）
 
-# 2) 应用构建
-./mvnw -B -DskipTests install                     # 三个服务 + 共享内核
+```bash
+# 构建三个服务 + 共享内核，并装好前端依赖
+./mvnw -B -DskipTests install
 cd frontend && npm install && cd ..
 
-# 3) 启动三个服务
-bash ops/local/service.sh start all
-bash ops/local/service.sh status
+# 整栈：PostgreSQL + redis-session + redis-cache + 三个服务 + 前端 dev server
+bash ops/local/stack.sh
+bash ops/local/stack.sh status   # 只读查看整栈状态
+bash ops/local/stack.sh stop     # 停整栈（含基础设施）
+```
 
-# 4) 前端开发服务器（http://127.0.0.1:5173，经代理转发三个后端）
-cd frontend && npm run dev
+`stack.sh` 会把整套本地环境收在同一个进程组里并前台阻塞，因此：
+
+- 在普通终端里直接执行，它会一直占着当前终端，Ctrl-C 即停整栈；
+- 在受管沙箱里，必须由调用方以「后台任务」方式承载本次调用（沙箱是「一次调用一个进程组」，
+  前台调用一返回整组即被回收——见 `service.sh` 文件头）。这样本地栈在任务列表里就是**一条**
+  记录，结束它即停整栈，不会留下半个进程。
+
+日志在 `ops/local/run/`：`postgres.log`、`redis-session.log`、`redis-cache.log`、`core.log`、`ingestion.log`、`query.log`、`web.log`。
+
+### 逐项启停（细粒度）
+
+```bash
+bash ops/local/start-infra.sh          # 只起基础设施
+bash ops/local/stop-infra.sh           # 只停基础设施
+bash ops/local/service.sh start all    # 只起三个服务
+bash ops/local/service.sh status
+bash ops/local/service.sh logs core
 ```
 
 首次启动时，`core-service` 会在库中不存在活跃平台管理员的情况下，用 `CN_BOOTSTRAP_ADMIN_*` 创建一次引导管理员账号。

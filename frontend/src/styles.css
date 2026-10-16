@@ -949,3 +949,332 @@ table.data td.num {
   color: var(--text-dim);
   line-height: 1.65;
 }
+
+/* ======================= 键盘可达性与窄屏适配 ======================= */
+
+/*
+ * 这一节处理两件在静态设计稿里看不见、但在真实使用中一定会撞上的事。
+ *
+ *   1. **键盘可达**。检索站信息密度高，读者会用 Tab 在结果条目与操作之间跳。默认焦点环
+ *      在浅色底与浅灰描边上几乎不可见，表现为「按了 Tab 但不知道焦点在哪」。这里统一成
+ *      强调色描边，并补一个跳转到主内容的链接，免得每页都要 Tab 穿过整个顶栏。
+ *   2. **窄屏**。此前整条样式表一条媒体查询都没有，页面按 1180px 定死：窗口一窄，四列
+ *      指标被挤到每列只剩一个字宽，顶栏的检索框与口径选择互相压缩。断点按「还剩多少可用
+ *      宽度」定，不按设备型号定——同一个断点要同时覆盖半屏的笔记本窗口与手机。
+ */
+
+/* 跳转到主内容。只在获得焦点时出现，不占版面。 */
+.skip-link {
+  position: absolute;
+  top: 0;
+  left: -9999px;
+  z-index: 50;
+  background: var(--accent);
+  color: #fff;
+  padding: 8px 14px;
+  font-size: 13px;
+  border-radius: 0 0 var(--radius) 0;
+}
+
+.skip-link:focus {
+  left: 0;
+}
+
+/* 屏幕阅读器专用文本：给图形、纯色块补充可读名称，但不占版面。 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * 焦点样式只给键盘。用 :focus-visible 而不是 :focus，是为了不让鼠标点击按钮后
+ * 也留下一圈描边——那会让界面看起来「卡住了」。
+ */
+a:focus-visible,
+.btn:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* 输入类控件已有自己的聚焦样式（描边 + 浅底环），再叠一层 outline 会变成两层框。 */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
+/* 主内容区获得程序化焦点（跳转链接的目标）时不画框：它不是一个可操作控件。 */
+main.page:focus {
+  outline: none;
+}
+
+/* ------------------------------- 中等宽度 ------------------------------- */
+
+/*
+ * 栅格子项的 min-width 归零。
+ *
+ * 这一条与媒体查询无关，是栅格布局本身的一个陷阱：栅格子项默认 min-width: auto，
+ * 意思是「不许收缩到我的内容最小宽度以下」。于是 minmax(340px, 1fr) 里的 1fr 在窄屏
+ * 仍然被内容顶住——实测首页在 390px 视口下整页被顶到 709px 宽，横向溢出 319px，
+ * 而罪魁是机构榜里一条较长的机构名（它自身带 white-space: nowrap）。
+ *
+ * 归零之后 1fr 才真的可缩，再由下面那条 overflow-wrap 负责让长串能断行。
+ */
+.grid > * {
+  min-width: 0;
+}
+
+/* 长串（DOI、机构全名、平台标识）在窄容器里要能断行，否则一样会把容器顶宽。 */
+.panel-body,
+.result-item,
+.dl dd {
+  overflow-wrap: break-word;
+}
+
+/* 等宽文本里常是 DOI / 标识这类没有空格的长串，仅 break-word 不够，按需在任意位置断。 */
+.mono,
+.pre {
+  overflow-wrap: anywhere;
+}
+
+/* 1024px 以下：先收边距。版面结构不动，只是把两侧留白让给内容。 */
+@media (max-width: 1024px) {
+  .topbar-inner {
+    gap: 16px;
+    padding: 12px 16px 10px;
+  }
+
+  .page {
+    padding: 18px 16px;
+  }
+
+  .nav,
+  .footer-inner,
+  .scope-strip {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .hero {
+    padding: 26px 18px 20px;
+  }
+}
+
+/* ------------------------------- 窄屏（半屏窗口 / 平板竖屏） ------------------------------- */
+
+@media (max-width: 860px) {
+  /*
+   * 顶栏折成两行：第一行品牌 + 登录态 + 口径切换，第二行检索框独占整宽。
+   * 用 order 把检索框挪到第二行，而不是让它按 DOM 顺序夹在中间——DOM 顺序保持
+   * 「品牌 → 检索 → 账号」，屏幕阅读器与键盘的遍历顺序才与视觉阅读顺序一致。
+   */
+  .topbar-inner {
+    flex-wrap: wrap;
+    gap: 10px 16px;
+  }
+
+  .brand {
+    flex: 1 1 auto;
+  }
+
+  .quick-search {
+    order: 3;
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  .topbar-right {
+    flex: 0 0 auto;
+  }
+
+  /*
+   * 导航改为横向滚动而不是换行。七八个导航项在窄屏换行会撑成三行，把正文整体推到
+   * 首屏之外；横滚只占用一行高度，且保持「导航就是一行」的视觉结构。
+   */
+  .nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .nav a {
+    white-space: nowrap;
+  }
+
+  .grid.cols-2,
+  .grid.cols-3,
+  .grid.cols-4 {
+    gap: 12px;
+  }
+
+  .metric-value {
+    font-size: 24px;
+  }
+
+  .hero-modes {
+    gap: 12px;
+  }
+}
+
+/* ------------------------------- 手机竖屏 ------------------------------- */
+
+@media (max-width: 640px) {
+  .page {
+    padding: 14px 12px;
+  }
+
+  .nav,
+  .footer-inner,
+  .scope-strip {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .scope-strip {
+    margin-top: 10px;
+  }
+
+  .hero {
+    padding: 20px 14px 16px;
+  }
+
+  .hero h1 {
+    font-size: 23px;
+  }
+
+  .hero-lede {
+    font-size: 13px;
+  }
+
+  /* 三个入口竖排：并排时每个只剩十几个字宽，链接与说明会断成难读的碎片。 */
+  .hero-modes {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /*
+   * 所有多列栅格退成单列。cols-2/cols-3/cols-4 用的是 minmax(340px|230px|175px, 1fr)，
+   * 容器窄于最小列宽时 auto-fit 仍会保留一列并溢出——它不会自动降到 1fr。
+   */
+  .grid.cols-2,
+  .grid.cols-3,
+  .grid.cols-4 {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-value {
+    font-size: 22px;
+  }
+
+  .section-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .result-title {
+    font-size: 15px;
+  }
+
+  /* 键值表竖排：两列布局在窄屏会把值挤成极窄的一条，长机构名逐字换行。 */
+  .dl {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .dl dt {
+    padding-top: 8px;
+  }
+
+  table.data th,
+  table.data td {
+    padding: 6px 8px;
+  }
+
+  .btn {
+    /* 触控目标不矮于 32px；原本 26px 的 small 按钮在手机上是误触高发区。 */
+    min-height: 32px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* 副标题在极窄屏会让品牌行换行；它只是版本身份说明，优先保证主标题完整。 */
+  .brand-sub {
+    display: none;
+  }
+
+  .strip {
+    font-size: 12px;
+  }
+}
+
+/* ------------------------------- 打印 ------------------------------- */
+
+/*
+ * 成果详情与学者档案会被打印或存成 PDF 交材料。导航、检索框、按钮、页脚在纸上没有
+ * 意义，且会把有用的内容挤到第二页，因此一并去掉；面板不做分页切断。
+ */
+@media print {
+  .topbar,
+  .nav-row,
+  .footer,
+  .scope-strip,
+  .quick-search,
+  .pager,
+  .btn,
+  .skip-link,
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  .page {
+    max-width: none;
+    padding: 0;
+  }
+
+  .panel,
+  .result-item,
+  .metric {
+    border-color: #bbb;
+  }
+
+  .panel,
+  .entry,
+  .metric {
+    break-inside: avoid;
+  }
+
+  /* 打印时链接不再有「可点」的语义，颜色深浅也不该暗示可交互。 */
+  a {
+    color: var(--text);
+    text-decoration: none;
+  }
+}
+
+/* ------------------------------- 降低动效 ------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+    /* 去掉旋转后仍要能看出「在加载」，因此改用实心描边而不是留一个静止的空圈。 */
+    border-top-color: var(--rule-strong);
+    background: var(--accent-soft);
+  }
+}
+

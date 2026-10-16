@@ -54,6 +54,21 @@ const yearSpan = computed(() => {
   return { from: years[0]!, to: years[years.length - 1]!, buckets: years.length }
 })
 
+/** 成果类型的中文名。后端在详情接口里给了 typeLabel，但总览的 byType 只给枚举，这里补一份映射。 */
+const TYPE_LABELS: Record<string, string> = {
+  PAPER: '论文',
+  PATENT: '专利',
+  PROJECT: '项目',
+  AWARD: '获奖',
+}
+
+function typeLabel(key: string): string {
+  return TYPE_LABELS[key] ?? key
+}
+
+/** 只有一类成果时补一句说明：否则读者会以为其余三类被漏掉了。 */
+const onlyOneType = computed(() => (overview.data.value?.byType.length ?? 0) === 1)
+
 function heroSearch() {
   router.push({
     name: 'search',
@@ -235,6 +250,29 @@ watch(() => scope.nature, load)
                 "
                 empty-text="当前口径下没有带领域标注的成果。"
               />
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>成果类型构成</h2>
+              <span class="tiny faint">每条成果只归一类，合计等于成果总数</span>
+            </div>
+            <div class="panel-body">
+              <BarList
+                :items="
+                  overview.data.value.byType.map((row) => ({
+                    label: typeLabel(row.key),
+                    value: row.achievements,
+                  }))
+                "
+                empty-text="当前口径下没有可归类的成果。"
+              />
+              <p v-if="onlyOneType" class="tiny faint" style="margin: 10px 0 0">
+                当前口径下只有一类成果。平台的四类收录口径（论文 / 专利 / 项目 / 获奖）在数据模型上
+                都受支持，但这里显示的是<strong>实际已收录</strong>的构成——不存在的类别不补零占位，
+                以免看起来像「收录过但数量为 0」。
+              </p>
             </div>
           </div>
 
