@@ -92,8 +92,8 @@ class GovernanceControllerTest {
   @Test
   @DisplayName("候选列表带回总数：翻页控件必须知道还有多少条，否则只能停在第一页")
   void candidatesCarriesTotal() {
-    when(governance.listCandidates(any(PageRequest.class))).thenReturn(List.of(candidate("ddc_1")));
-    when(governance.countOpenCandidates()).thenReturn(42L);
+    when(governance.listCandidates(any(PageRequest.class), any())).thenReturn(List.of(candidate("ddc_1")));
+    when(governance.countOpenCandidates(any())).thenReturn(42L);
 
     ResponseEntity<ApiResponse<List<Map<String, Object>>>> response = controller.candidates(1, 20);
 
@@ -105,10 +105,10 @@ class GovernanceControllerTest {
   @Test
   @DisplayName("工作台 meta 带齐分档计数、阈值与排序白名单：界面据此组织待办，不自己猜一套")
   void workbenchMetaCarriesEverything() {
-    when(governance.listCandidatesForWorkbench(any(), any(PageRequest.class)))
+    when(governance.listCandidatesForWorkbench(any(), any(PageRequest.class), any()))
         .thenReturn(List.of(new ScoredCandidate(candidate("ddc_1"), 0.93d)));
-    when(governance.countCandidatesForWorkbench(any())).thenReturn(7L);
-    when(governance.workbenchSummary())
+    when(governance.countCandidatesForWorkbench(any(), any())).thenReturn(7L);
+    when(governance.workbenchSummary(any()))
         .thenReturn(new GovernanceService.WorkbenchSummary(3L, 2L, 2L, 7L, 0.9d, 0.7d));
 
     ResponseEntity<ApiResponse<List<Map<String, Object>>>> response =
@@ -147,17 +147,17 @@ class GovernanceControllerTest {
   @Test
   @DisplayName("工作台候选卡片带两端实时状态与处置可行性：被并走的一侧必须当场可见，不能让人去撞错误码")
   void workbenchCandidateCarriesLiveEndpointState() {
-    when(governance.listCandidatesForWorkbench(any(), any(PageRequest.class)))
+    when(governance.listCandidatesForWorkbench(any(), any(PageRequest.class), any()))
         .thenReturn(
             List.of(
                 new ScoredCandidate(candidate("ddc_1"), 1.0d),
                 new ScoredCandidate(candidate("ddc_2"), 0.8d)));
-    when(governance.countCandidatesForWorkbench(any())).thenReturn(2L);
-    when(governance.workbenchSummary())
+    when(governance.countCandidatesForWorkbench(any(), any())).thenReturn(2L);
+    when(governance.workbenchSummary(any()))
         .thenReturn(new GovernanceService.WorkbenchSummary(2L, 0L, 0L, 2L, 0.9d, 0.7d));
     // 两条候选都用 ach_left / ach_right：第一条两端都还在；第二条的右端已被并走。
     // 状态只在渲染时实时读，因此同一个标识在不同页、不同时刻可以给出不同结论。
-    when(governance.statesOf(any()))
+    when(governance.statesOf(any(), any()))
         .thenReturn(
             Map.of(
                 "ach_left", state("ach_left", "EFFECTIVE", null),
@@ -178,7 +178,7 @@ class GovernanceControllerTest {
     // 未被并走时不能给出重定向目标：编一个出来会让前端显示「已并入 xxx」。
     assertThat((Map<String, Object>) first.get("left")).doesNotContainKey("mergedIntoId");
 
-    when(governance.statesOf(any()))
+    when(governance.statesOf(any(), any()))
         .thenReturn(
             Map.of(
                 "ach_left", state("ach_left", "EFFECTIVE", null),
@@ -195,12 +195,12 @@ class GovernanceControllerTest {
   @Test
   @DisplayName("状态查不到时如实说 known=false，不编造状态")
   void unknownEndpointStateReportedHonestly() {
-    when(governance.listCandidatesForWorkbench(any(), any(PageRequest.class)))
+    when(governance.listCandidatesForWorkbench(any(), any(PageRequest.class), any()))
         .thenReturn(List.of(new ScoredCandidate(candidate("ddc_1"), 0.8d)));
-    when(governance.countCandidatesForWorkbench(any())).thenReturn(1L);
-    when(governance.workbenchSummary())
+    when(governance.countCandidatesForWorkbench(any(), any())).thenReturn(1L);
+    when(governance.workbenchSummary(any()))
         .thenReturn(new GovernanceService.WorkbenchSummary(1L, 0L, 0L, 1L, 0.9d, 0.7d));
-    when(governance.statesOf(any())).thenReturn(Map.of());
+    when(governance.statesOf(any(), any())).thenReturn(Map.of());
 
     Map<String, Object> row = dataOf(controller.workbench(null, null, 1, 50)).get(0);
 
@@ -314,8 +314,8 @@ class GovernanceControllerTest {
             "OPEN",
             WHEN,
             null);
-    when(governance.listAnomalies(any(PageRequest.class))).thenReturn(List.of(anomaly));
-    when(governance.countOpenAnomalies()).thenReturn(1L);
+    when(governance.listAnomalies(any(PageRequest.class), any())).thenReturn(List.of(anomaly));
+    when(governance.countOpenAnomalies(any())).thenReturn(1L);
 
     ResponseEntity<ApiResponse<List<Map<String, Object>>>> response = controller.anomalies(1, 20);
 
@@ -338,13 +338,13 @@ class GovernanceControllerTest {
   @Test
   @DisplayName("台账按实体查询，limit 被夹在 1..200：越界取值不放大成一次全表读取")
   void ledgerClampsLimit() {
-    when(governance.ledgerOf(anyString(), anyInt())).thenReturn(List.of());
+    when(governance.ledgerOf(anyString(), anyInt(), any())).thenReturn(List.of());
 
     controller.ledger("ach_1", 5000);
-    verify(governance).ledgerOf("ach_1", 200);
+    verify(governance).ledgerOf(eq("ach_1"), eq(200), any());
 
     controller.ledger("ach_1", 0);
-    verify(governance).ledgerOf("ach_1", 1);
+    verify(governance).ledgerOf(eq("ach_1"), eq(1), any());
   }
 
   @Test
@@ -361,7 +361,7 @@ class GovernanceControllerTest {
             "同一篇论文的两种收录",
             "acc_reviewer",
             WHEN);
-    when(governance.ledgerOf(anyString(), anyInt())).thenReturn(List.of(entry));
+    when(governance.ledgerOf(anyString(), anyInt(), any())).thenReturn(List.of(entry));
 
     ResponseEntity<ApiResponse<List<Map<String, Object>>>> response =
         controller.ledger("ach_survivor", 50);
@@ -390,7 +390,7 @@ class GovernanceControllerTest {
   @Test
   @DisplayName("合并影响预览是只读端点：两侧标识原样传给服务，回执里带 dryRun 标记")
   void mergePreviewIsReadOnly() {
-    when(governance.previewMerge("ach_1", "ach_2"))
+    when(governance.previewMerge(eq("ach_1"), eq("ach_2"), any()))
         .thenReturn(Map.of("dryRun", true, "canMerge", true));
 
     ResponseEntity<ApiResponse<Map<String, Object>>> response =
@@ -398,7 +398,7 @@ class GovernanceControllerTest {
 
     assertThat(response.getStatusCode().value()).isEqualTo(200);
     assertThat(dataOf(response)).containsEntry("dryRun", true).containsEntry("canMerge", true);
-    verify(governance).previewMerge("ach_1", "ach_2");
+    verify(governance).previewMerge(eq("ach_1"), eq("ach_2"), any());
     // 预览不落任何写入动作：不能顺带调一次合并。
     verify(governance, never()).mergeAchievements(anyString(), anyString(), anyString(), any());
   }

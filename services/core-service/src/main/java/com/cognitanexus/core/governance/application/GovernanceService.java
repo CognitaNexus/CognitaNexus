@@ -13,6 +13,7 @@ import com.cognitanexus.core.platform.event.EventTypes;
 import com.cognitanexus.core.platform.event.OutboxEvent;
 import com.cognitanexus.core.platform.event.OutboxStore;
 import com.cognitanexus.core.platform.security.ActorContext;
+import com.cognitanexus.core.platform.security.Capabilities;
 import com.cognitanexus.core.platform.security.RoleNames;
 import com.cognitanexus.core.platform.util.Identifiers;
 import com.cognitanexus.core.platform.util.PageRequest;
@@ -165,13 +166,21 @@ public class GovernanceService {
             null));
   }
 
+  /**
+   * 候选列表（按登记时间倒序）。
+   *
+   * <p>候选携带两端标题与相似度证据，属治理内部信息。读取与写入一样按能力授权——登录本身不是
+   * 授权，能调到这个接口也不等于有资格看它。
+   */
   @Transactional(readOnly = true)
-  public List<DedupCandidate> listCandidates(PageRequest page) {
+  public List<DedupCandidate> listCandidates(PageRequest page, ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     return candidates.listOpenCandidates(page.size(), page.offset());
   }
 
   @Transactional(readOnly = true)
-  public long countOpenCandidates() {
+  public long countOpenCandidates(ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     return candidates.countOpenCandidates();
   }
 
@@ -200,13 +209,15 @@ public class GovernanceService {
    */
   @Transactional(readOnly = true)
   public List<ScoredCandidate> listCandidatesForWorkbench(
-      CandidateFilter filter, PageRequest page) {
+      CandidateFilter filter, PageRequest page, ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     return candidates.listOpenCandidatesScored(
         filter.minSimilarity(), filter.sortBy(), page.size(), page.offset());
   }
 
   @Transactional(readOnly = true)
-  public long countCandidatesForWorkbench(CandidateFilter filter) {
+  public long countCandidatesForWorkbench(CandidateFilter filter, ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     return candidates.countOpenCandidatesByFilter(filter.minSimilarity());
   }
 
@@ -219,7 +230,8 @@ public class GovernanceService {
    */
   @Transactional(readOnly = true)
   public Map<String, GovernanceRepositories.AchievementStateRepository.AchievementState> statesOf(
-      java.util.Collection<String> ids) {
+      java.util.Collection<String> ids, ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     Map<String, GovernanceRepositories.AchievementStateRepository.AchievementState> byId =
         new LinkedHashMap<>();
     for (GovernanceRepositories.AchievementStateRepository.AchievementState state :
@@ -231,7 +243,8 @@ public class GovernanceService {
 
   /** 待办概览：分档计数让治理人员知道积压由哪一类构成。 */
   @Transactional(readOnly = true)
-  public WorkbenchSummary workbenchSummary() {
+  public WorkbenchSummary workbenchSummary(ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     GovernanceRepositories.CandidateBuckets buckets =
         candidates.countOpenCandidatesByBucket(SIMILARITY_HIGH, SIMILARITY_MID);
     return new WorkbenchSummary(
@@ -258,6 +271,7 @@ public class GovernanceService {
   @Transactional
   public BatchResolveOutcome batchReject(
       List<String> candidateIds, String reason, ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     if (candidateIds == null || candidateIds.isEmpty()) {
       throw BusinessException.invalidArgument("必须给出待裁决的候选标识");
     }
@@ -351,17 +365,20 @@ public class GovernanceService {
   }
 
   @Transactional(readOnly = true)
-  public long countOpenAnomalies() {
+  public long countOpenAnomalies(ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     return anomalies.countOpenAnomalies();
   }
 
   @Transactional(readOnly = true)
-  public List<GovernanceAnomaly> listAnomalies(PageRequest page) {
+  public List<GovernanceAnomaly> listAnomalies(PageRequest page, ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     return anomalies.listOpenAnomalies(page.size(), page.offset());
   }
 
   @Transactional
   public void resolveAnomaly(String anomalyId, ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     if (!anomalies.resolve(anomalyId)) {
       throw BusinessException.versionConflict("异常不存在或已处理，请刷新后重试");
     }
@@ -389,6 +406,7 @@ public class GovernanceService {
   @Transactional
   public List<String> resolveCandidate(
       String candidateId, String action, String survivorId, String reason, ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     DedupCandidate candidate =
         candidates.findById(candidateId).orElseThrow(() -> BusinessException.notFound("候选不存在"));
     if (candidate.status() != DedupCandidate.Status.OPEN) {
@@ -471,6 +489,7 @@ public class GovernanceService {
    */
   @Transactional
   public RebaseOutcome rebaseCandidate(String candidateId, String reason, ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     DedupCandidate candidate =
         candidates.findById(candidateId).orElseThrow(() -> BusinessException.notFound("候选不存在"));
     if (candidate.status() != DedupCandidate.Status.OPEN) {
@@ -666,7 +685,8 @@ public class GovernanceService {
    * 执行时就迁 3 条；不一致的预览比没有预览更糟。
    */
   @Transactional(readOnly = true)
-  public Map<String, Object> previewMerge(String survivorId, String mergedId) {
+  public Map<String, Object> previewMerge(String survivorId, String mergedId, ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     if (survivorId == null || survivorId.isBlank() || mergedId == null || mergedId.isBlank()) {
       throw BusinessException.invalidArgument("必须同时指定幸存成果与被合并成果");
     }
@@ -960,6 +980,7 @@ public class GovernanceService {
   @Transactional
   public void mergeAchievements(
       String survivorId, String mergedId, String reason, ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     String resolvedReason = requireReason(reason);
     Achievement survivor =
         achievements.findById(survivorId).orElseThrow(() -> BusinessException.notFound("幸存成果不存在"));
@@ -1047,6 +1068,24 @@ public class GovernanceService {
     log.info("成果合并完成 survivor={} merged={}", survivorId, mergedId);
   }
 
+  /** 两位学者是否共享同一个稳定标识（按种类 + 作用域 + 归一值比较）。 */
+  private boolean sharesIdentifier(String leftId, String rightId) {
+    java.util.Set<String> left =
+        mergeTargets.previewIdentifiers("SCHOLAR", leftId).stream()
+            .map(GovernanceService::identifierKey)
+            .collect(java.util.stream.Collectors.toSet());
+    if (left.isEmpty()) {
+      return false;
+    }
+    return mergeTargets.previewIdentifiers("SCHOLAR", rightId).stream()
+        .map(GovernanceService::identifierKey)
+        .anyMatch(left::contains);
+  }
+
+  private static String identifierKey(GovernanceRepositories.MergeTargetRepository.RegisteredIdentifier id) {
+    return id.identifierKind() + "|" + id.scope() + "|" + id.normalizedValue();
+  }
+
   /**
    * 合并学者。
    *
@@ -1055,6 +1094,7 @@ public class GovernanceService {
    */
   @Transactional
   public void mergeScholars(String survivorId, String mergedId, String reason, ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     Scholar survivor =
         scholars.findById(survivorId).orElseThrow(() -> BusinessException.notFound("幸存学者不存在"));
     Scholar merged =
@@ -1063,6 +1103,19 @@ public class GovernanceService {
       throw BusinessException.businessRule("学者已被合并，不能重复合并");
     }
     String resolved = requireReason(reason);
+
+    // 合并学者必须有人工可核验的依据：同规范姓名，或共同的稳定标识。两者都没有时，这次合并
+    // 等于把两个不同的人并成一个——成果、标识、门户授权都跟着转移，而台账里只会留下「合并了」
+    // 这一个动作，事后无从判断依据是什么。红线「同名不得直接合并」的反面同样成立：
+    // 不同名更不能直接合并。
+    boolean sameName =
+        survivor.nameNorm() != null
+            && !survivor.nameNorm().isBlank()
+            && survivor.nameNorm().equals(merged.nameNorm());
+    if (!sameName && !sharesIdentifier(survivorId, mergedId)) {
+      throw BusinessException.businessRule(
+          "两位学者的规范姓名不同，且没有共同的稳定标识，不能合并：请先核验是否为同一人并补充依据");
+    }
 
     Optional<String> survivorAuthority = mergeTargets.findActiveAuthorityId(survivorId);
     Optional<String> mergedAuthority = mergeTargets.findActiveAuthorityId(mergedId);
@@ -1074,6 +1127,7 @@ public class GovernanceService {
     snapshot.put("contributionsBefore", mergeTargets.snapshotScholarContributions(mergedId));
     snapshot.put(
         "identifiersBefore", identifierViews(mergeTargets.previewIdentifiers("SCHOLAR", mergedId)));
+    snapshot.put("mergeBasis", sameName ? "SAME_NAME" : "SHARED_IDENTIFIER");
     snapshot.put("survivorHasAuthority", survivorAuthority.isPresent());
     snapshot.put("mergedHasAuthority", mergedAuthority.isPresent());
 
@@ -1136,7 +1190,8 @@ public class GovernanceService {
   }
 
   @Transactional(readOnly = true)
-  public List<MergeLedgerEntry> ledgerOf(String entityId, int limit) {
+  public List<MergeLedgerEntry> ledgerOf(String entityId, int limit, ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     return ledger.listByEntity(entityId, limit);
   }
 

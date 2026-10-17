@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
  * <p>范围与预算规则（不满足时明确失败，不截断）：
  *
  * <ul>
+ *   <li>图按种子逐层扩边加载（{@link ScopedGraphLoader}），不把筛选范围内的全图读进内存；
  *   <li>子图节点上限与边上限来自配置，超限返回 {@code GRAPH_SCOPE_TOO_LARGE}；
  *   <li>路径计算有时间预算，超时返回 {@code GRAPH_TIMEOUT}；
  *   <li>最短路径按跳数 BFS，邻居按稳定 ID 升序访问，等长时取 ID 序列字典序最小的一条，
@@ -46,6 +47,14 @@ public class NetworkService {
 
   private static final String NATURE_ALL = "ALL";
   private static final int MAX_DEPTH = 3;
+
+  /**
+   * 最短路径的搜索深度上限。
+   *
+   * <p>合作网络的经验直径在 6 跳以内；给一个明确上限是为了让「查不到」有一个可解释的边界，
+   * 而不是在超大网络上无界展开。超出时如实说明「在 N 跳内不连通」，不冒充「全图不连通」。
+   */
+  private static final int MAX_PATH_DEPTH = 6;
 
   private final NetworkMapper mapper;
   private final PublicBarrierGuard guard;
@@ -75,9 +84,21 @@ public class NetworkService {
             maxNodesRequested <= 0 ? properties.graphMaxNodes() : maxNodesRequested,
             properties.graphMaxNodes());
 
-    CooperationGraph graph =
-        loadGraph(generation, nature, topicId, organization, properties.graphMaxEdges());
-    if (!graph.contains(scholarId)) {
+    ScopedGraphLoader loader =
+        new ScopedGraphLoader(
+            mapper,
+            generation,
+            nature,
+            topicId,
+            organization,
+            properties.graphMaxEdges(),
+            maxNodes);
+    loader.addSeed(scholarId);
+    List<String> frontier = List.of(scholarId);
+    for (int level = 0; level < depthValue && !frontier.isEmpty(); level++) {
+      frontier = loader.expand(frontier, true);
+    }
+    if (!loader.contains(scholarId)) {
       // 该学者不在子图内：可能是未公开、关系不合格，或筛选条件把他排除了。如实返回空图并说明，
       // 不伪造一个「他自己」的孤立节点——那会让人以为他有档案但没合作者。
       Map<String, Object> data = emptyGraph(barrier, nature, topicId, organization);
@@ -86,6 +107,11 @@ public class NetworkService {
       data.put("note", "该学者在当前范围内没有合格合作边，可能原因：成果未公开或未生效、关系非 AUTO/SELF_CONFIRMED、" + "或当前筛选条件将其排除。");
       return data;
     }
+    // 收尾：把「两端都在深度边界上」的边补进来。边界节点不再向外扩展，否则子图会越过声明的深度。
+    if (!frontier.isEmpty()) {
+      loader.expand(frontier, false);
+    }
+    CooperationGraph graph = loader.snapshot("g" + generation);
     CooperationGraph.SubGraph subGraph = graph.neighborhood(scholarId, depthValue, maxNodes);
     if (subGraph == null) {
       throw new BusinessException(
@@ -103,7 +129,8 @@ public class NetworkService {
       edges.add(edgeView(edge));
     }
     data.put("edges", edges);
-    data.put("withinLimits", Map.of("nodes", graph.nodeCount(), "edges", graph.edgeCount()));
+    data.put("withinLimits", Map.of("nodes", loader.nodeCount(), "edges", loader.edgeCount()));
+    data.put("scope", "按种子 " + depthValue + " 跳内实际载入的子图，不是筛选范围的全图");
     return data;
   }
 
@@ -121,9 +148,6 @@ public class NetworkService {
     long startedAt = System.currentTimeMillis();
     String generation = barrier.activeGeneration();
     String nature = normalizeNature(dataNature);
-
-    CooperationGraph graph =
-        loadGraph(generation, nature, topicId, organization, properties.graphMaxEdges());
     Map<String, Object> data = base(barrier, nature, topicId, organization);
     data.put("from", from);
     data.put("to", to);
@@ -135,26 +159,44 @@ public class NetworkService {
       data.put("note", "起点与终点相同，按 0 跳返回。");
       return data;
     }
-    if (!graph.contains(from) || !graph.contains(to)) {
+
+    ScopedGraphLoader fromLoader =
+        new ScopedGraphLoader(
+            mapper,
+            generation,
+            nature,
+            topicId,
+            organization,
+            properties.graphMaxEdges(),
+            properties.graphMaxNodes());
+    fromLoader.addSeed(from);
+    Map<String, Integer> fromSource = breadthFirst(fromLoader, from, MAX_PATH_DEPTH, startedAt);
+    if (!fromSource.containsKey(to)) {
       data.put("reachable", false);
       data.put("hops", null);
       data.put("path", List.of());
       data.put(
           "note",
-          "起点或终点在当前范围内没有合格合作边，因此不存在路径。" + "「无路径」与「超出范围」是两件事：后者会返回 GRAPH_SCOPE_TOO_LARGE 而不是这里的结果。");
+          "在 " + MAX_PATH_DEPTH + " 跳范围内未找到合作路径；这不等于全图不连通，只说明最短距离超过 "
+              + MAX_PATH_DEPTH + " 跳。起点或终点若在范围内没有合格合作边，也会得到这个结果。");
+      data.put("withinLimits", Map.of("nodes", fromLoader.nodeCount(), "edges", fromLoader.edgeCount()));
       return data;
     }
 
-    Map<String, Integer> fromSource = breadthFirst(graph, from, startedAt);
-    Map<String, Integer> toTarget = breadthFirst(graph, to, startedAt);
-    Integer distance = fromSource.get(to);
-    if (distance == null) {
-      data.put("reachable", false);
-      data.put("hops", null);
-      data.put("path", List.of());
-      data.put("note", "在给定筛选范围内两点不连通。");
-      return data;
-    }
+    int distance = fromSource.get(to);
+    ScopedGraphLoader toLoader =
+        new ScopedGraphLoader(
+            mapper,
+            generation,
+            nature,
+            topicId,
+            organization,
+            properties.graphMaxEdges(),
+            properties.graphMaxNodes());
+    toLoader.addSeed(to);
+    // 目标侧只需覆盖「最短路径上除端点以外的节点」：它们距目标最多 distance-1 跳。
+    Map<String, Integer> toTarget =
+        breadthFirst(toLoader, to, Math.max(distance - 1, 0), startedAt);
 
     List<String> path = new ArrayList<>();
     String current = from;
@@ -166,13 +208,13 @@ public class NetworkService {
       }
       int nextDistance = fromSource.get(current) + 1;
       String next = null;
-      for (String neighbor : graph.neighbors(current)) {
+      // 邻居按 ID 升序尝试：等长路径里取字典序最小的一条，与遍历顺序无关。
+      for (String neighbor : new java.util.TreeSet<>(fromLoader.neighbors(current))) {
         Integer neighborFromSource = fromSource.get(neighbor);
         Integer neighborToTarget = toTarget.get(neighbor);
         if (neighborFromSource == null || neighborToTarget == null) {
           continue;
         }
-        // 仍在最短路径上：源侧跳数恰好递增，且剩余跳数可接到目标
         if (neighborFromSource == nextDistance
             && neighborFromSource + neighborToTarget == distance) {
           next = neighbor;
@@ -190,60 +232,42 @@ public class NetworkService {
     data.put("hops", distance);
     data.put("path", path);
     data.put("pathNodes", nodeViews(generation, path));
-    data.put("withinLimits", Map.of("nodes", graph.nodeCount(), "edges", graph.edgeCount()));
+    data.put(
+        "withinLimits",
+        Map.of(
+            "nodes",
+            Math.max(fromLoader.nodeCount(), toLoader.nodeCount()),
+            "edges",
+            fromLoader.edgeCount() + toLoader.edgeCount()));
     data.put("pathRule", "跳数最少；等长时取规范 ID 序列字典序最小的一条；只返回一条，不枚举全部等长路径");
+    data.put("scope", "双侧按需扩边至第 " + distance + " 跳，不是筛选范围的全图");
     return data;
   }
 
-  /** BFS 距离；超过时间预算抛 GRAPH_TIMEOUT，不返回部分结果。 */
-  private Map<String, Integer> breadthFirst(CooperationGraph graph, String source, long startedAt) {
+  /**
+   * 从起点出发的受限 BFS 距离。
+   *
+   * <p>只展开前 {@code maxDepth} 层，超过时间预算抛 {@code GRAPH_TIMEOUT}，不返回部分结果——
+   * 「算了一半的距离」会让调用方把截断当成真实拓扑。
+   */
+  private Map<String, Integer> breadthFirst(
+      ScopedGraphLoader loader, String source, int maxDepth, long startedAt) {
     Map<String, Integer> distance = new HashMap<>();
-    ArrayDeque<String> queue = new ArrayDeque<>();
     distance.put(source, 0);
-    queue.add(source);
-    while (!queue.isEmpty()) {
+    List<String> frontier = List.of(source);
+    for (int depth = 1; depth <= maxDepth && !frontier.isEmpty(); depth++) {
       if (System.currentTimeMillis() - startedAt > properties.graphBudgetMillis()) {
         throw new BusinessException(
             ErrorCode.GRAPH_TIMEOUT,
             "路径计算超过时间预算 " + properties.graphBudgetMillis() + " 毫秒，请增加领域或机构筛选条件以缩小子图范围");
       }
-      String current = queue.poll();
-      for (String neighbor : graph.neighbors(current)) {
-        if (!distance.containsKey(neighbor)) {
-          distance.put(neighbor, distance.get(current) + 1);
-          queue.add(neighbor);
-        }
+      List<String> discovered = loader.expand(frontier, true);
+      for (String id : discovered) {
+        distance.putIfAbsent(id, depth);
       }
+      frontier = discovered;
     }
     return distance;
-  }
-
-  /**
-   * 载入子图。
-   *
-   * <p>先数节点再取边：节点数超限直接失败，避免把边表整个读进内存后才发现范围过大。取边时多取
-   * 一行用于判断是否越界（{@code limit + 1}），因为「刚好等于上限」与「超过上限」必须区分开。
-   */
-  private CooperationGraph loadGraph(
-      String generation, String nature, String topicId, String organization, int maxEdges) {
-    long nodes = mapper.countNodes(generation, nature, topicId, organization);
-    if (nodes > properties.graphMaxNodes()) {
-      throw new BusinessException(
-          ErrorCode.GRAPH_SCOPE_TOO_LARGE,
-          "当前筛选范围内的合作子图含 " + nodes + " 个学者，超过节点上限 " + properties.graphMaxNodes() + "，请增加领域或机构筛选条件");
-    }
-    List<NetworkMapper.EdgeRow> rows =
-        mapper.listEdges(generation, nature, topicId, organization, maxEdges + 1);
-    if (rows.size() > maxEdges) {
-      throw new BusinessException(
-          ErrorCode.GRAPH_SCOPE_TOO_LARGE, "当前筛选范围内的合作边超过上限 " + maxEdges + " 条，请增加领域或机构筛选条件");
-    }
-    List<CooperationEdge> edges = new ArrayList<>(rows.size());
-    for (NetworkMapper.EdgeRow row : rows) {
-      edges.add(new CooperationEdge(row.scholarA(), row.scholarB(), row.strength()));
-    }
-    log.debug("载入合作子图 generation={} 节点={} 边={}", generation, nodes, edges.size());
-    return CooperationGraph.of("g" + generation, edges);
   }
 
   private List<Map<String, Object>> nodeViews(String generation, List<String> ids) {

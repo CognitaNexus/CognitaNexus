@@ -110,6 +110,52 @@ public interface NetworkMapper {
       @Param("organization") String organization,
       @Param("limit") int limit);
 
+  /**
+   * 「以这些学者为至少一端」的合作边。
+   *
+   * <p>邻域与最短路径都从这里按需扩边，而不是把整个筛选范围读进内存：真实库里有 2.5 万位学者、
+   * 7.7 万条边，全局载入会让任何一次单学者查询都撞上范围上限——那不是「范围太大，请加筛选」，
+   * 而是「这个功能在真实规模下不可用」。按种子逐层扩边后，代价只与查询真正需要的子图有关。
+   *
+   * <p>过滤条件与 {@link #listEdges} 完全一致，保证「同一个边在两个出口的口径相同」。
+   */
+  @Select(
+      """
+      <script>
+      SELECT e.scholar_a, e.scholar_b, count(DISTINCT e.achievement_id) AS strength
+      FROM qry_coauthor_edge e
+      JOIN qry_achievement a
+        ON a.generation = e.generation AND a.achievement_id = e.achievement_id
+      WHERE e.generation = #{generation}
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        AND (e.scholar_a IN
+             <foreach collection="scholars" item="s" open="(" separator="," close=")">#{s}</foreach>
+          OR e.scholar_b IN
+             <foreach collection="scholars" item="s" open="(" separator="," close=")">#{s}</foreach>)
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+        <if test="topicId != null">
+          AND EXISTS (SELECT 1 FROM qry_achievement_topic t
+                      WHERE t.generation = a.generation AND t.achievement_id = a.achievement_id
+                        AND t.topic_id = #{topicId})
+        </if>
+        <if test="organization != null">
+          AND EXISTS (SELECT 1 FROM qry_contribution_org o
+                      WHERE o.generation = a.generation AND o.achievement_id = a.achievement_id
+                        AND o.organization = #{organization})
+        </if>
+      GROUP BY e.scholar_a, e.scholar_b
+      ORDER BY e.scholar_a, e.scholar_b
+      LIMIT #{limit}
+      </script>
+      """)
+  List<EdgeRow> listEdgesOfScholars(
+      @Param("generation") String generation,
+      @Param("dataNature") String dataNature,
+      @Param("topicId") String topicId,
+      @Param("organization") String organization,
+      @Param("scholars") List<String> scholars,
+      @Param("limit") int limit);
+
   @Select(
       """
       <script>

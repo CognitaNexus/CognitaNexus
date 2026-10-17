@@ -236,8 +236,14 @@ class ProjectionApplier {
       List<ProjectedContribution> contributions,
       List<ProjectedTopic> topics) {
     readModel.upsertAchievement(generation, projected);
-    readModel.replaceContributions(generation, projected.achievementId(), contributions);
-    readModel.replaceTopics(generation, projected.achievementId(), topics);
+    // 派生集合只为「当前公开可见」的成果保留。撤销发布或收紧为受限之后，若仍按事件里带来的
+    // 参与关系与领域照写一遍，投影里就会留下一条已下架成果的作者行与领域行：公开读看不见它
+    // （查询都带状态过滤），但统计口径与「重建结果 vs 增量结果」会从此不相等——全量重建只导入
+    // 公开快照，会把这些行清掉，而这种差异只在切换代的那一刻才暴露。
+    boolean visible = projected.publiclyVisible();
+    readModel.replaceContributions(
+        generation, projected.achievementId(), visible ? contributions : List.of());
+    readModel.replaceTopics(generation, projected.achievementId(), visible ? topics : List.of());
     rebuildEdges(generation, projected.achievementId());
   }
 

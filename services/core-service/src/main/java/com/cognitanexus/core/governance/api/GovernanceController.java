@@ -53,7 +53,7 @@ public class GovernanceController {
       @RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size) {
     PageRequest pageRequest = PageRequest.of(page, size);
     List<Map<String, Object>> items =
-        governance.listCandidates(pageRequest).stream()
+        governance.listCandidates(pageRequest, ActorContextHolder.currentOrNull()).stream()
             .map(GovernanceController::candidateView)
             .toList();
     return ResponseEntity.ok(
@@ -62,7 +62,7 @@ public class GovernanceController {
             Map.of(
                 "page", pageRequest.page(),
                 "size", pageRequest.size(),
-                "total", governance.countOpenCandidates()),
+                "total", governance.countOpenCandidates(ActorContextHolder.currentOrNull())),
             TraceIdHolder.current()));
   }
 
@@ -132,7 +132,9 @@ public class GovernanceController {
         GovernanceService.CandidateFilter.of(minSimilarity, sort);
     PageRequest pageRequest = PageRequest.of(page, size);
     List<com.cognitanexus.core.governance.application.GovernanceRepositories.ScoredCandidate>
-        scored = governance.listCandidatesForWorkbench(filter, pageRequest);
+        scored =
+            governance.listCandidatesForWorkbench(
+                filter, pageRequest, ActorContextHolder.currentOrNull());
     // 两端状态在这里实时取一次，供卡片直接显示「这一侧已经被并走了」。候选自带的 evidence 是
     // 登记那一刻的快照，用它渲染会把「当时的结论」当成「现在的事实」。
     List<String> endpointIds = new ArrayList<>();
@@ -142,14 +144,16 @@ public class GovernanceController {
       endpointIds.add(item.candidate().rightAchievementId());
     }
     Map<String, GovernanceRepositories.AchievementStateRepository.AchievementState> states =
-        governance.statesOf(endpointIds);
+        governance.statesOf(endpointIds, ActorContextHolder.currentOrNull());
     List<Map<String, Object>> items =
         scored.stream().map(item -> scoredCandidateView(item, states)).toList();
-    GovernanceService.WorkbenchSummary summary = governance.workbenchSummary();
+    GovernanceService.WorkbenchSummary summary =
+        governance.workbenchSummary(ActorContextHolder.currentOrNull());
     Map<String, Object> meta = new LinkedHashMap<>();
     meta.put("page", pageRequest.page());
     meta.put("size", pageRequest.size());
-    meta.put("total", governance.countCandidatesForWorkbench(filter));
+    meta.put(
+        "total", governance.countCandidatesForWorkbench(filter, ActorContextHolder.currentOrNull()));
     meta.put("openTotal", summary.total());
     meta.put("high", summary.high());
     meta.put("mid", summary.mid());
@@ -193,7 +197,7 @@ public class GovernanceController {
       @RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size) {
     PageRequest pageRequest = PageRequest.of(page, size);
     List<Map<String, Object>> items =
-        governance.listAnomalies(pageRequest).stream()
+        governance.listAnomalies(pageRequest, ActorContextHolder.currentOrNull()).stream()
             .map(GovernanceController::anomalyView)
             .toList();
     return ResponseEntity.ok(
@@ -202,7 +206,7 @@ public class GovernanceController {
             Map.of(
                 "page", pageRequest.page(),
                 "size", pageRequest.size(),
-                "total", governance.countOpenAnomalies()),
+                "total", governance.countOpenAnomalies(ActorContextHolder.currentOrNull())),
             TraceIdHolder.current()));
   }
 
@@ -261,7 +265,9 @@ public class GovernanceController {
   public ResponseEntity<ApiResponse<Map<String, Object>>> mergePreview(
       @RequestParam String survivorId, @RequestParam String mergedId) {
     return ResponseEntity.ok(
-        ApiResponse.ok(governance.previewMerge(survivorId, mergedId), TraceIdHolder.current()));
+        ApiResponse.ok(
+            governance.previewMerge(survivorId, mergedId, ActorContextHolder.currentOrNull()),
+            TraceIdHolder.current()));
   }
 
   @PostMapping("/achievements/merge")
@@ -284,7 +290,10 @@ public class GovernanceController {
   public ResponseEntity<ApiResponse<List<Map<String, Object>>>> ledger(
       @RequestParam String entityId, @RequestParam(defaultValue = "50") int limit) {
     List<Map<String, Object>> items =
-        governance.ledgerOf(entityId, Math.min(Math.max(limit, 1), 200)).stream()
+        governance
+            .ledgerOf(
+                entityId, Math.min(Math.max(limit, 1), 200), ActorContextHolder.currentOrNull())
+            .stream()
             .map(GovernanceController::ledgerView)
             .toList();
     return ResponseEntity.ok(ApiResponse.ok(items, TraceIdHolder.current()));

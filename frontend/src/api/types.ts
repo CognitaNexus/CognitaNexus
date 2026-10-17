@@ -54,10 +54,15 @@ export interface SearchItem {
   visibility: string
   effectiveStatus: string
   publicationYear: number | null
-  doi: string | null
-  venue: string | null
-  citationCount: number | null
-  citationSource: string | null
+  // 下面四个「值未知」字段在报文里会**整段消失**（服务端 Jackson 配了 non_null），
+  // 前端拿到的是 undefined 而不是 null。模板里判空必须同时挡 undefined，
+  // 写 `!== null` 会放过它，进而在 undefined 上调用方法、把整页渲染打断。
+  // 项目类成果本来就没有 DOI / 期刊 / 引用量，浏览入口首屏恰好全是项目，
+  // 因此这条坑只在「不带关键词打开检索页」时出现。
+  doi?: string | null
+  venue?: string | null
+  citationCount?: number | null
+  citationSource?: string | null
   authors: string[]
   topics: TopicView[]
   relevance: number

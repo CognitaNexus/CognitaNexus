@@ -22,6 +22,11 @@ spring:
       minimum-idle: 2
       connection-timeout: 5000
       pool-name: ingestion-pool
+      # 强制自定义执行计划。JDBC 的同一个 PreparedStatement 在第 6 次执行时会从「按实际参数
+      # 生成计划」切到「通用计划」，而这些查询的参数区分度极高（领域热度从 50 条到 7000 条），
+      # 通用计划按均值估算行数，实测把一条 18ms 的领域统计查询拖到 262ms（14 倍），
+      # 领域洞察页因此稳定停在 2 秒以上。改由服务端每次按实际参数生成计划。
+      connection-init-sql: SET plan_cache_mode = force_custom_plan
 
   flyway:
     enabled: true

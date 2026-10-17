@@ -46,7 +46,16 @@ public class PublicCatalogQueryService {
     this.topics = topics;
   }
 
-  /** 成果详情。 */
+  /**
+   * 成果详情。
+   *
+   * <p>被合并的旧标识要跳到链的终点，但<b>跳转不能绕过公开资格</b>：早先的实现解析出幸存实体后
+   * 直接组装响应，于是任何拿到旧标识的人都能读到一条仍处于待治理或受限状态的内容——重定向成了
+   * 一条公开读的旁路。资格判定必须作用在「最终要返回的那个实体」上。
+   *
+   * <p>跳转后的响应与直接打开终点实体完全同构（扩展字段、领域、参与关系都在），只多出
+   * redirectedFrom/redirectNote 两个说明字段。只给 baseView 会让旧链接打开一个空壳页面。
+   */
   @Transactional(readOnly = true)
   public Map<String, Object> achievementDetail(String achievementId) {
     Achievement achievement =
@@ -54,25 +63,35 @@ public class PublicCatalogQueryService {
             .findById(achievementId)
             .orElseThrow(() -> BusinessException.notFound("成果不存在或尚不可见"));
 
+    String redirectedFrom = null;
+    Achievement target = achievement;
     if (achievement.merged()) {
       String survivor =
           achievements.resolveSurvivorId(achievementId).orElse(achievement.mergedIntoId());
-      Achievement target =
+      target =
           achievements
               .findById(survivor)
               .orElseThrow(() -> BusinessException.notFound("成果不存在或尚不可见"));
-      Map<String, Object> redirected = baseView(target);
-      redirected.put("redirectedFrom", achievementId);
-      redirected.put("redirectNote", "该成果已被合并，本响应指向合并后的实体");
-      return redirected;
+      redirectedFrom = achievementId;
     }
 
-    if (!achievement.visibility().publiclyVisible()
-        || !achievement.effectiveStatus().publiclyEligible()) {
+    if (!target.visibility().publiclyVisible()
+        || !target.effectiveStatus().publiclyEligible()) {
       // 不存在与不可见对外不可区分，避免通过状态码探测受限对象
       throw BusinessException.notFound("成果不存在或尚不可见");
     }
 
+    Map<String, Object> view = detailViewOf(target);
+    if (redirectedFrom != null) {
+      view.put("redirectedFrom", redirectedFrom);
+      view.put("redirectNote", "该成果已被合并，本响应指向合并后的实体");
+    }
+    return view;
+  }
+
+  /** 按实体组装详情视图。调用方已确认该实体具备公开资格。 */
+  private Map<String, Object> detailViewOf(Achievement achievement) {
+    String achievementId = achievement.id();
     Map<String, Object> view = baseView(achievement);
     achievements
         .findPaper(achievementId)
@@ -151,7 +170,9 @@ public class PublicCatalogQueryService {
       String survivor = scholars.resolveSurvivorId(scholarId).orElse(scholar.mergedIntoId());
       Scholar target =
           scholars.findById(survivor).orElseThrow(() -> BusinessException.notFound("学者不存在"));
+      // 与成果同理：跳转要落到终点的完整视图，而不是一个只有姓名与单位的空壳。
       Map<String, Object> view = scholarBaseView(target);
+      view.put("contributions", scholarContributionViews(target.id()));
       view.put("redirectedFrom", scholarId);
       view.put("redirectNote", "该档案已被合并，本响应指向合并后的实体");
       return view;

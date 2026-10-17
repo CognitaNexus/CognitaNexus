@@ -318,8 +318,13 @@ watch(
 
             <div class="result-meta" style="margin-top: 5px">
               <span class="badge neutral">{{ item.type }}</span>
+              <!-- 必须同时挡 null 与 undefined：服务端 Jackson 配了 non_null，null 字段直接从
+                   报文里消失，前端拿到的是 undefined。原来只写 !== null，于是「无关键词浏览」
+                   命中的项目类成果（本来就没有引用量）会让这里执行 undefined.toLocaleString()，
+                   渲染抛错、整页停在「正在读取…」。带关键词检索时首条恰好是有引用量的论文，
+                   所以这个崩溃只在默认入口出现，翻页与截图都发现不了。 -->
               <span
-                v-if="item.citationCount !== null"
+                v-if="item.citationCount !== null && item.citationCount !== undefined"
                 class="mono"
                 :title="`引用量来源：${item.citationSource ?? '未标注'}`"
               >

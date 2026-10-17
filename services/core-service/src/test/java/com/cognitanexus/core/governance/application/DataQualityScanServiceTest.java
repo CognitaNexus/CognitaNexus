@@ -16,8 +16,12 @@ import com.cognitanexus.core.governance.application.GovernanceRepositories.Anoma
 import com.cognitanexus.core.governance.application.GovernanceRepositories.AnomalyRepository.OpenAnomalyKey;
 import com.cognitanexus.core.governance.domain.GovernanceAnomaly;
 import com.cognitanexus.core.platform.audit.AuditRecorder;
+import com.cognitanexus.core.platform.security.ActorContext;
+import com.cognitanexus.core.platform.security.RoleNames;
+import com.cognitanexus.sharedkernel.AccountId;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,6 +35,11 @@ import org.mockito.ArgumentCaptor;
  * 「不存在」（那会把上限变成一个静默的错误结论）。
  */
 class DataQualityScanServiceTest {
+
+  /** 巡检是治理动作：读取业务数据并登记待办，因此与其它治理入口一样需要治理能力。 */
+  private static final ActorContext REVIEWER =
+      new ActorContext(
+          new AccountId("acc_reviewer"), "reviewer", "审核员", Set.of(RoleNames.REVIEWER), 1L);
 
   private DataQualityRepository data;
   private AnomalyRepository anomalies;
@@ -72,7 +81,7 @@ class DataQualityScanServiceTest {
     when(data.yearOutOfRangeSamples(anyInt()))
         .thenReturn(List.of(new DataQualityRepository.Sample("ach_1", "某成果", "PAPER", 20245)));
 
-    DataQualityScanService.Report report = service.scan(null);
+    DataQualityScanService.Report report = service.scan(REVIEWER);
 
     ArgumentCaptor<GovernanceAnomaly> captor = ArgumentCaptor.forClass(GovernanceAnomaly.class);
     verify(anomalies).record(captor.capture());
@@ -97,7 +106,7 @@ class DataQualityScanServiceTest {
     when(anomalies.findOpenIdByDedupeKey(GovernanceAnomaly.KIND_YEAR_OUT_OF_RANGE, "ach_1"))
         .thenReturn(Optional.of("anm_existing"));
 
-    DataQualityScanService.Report report = service.scan(null);
+    DataQualityScanService.Report report = service.scan(REVIEWER);
 
     verify(anomalies, never()).record(any());
     verify(anomalies).refreshDetail(eq("anm_existing"), any());
@@ -111,7 +120,7 @@ class DataQualityScanServiceTest {
     when(anomalies.listOpenOfKind(GovernanceAnomaly.KIND_YEAR_OUT_OF_RANGE, 500))
         .thenReturn(List.of(new OpenAnomalyKey("anm_stale", "ach_old")));
 
-    DataQualityScanService.Report report = service.scan(null);
+    DataQualityScanService.Report report = service.scan(REVIEWER);
 
     verify(anomalies).resolve("anm_stale");
     // 审计里必须能读回「是谁在什么时候把这条待办关掉的」，且动作名与人工处置区分开。
@@ -139,7 +148,7 @@ class DataQualityScanServiceTest {
     }
     when(data.yearOutOfRangeIds(anyInt())).thenReturn(many);
 
-    DataQualityScanService.Report report = service.scan(null);
+    DataQualityScanService.Report report = service.scan(REVIEWER);
 
     verify(anomalies, never()).listOpenOfKind(eq(GovernanceAnomaly.KIND_YEAR_OUT_OF_RANGE), anyInt());
     assertThat(report.findings())
@@ -161,7 +170,7 @@ class DataQualityScanServiceTest {
                 new DataQualityRepository.Bucket("PAPER", 600),
                 new DataQualityRepository.Bucket("AWARD", 94)));
 
-    DataQualityScanService.Report report = service.scan(null);
+    DataQualityScanService.Report report = service.scan(REVIEWER);
 
     ArgumentCaptor<GovernanceAnomaly> captor = ArgumentCaptor.forClass(GovernanceAnomaly.class);
     verify(anomalies).record(captor.capture());
@@ -182,7 +191,7 @@ class DataQualityScanServiceTest {
     when(anomalies.findOpenIdByDedupeKey(GovernanceAnomaly.KIND_MISSING_TOPIC, "ALL"))
         .thenReturn(Optional.of("anm_topic"));
 
-    DataQualityScanService.Report report = service.scan(null);
+    DataQualityScanService.Report report = service.scan(REVIEWER);
 
     verify(anomalies).resolve("anm_topic");
     assertThat(report.autoClosed()).isEqualTo(1);
@@ -200,7 +209,7 @@ class DataQualityScanServiceTest {
                 new DataQualityRepository.ScholarSample("sch_1", "Zhang Wei", "清华大学", "UNCLAIMED"),
                 new DataQualityRepository.ScholarSample("sch_2", "Zhang Wei", "北京大学", "UNCLAIMED")));
 
-    service.scan(null);
+    service.scan(REVIEWER);
 
     ArgumentCaptor<GovernanceAnomaly> captor = ArgumentCaptor.forClass(GovernanceAnomaly.class);
     verify(anomalies).record(captor.capture());
@@ -221,7 +230,7 @@ class DataQualityScanServiceTest {
         .thenReturn(
             List.of(new DataQualityRepository.AmbiguousScholar("sch_1", "Li Wei", 42)));
 
-    DataQualityScanService.Report report = service.scan(null);
+    DataQualityScanService.Report report = service.scan(REVIEWER);
 
     ArgumentCaptor<GovernanceAnomaly> captor = ArgumentCaptor.forClass(GovernanceAnomaly.class);
     verify(anomalies).record(captor.capture());
@@ -242,7 +251,7 @@ class DataQualityScanServiceTest {
   void scanOnlyWritesAnomalies() {
     when(data.yearOutOfRangeIds(anyInt())).thenReturn(List.of("ach_1"));
 
-    service.scan(null);
+    service.scan(REVIEWER);
 
     // 探测端口 DataQualityRepository 的全部方法名都不含写动词，这里显式断言一次：
     // 一旦有人往这个端口上加「自动修正」的方法，这条断言会立刻提醒他红线在哪。
@@ -264,7 +273,7 @@ class DataQualityScanServiceTest {
     when(data.effectiveWithoutTopicByType())
         .thenReturn(List.of(new DataQualityRepository.Bucket("PAPER", 3)));
 
-    service.scan(null);
+    service.scan(REVIEWER);
 
     ArgumentCaptor<GovernanceAnomaly> captor = ArgumentCaptor.forClass(GovernanceAnomaly.class);
     verify(anomalies, org.mockito.Mockito.atLeastOnce()).record(captor.capture());
@@ -276,7 +285,7 @@ class DataQualityScanServiceTest {
   @Test
   @DisplayName("巡检报告自带口径：规则版本、时区、年份上下界")
   void reportCarriesCriteria() {
-    DataQualityScanService.Report report = service.scan(null);
+    DataQualityScanService.Report report = service.scan(REVIEWER);
 
     assertThat(report.ruleVersion()).isEqualTo(DataQualityScanService.RULE_VERSION);
     assertThat(report.timeZone()).isNotBlank();

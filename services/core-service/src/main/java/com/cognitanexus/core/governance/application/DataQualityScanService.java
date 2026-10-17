@@ -4,6 +4,7 @@ import com.cognitanexus.core.governance.application.GovernanceRepositories.DataQ
 import com.cognitanexus.core.governance.domain.GovernanceAnomaly;
 import com.cognitanexus.core.platform.audit.AuditRecorder;
 import com.cognitanexus.core.platform.security.ActorContext;
+import com.cognitanexus.core.platform.security.Capabilities;
 import com.cognitanexus.core.platform.security.RoleNames;
 import com.cognitanexus.core.platform.util.Identifiers;
 import java.time.Instant;
@@ -96,6 +97,7 @@ public class DataQualityScanService {
    */
   @Transactional
   public Report scan(ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     int maxYear = ZonedDateTime.now(ZoneId.systemDefault()).getYear() + YEAR_LOOKAHEAD;
     List<Finding> findings = new ArrayList<>();
     int created = 0;

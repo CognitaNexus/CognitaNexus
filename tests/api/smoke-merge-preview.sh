@@ -24,6 +24,7 @@ PYTHON="$(command -v python3 || command -v python)"
 rm -rf "$JAR" 2>/dev/null || true
 mkdir -p "$JAR"
 COOKIES="$JAR/admin.cookies"
+PSQL="${PSQL_BIN:-D:/dev-tools/pgsql/bin/psql.exe}"
 
 ADMIN_USER="${CN_BOOTSTRAP_ADMIN_USERNAME:-cnadmin}"
 ADMIN_PASS="${CN_BOOTSTRAP_ADMIN_PASSWORD:-cn-admin-Dev-2026}"
@@ -50,6 +51,12 @@ status_of() {
   curl -s -o /dev/null -w '%{http_code}' -X "$method" -b "$jar" -c "$jar" "$BASE$path" "$@"
 }
 get() { curl -s -b "$COOKIES" -c "$COOKIES" "$BASE$1"; }
+# 直查 core 库做独立核对。这里是全英文 SQL：psql 在 Windows 下用 -c 传中文会按 ANSI 码页
+# 转 argv，UTF-8 的中文在到达服务端前就已经坏了。
+core_sql() {
+  PGPASSWORD=cn_core_app_dev PGCLIENTENCODING=UTF8 MSYS_NO_PATHCONV=1 \
+    "$PSQL" -h 127.0.0.1 -p 5432 -U core_app -d core_db -At -c "$1" 2>/dev/null | tr -d '\r'
+}
 field() { "$PYTHON" "$CHECKER" field "$@"; }
 
 PREVIEW_PATH="/api/v1/admin/core/governance/achievements/merge-preview"
@@ -150,8 +157,13 @@ else
   CLOSED="$(field "$JAR/preview.json" data.effects.candidatesClosedWithMerge)"
   get '/api/v1/admin/core/governance/candidates/workbench?page=1&size=1' > "$JAR/wb-after.json"
   OPEN_FINAL="$(field "$JAR/wb-after.json" meta.openTotal)"
-  check '待治理总数实际下降数 = 预览说会一并裁决的条数' \
-    "$((OPEN_BEFORE - CLOSED))" "$OPEN_FINAL"
+  # 总数不能拿来做等式：采集执行器在后台持续写入新记录，也就持续产生新的相似标题候选，
+  # 一次合并关掉 1 条、同时新增几十条时，总数会上升。这不是合并失败，而是这个环境里
+  # 「总数」根本不是只被合并影响的量。核对改为直接问库：这一对之间还有没有 OPEN 候选。
+  printf '        待治理总数：合并前 %s，合并后 %s（后台采集会持续新增，仅作参考）\n' \
+    "$OPEN_BEFORE" "$OPEN_FINAL"
+  PAIR_OPEN="$(core_sql "SELECT count(*) FROM gov_dedup_candidate WHERE status='OPEN' AND ((left_achievement_id='$LEFT' AND right_achievement_id='$RIGHT') OR (left_achievement_id='$RIGHT' AND right_achievement_id='$LEFT'));")"
+  check '这一对之间已无 OPEN 候选（合并回答了它的问题）' '0' "$PAIR_OPEN"
   check '这一对之间的候选已被裁决（预览数字不为 0）' 'yes' \
     "$([ "${CLOSED:-0}" -gt 0 ] && echo yes || echo no)"
   # 合并后的台账里也要留痕：没有这一项时，「候选去哪了」在台账上查不到。
@@ -212,8 +224,12 @@ else
       -d '{"reason":"合并影响预览自检：把遗留候选改判到最终实体"}' \
       "$BASE/api/v1/admin/core/governance/candidates/$BLOCKED_ID/rebase")"
     # 总数要在改判之前取：这条等式用的是「服务端按表统计出来的数」，不是接口自报的。
+    # 原候选是否真的离开了 OPEN：直接问库。改判接口的语句带 status='OPEN' 条件，
+    # 但「接口返回 200」只说明这一次请求成立，不说明写进库的状态是什么。
     get '/api/v1/admin/core/governance/candidates/workbench?page=1&size=100' > "$JAR/wb-rebased.json"
-    "$PYTHON" "$CHECKER" rebase "$JAR/rebase.json" "$JAR/wb-rebased.json" "$OPEN_FINAL" || FAILED=1
+    REBASE_STATE="$(core_sql "SELECT status FROM gov_dedup_candidate WHERE id='$BLOCKED_ID';")"
+    check '原候选已离开 OPEN（改判落为终态）' 'yes' \
+      "$([ -n "$REBASE_STATE" ] && [ "$REBASE_STATE" != 'OPEN' ] && echo yes || echo no)"
     REBASE_STATUS="$(field "$JAR/rebase.json" data.status)"
     if [ "$REBASE_STATUS" = 'REBASED' ]; then
       REBASED_TO="$(field "$JAR/rebase.json" data.rebasedToId)"

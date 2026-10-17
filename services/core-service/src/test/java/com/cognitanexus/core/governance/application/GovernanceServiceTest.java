@@ -501,19 +501,21 @@ class GovernanceServiceTest {
     }
 
     @Test
-    @DisplayName("系统任务（无操作者）记 SYSTEM，而不是伪造一个管理员账号")
-    void systemActorRecorded() {
-      stubSuccessfulMerge();
-      service.mergeAchievements("ach_1", "ach_2", "自动治理", null);
+    @DisplayName("没有治理能力的操作者不能合并：合并必须由治理角色发起，可追溯到具体的人")
+    void systemActorCannotMerge() {
+      // 「相似标题不得直接合并」的反面：连系统主体也不能自动合并。合并没有系统入口，
+      // 只有治理角色的人工调用；无操作者（null）与无治理能力的系统主体都被拒绝。
+      ActorContext system =
+          new ActorContext(
+              new AccountId("system"), RoleNames.SYSTEM, RoleNames.SYSTEM, Set.of(RoleNames.SYSTEM), 0L);
 
-      ArgumentCaptor<MergeLedgerEntry> captor = ArgumentCaptor.forClass(MergeLedgerEntry.class);
-      verify(ledger).append(captor.capture());
-      assertThat(captor.getValue().operatorId()).isEqualTo(RoleNames.SYSTEM);
-
-      ArgumentCaptor<AuditRecorder.AuditEntry> auditCaptor =
-          ArgumentCaptor.forClass(AuditRecorder.AuditEntry.class);
-      verify(audit).record(auditCaptor.capture());
-      assertThat(auditCaptor.getValue().actorUsername()).isEqualTo(RoleNames.SYSTEM);
+      assertThatThrownBy(() -> service.mergeAchievements("ach_1", "ach_2", "自动治理", null))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("请先登录");
+      assertThatThrownBy(() -> service.mergeAchievements("ach_1", "ach_2", "自动治理", system))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("能力");
+      verifyNoInteractions(ledger);
     }
 
     private void stubSuccessfulMerge() {
@@ -563,10 +565,63 @@ class GovernanceServiceTest {
     }
 
     @Test
+    @DisplayName("姓名不同且没有共同稳定标识的两位学者不能合并：那不是归一化差异，是把两个人并成一个")
+    void differentNameWithoutSharedIdentifierRejected() {
+      when(scholars.findById("sch_1")).thenReturn(Optional.of(scholar("sch_1", "张三", null)));
+      when(scholars.findById("sch_2")).thenReturn(Optional.of(scholar("sch_2", "李四", null)));
+      // 两人各有自己的 ORCID，只是不同：这是「两个不同的人」，不是「同一人缺标识」。
+      when(mergeTargets.previewIdentifiers("SCHOLAR", "sch_1"))
+          .thenReturn(
+              List.of(
+                  new GovernanceRepositories.MergeTargetRepository.RegisteredIdentifier(
+                      "ORCID", "person", "0000-0002-1825-0097")));
+      when(mergeTargets.previewIdentifiers("SCHOLAR", "sch_2"))
+          .thenReturn(
+              List.of(
+                  new GovernanceRepositories.MergeTargetRepository.RegisteredIdentifier(
+                      "ORCID", "person", "0000-0001-5109-3700")));
+
+      assertThatThrownBy(() -> service.mergeScholars("sch_1", "sch_2", "看起来像同一人", actor))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("不能合并");
+
+      verify(mergeTargets, never()).moveScholarContributions(anyString(), anyString());
+      verify(ledger, never()).append(any());
+    }
+
+    @Test
+    @DisplayName("姓名不同但共享 ORCID 时可以合并，台账记下依据是共享标识")
+    void sharedIdentifierAllowsMerge() {
+      when(scholars.findById("sch_1")).thenReturn(Optional.of(scholar("sch_1", "Zhang San", null)));
+      when(scholars.findById("sch_2")).thenReturn(Optional.of(scholar("sch_2", "San Zhang", null)));
+      when(mergeTargets.previewIdentifiers("SCHOLAR", "sch_1"))
+          .thenReturn(
+              List.of(
+                  new GovernanceRepositories.MergeTargetRepository.RegisteredIdentifier(
+                      "ORCID", "person", "0000-0002-1825-0097")));
+      when(mergeTargets.previewIdentifiers("SCHOLAR", "sch_2"))
+          .thenReturn(
+              List.of(
+                  new GovernanceRepositories.MergeTargetRepository.RegisteredIdentifier(
+                      "ORCID", "person", "0000-0002-1825-0097")));
+      when(mergeTargets.findActiveAuthorityId(anyString())).thenReturn(Optional.empty());
+      when(mergeTargets.snapshotScholarContributions("sch_2")).thenReturn(List.of());
+      when(mergeTargets.moveScholarContributions("sch_2", "sch_1"))
+          .thenReturn(new GovernanceRepositories.MergeTargetRepository.ContributionMove(0, 0));
+      when(mergeTargets.markScholarMerged("sch_2", "sch_1")).thenReturn(true);
+
+      service.mergeScholars("sch_1", "sch_2", "ORCID 相同", actor);
+
+      ArgumentCaptor<MergeLedgerEntry> captor = ArgumentCaptor.forClass(MergeLedgerEntry.class);
+      verify(ledger).append(captor.capture());
+      assertThat(captor.getValue().snapshot()).containsEntry("mergeBasis", "SHARED_IDENTIFIER");
+    }
+
+    @Test
     @DisplayName("只有被合并门户有管理者时，授权转到幸存门户")
     void authorityTransferred() {
       when(scholars.findById("sch_1")).thenReturn(Optional.of(scholar("sch_1", "张三", null)));
-      when(scholars.findById("sch_2")).thenReturn(Optional.of(scholar("sch_2", "张三（另收录）", null)));
+      when(scholars.findById("sch_2")).thenReturn(Optional.of(scholar("sch_2", "张三", null)));
       when(mergeTargets.findActiveAuthorityId("sch_1")).thenReturn(Optional.empty());
       when(mergeTargets.findActiveAuthorityId("sch_2")).thenReturn(Optional.of("auth_2"));
       when(mergeTargets.snapshotScholarContributions("sch_2")).thenReturn(List.of());
@@ -589,7 +644,7 @@ class GovernanceServiceTest {
     @DisplayName("双方都有管理者时不自动转移，改为撤销被合并方授权并留待人工重新授予")
     void bothAuthoritiesRevokedNotMoved() {
       when(scholars.findById("sch_1")).thenReturn(Optional.of(scholar("sch_1", "张三", null)));
-      when(scholars.findById("sch_2")).thenReturn(Optional.of(scholar("sch_2", "张三（另收录）", null)));
+      when(scholars.findById("sch_2")).thenReturn(Optional.of(scholar("sch_2", "张三", null)));
       when(mergeTargets.findActiveAuthorityId("sch_1")).thenReturn(Optional.of("auth_1"));
       when(mergeTargets.findActiveAuthorityId("sch_2")).thenReturn(Optional.of("auth_2"));
       when(mergeTargets.snapshotScholarContributions("sch_2")).thenReturn(List.of());
@@ -612,7 +667,7 @@ class GovernanceServiceTest {
     @DisplayName("双方都没有管理者时不做任何授权处置")
     void noAuthorityNoChange() {
       when(scholars.findById("sch_1")).thenReturn(Optional.of(scholar("sch_1", "张三", null)));
-      when(scholars.findById("sch_2")).thenReturn(Optional.of(scholar("sch_2", "张三（另收录）", null)));
+      when(scholars.findById("sch_2")).thenReturn(Optional.of(scholar("sch_2", "张三", null)));
       when(mergeTargets.findActiveAuthorityId("sch_1")).thenReturn(Optional.empty());
       when(mergeTargets.findActiveAuthorityId("sch_2")).thenReturn(Optional.empty());
       when(mergeTargets.snapshotScholarContributions("sch_2")).thenReturn(List.of());
@@ -635,7 +690,7 @@ class GovernanceServiceTest {
     @DisplayName("成功合并发布 SCHOLAR_MERGED 事件")
     void publishesEvent() {
       when(scholars.findById("sch_1")).thenReturn(Optional.of(scholar("sch_1", "张三", null)));
-      when(scholars.findById("sch_2")).thenReturn(Optional.of(scholar("sch_2", "张三（另收录）", null)));
+      when(scholars.findById("sch_2")).thenReturn(Optional.of(scholar("sch_2", "张三", null)));
       when(mergeTargets.findActiveAuthorityId(anyString())).thenReturn(Optional.empty());
       when(mergeTargets.snapshotScholarContributions("sch_2")).thenReturn(List.of());
       when(mergeTargets.moveScholarContributions("sch_2", "sch_1"))
@@ -677,11 +732,11 @@ class GovernanceServiceTest {
     @DisplayName("列表查询按分页参数透传，不自行改动偏移")
     void listDelegatesWithPaging() {
       when(candidates.listOpenCandidates(anyInt(), anyInt())).thenReturn(List.of());
-      service.listCandidates(new PageRequest(3, 20));
+      service.listCandidates(new PageRequest(3, 20), actor);
       verify(candidates).listOpenCandidates(20, 40);
 
       when(anomalies.listOpenAnomalies(anyInt(), anyInt())).thenReturn(List.of());
-      service.listAnomalies(new PageRequest(2, 50));
+      service.listAnomalies(new PageRequest(2, 50), actor);
       verify(anomalies).listOpenAnomalies(50, 50);
     }
 
@@ -689,7 +744,7 @@ class GovernanceServiceTest {
     @DisplayName("台账按实体查询透传 limit")
     void ledgerOfDelegates() {
       when(ledger.listByEntity(eq("ach_1"), anyInt())).thenReturn(List.of());
-      service.ledgerOf("ach_1", 25);
+      service.ledgerOf("ach_1", 25, actor);
       verify(ledger).listByEntity("ach_1", 25);
     }
   }
@@ -735,7 +790,7 @@ class GovernanceServiceTest {
       when(candidates.listOpenCandidatesScored(0.7d, "created_asc", 20, 40)).thenReturn(List.of());
 
       service.listCandidatesForWorkbench(
-          GovernanceService.CandidateFilter.of(0.7d, "created_asc"), new PageRequest(3, 20));
+          GovernanceService.CandidateFilter.of(0.7d, "created_asc"), new PageRequest(3, 20), actor);
 
       verify(candidates).listOpenCandidatesScored(0.7d, "created_asc", 20, 40);
     }
@@ -746,7 +801,7 @@ class GovernanceServiceTest {
       when(candidates.countOpenCandidatesByBucket(0.90d, 0.70d))
           .thenReturn(new GovernanceRepositories.CandidateBuckets(9L, 8L, 7L, 24L));
 
-      GovernanceService.WorkbenchSummary summary = service.workbenchSummary();
+      GovernanceService.WorkbenchSummary summary = service.workbenchSummary(actor);
 
       assertThat(summary.high()).isEqualTo(9L);
       assertThat(summary.mid()).isEqualTo(8L);
@@ -762,7 +817,7 @@ class GovernanceServiceTest {
       when(candidates.countOpenCandidatesByFilter(0.9d)).thenReturn(3L);
 
       assertThat(
-              service.countCandidatesForWorkbench(GovernanceService.CandidateFilter.of(0.9d, null)))
+              service.countCandidatesForWorkbench(GovernanceService.CandidateFilter.of(0.9d, null), actor))
           .isEqualTo(3L);
       verify(candidates).countOpenCandidatesByFilter(0.9d);
     }
@@ -895,7 +950,7 @@ class GovernanceServiceTest {
           .thenReturn(
               List.of(contribution("sch_2", "乙", "AUTO"), contribution("sch_3", "丙", "AUTO")));
 
-      Map<String, Object> data = service.previewMerge("ach_1", "ach_2");
+      Map<String, Object> data = service.previewMerge("ach_1", "ach_2", actor);
 
       Map<String, Object> contributions = section(data, "contributions");
       assertThat(contributions)
@@ -925,7 +980,7 @@ class GovernanceServiceTest {
       when(mergeTargets.previewContributions("ach_2"))
           .thenReturn(List.of(contribution("sch_2", "乙", "SELF_CONFIRMED")));
 
-      Map<String, Object> data = service.previewMerge("ach_1", "ach_2");
+      Map<String, Object> data = service.previewMerge("ach_1", "ach_2", actor);
 
       List<Map<String, Object>> duplicates = rows(section(data, "contributions"), "duplicateList");
       assertThat(duplicates).hasSize(1);
@@ -961,7 +1016,7 @@ class GovernanceServiceTest {
                       EffectiveStatus.EFFECTIVE,
                       2023)));
 
-      Map<String, Object> data = service.previewMerge("ach_1", "ach_2");
+      Map<String, Object> data = service.previewMerge("ach_1", "ach_2", actor);
 
       assertThat((List<String>) data.get("warnings"))
           .anySatisfy(
@@ -978,7 +1033,7 @@ class GovernanceServiceTest {
       givenPair();
       when(mergeTargets.previewContributions(anyString())).thenReturn(List.of());
 
-      Map<String, Object> data = service.previewMerge("ach_1", "ach_2");
+      Map<String, Object> data = service.previewMerge("ach_1", "ach_2", actor);
 
       assertThat((List<String>) data.get("warnings"))
           .noneSatisfy(warning -> assertThat(warning).contains("不会写入幸存成果"));
@@ -1009,7 +1064,7 @@ class GovernanceServiceTest {
                   achievementOf(
                       "ach_2", "Other Title", Visibility.PUBLIC, EffectiveStatus.EFFECTIVE, 2024)));
 
-      Map<String, Object> data = service.previewMerge("ach_1", "ach_2");
+      Map<String, Object> data = service.previewMerge("ach_1", "ach_2", actor);
 
       assertThat((List<String>) data.get("warnings"))
           .anySatisfy(warning -> assertThat(warning).contains("（未知）"));
@@ -1029,7 +1084,7 @@ class GovernanceServiceTest {
       when(mergeTargets.previewSources("ach_2"))
           .thenReturn(List.of(source("rec_1"), source("rec_2")));
 
-      Map<String, Object> sources = section(service.previewMerge("ach_1", "ach_2"), "sources");
+      Map<String, Object> sources = section(service.previewMerge("ach_1", "ach_2", actor), "sources");
 
       assertThat(sources)
           .containsEntry("survivorRows", 1)
@@ -1048,7 +1103,7 @@ class GovernanceServiceTest {
       when(mergeTargets.previewIdentifiers("ACHIEVEMENT", "ach_2"))
           .thenReturn(List.of(doi("10.1000/xyz")));
 
-      Map<String, Object> data = service.previewMerge("ach_1", "ach_2");
+      Map<String, Object> data = service.previewMerge("ach_1", "ach_2", actor);
 
       Map<String, Object> identifiers = section(data, "identifiers");
       assertThat(identifiers)
@@ -1068,7 +1123,7 @@ class GovernanceServiceTest {
       when(achievements.findById("ach_2"))
           .thenReturn(Optional.of(achievement("ach_2", "B", "ach_9")));
 
-      Map<String, Object> data = service.previewMerge("ach_1", "ach_2");
+      Map<String, Object> data = service.previewMerge("ach_1", "ach_2", actor);
 
       assertThat(data).containsEntry("canMerge", false);
       assertThat((List<String>) data.get("blockers"))
@@ -1092,7 +1147,7 @@ class GovernanceServiceTest {
       when(mergeTargets.previewContributions("ach_1")).thenReturn(List.of());
       when(mergeTargets.previewContributions("ach_2")).thenReturn(huge);
 
-      Map<String, Object> data = service.previewMerge("ach_1", "ach_2");
+      Map<String, Object> data = service.previewMerge("ach_1", "ach_2", actor);
 
       assertThat(section(data, "effects")).containsEntry("exceedsMoveLimit", true);
       assertThat((List<String>) data.get("warnings"))
@@ -1105,7 +1160,7 @@ class GovernanceServiceTest {
       givenPair();
       when(candidates.countOpenBetween("ach_1", "ach_2")).thenReturn(2L);
 
-      Map<String, Object> data = service.previewMerge("ach_1", "ach_2");
+      Map<String, Object> data = service.previewMerge("ach_1", "ach_2", actor);
 
       assertThat(section(data, "effects")).containsEntry("candidatesClosedWithMerge", 2L);
       assertThat((List<String>) data.get("warnings"))
@@ -1119,7 +1174,7 @@ class GovernanceServiceTest {
       when(candidates.countOpenBetween("ach_1", "ach_2")).thenReturn(1L);
       when(candidates.countOpenFor("ach_2")).thenReturn(4L);
 
-      Map<String, Object> data = service.previewMerge("ach_1", "ach_2");
+      Map<String, Object> data = service.previewMerge("ach_1", "ach_2", actor);
 
       assertThat(section(data, "effects"))
           .containsEntry("candidatesClosedWithMerge", 1L)
@@ -1134,7 +1189,7 @@ class GovernanceServiceTest {
       givenPair();
       when(mergeTargets.previewContributions(anyString())).thenReturn(List.of());
 
-      Map<String, Object> data = service.previewMerge("ach_1", "ach_2");
+      Map<String, Object> data = service.previewMerge("ach_1", "ach_2", actor);
 
       assertThat(data).containsEntry("dryRun", true);
       verifyNoInteractions(ledger, outbox, audit);
@@ -1150,10 +1205,10 @@ class GovernanceServiceTest {
     @Test
     @DisplayName("参数缺失或两侧相同直接拒绝，不落成一次看起来正常的预览")
     void argumentsValidated() {
-      assertThatThrownBy(() -> service.previewMerge("ach_1", "ach_1"))
+      assertThatThrownBy(() -> service.previewMerge("ach_1", "ach_1", actor))
           .isInstanceOf(BusinessException.class)
           .hasMessageContaining("不能是同一条");
-      assertThatThrownBy(() -> service.previewMerge("ach_1", "  "))
+      assertThatThrownBy(() -> service.previewMerge("ach_1", "  ", actor))
           .isInstanceOf(BusinessException.class)
           .hasMessageContaining("必须同时指定");
       verifyNoInteractions(achievements);
@@ -1164,7 +1219,7 @@ class GovernanceServiceTest {
     void missingSideRejected() {
       when(achievements.findById("ach_1")).thenReturn(Optional.empty());
 
-      assertThatThrownBy(() -> service.previewMerge("ach_1", "ach_2"))
+      assertThatThrownBy(() -> service.previewMerge("ach_1", "ach_2", actor))
           .isInstanceOf(BusinessException.class)
           .satisfies(
               ex ->
@@ -1184,7 +1239,7 @@ class GovernanceServiceTest {
               List.of(state("ach_1", "EFFECTIVE", null), state("ach_2", "WITHDRAWN", "ach_9")));
 
       Map<String, GovernanceRepositories.AchievementStateRepository.AchievementState> states =
-          service.statesOf(List.of("ach_1", "ach_2", "ach_1"));
+          service.statesOf(List.of("ach_1", "ach_2", "ach_1"), actor);
 
       assertThat(states).containsOnlyKeys("ach_1", "ach_2");
       assertThat(states.get("ach_1").merged()).isFalse();
@@ -1197,7 +1252,7 @@ class GovernanceServiceTest {
     void emptyInputReturnsEmptyMap() {
       when(achievementStates.statesOf(any())).thenReturn(List.of());
 
-      assertThat(service.statesOf(List.of())).isEmpty();
+      assertThat(service.statesOf(List.of(), actor)).isEmpty();
     }
   }
 
@@ -1354,6 +1409,67 @@ class GovernanceServiceTest {
           .isInstanceOf(BusinessException.class);
 
       verify(achievements, never()).resolveSurvivorId(anyString());
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 授权：登录不是授权
+  // ---------------------------------------------------------------------------
+
+  /**
+   * 治理接口一度只要求「已登录」，于是任何注册用户都能读到候选工作台（两端标题、相似度）并调用
+   * 合并接口。前端的隐藏入口不构成授权，这里把能力校验固定在应用层，并逐条反证「读也不行」。
+   */
+  @Nested
+  @DisplayName("治理能力校验")
+  class Authorization {
+
+    private ActorContext plainUser() {
+      return new ActorContext(
+          new AccountId("acc_user"), "user", "普通用户", Set.of(RoleNames.USER), 1L);
+    }
+
+    @Test
+    @DisplayName("普通用户读不了工作台候选：候选里有两端标题与相似度，属治理内部信息")
+    void plainUserCannotReadWorkbench() {
+      assertThatThrownBy(
+              () ->
+                  service.listCandidatesForWorkbench(
+                      GovernanceService.CandidateFilter.of(null, null),
+                      new PageRequest(1, 20),
+                      plainUser()))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("能力");
+      verifyNoInteractions(candidates);
+    }
+
+    @Test
+    @DisplayName("未登录不得查看合并预览：预览会读出两端的关系与来源归属")
+    void anonymousCannotPreviewMerge() {
+      assertThatThrownBy(() -> service.previewMerge("ach_1", "ach_2", null))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("请先登录");
+      verifyNoInteractions(achievements);
+    }
+
+    @Test
+    @DisplayName("普通用户调用学者合并被拒，且不写台账")
+    void plainUserCannotMergeScholars() {
+      assertThatThrownBy(
+              () -> service.mergeScholars("sch_a", "sch_b", "越权尝试", plainUser()))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("能力");
+      verifyNoInteractions(scholars);
+      verifyNoInteractions(ledger);
+    }
+
+    @Test
+    @DisplayName("普通用户读不了台账：台账里有合并前后的完整快照")
+    void plainUserCannotReadLedger() {
+      assertThatThrownBy(() -> service.ledgerOf("ach_1", 20, plainUser()))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("能力");
+      verifyNoInteractions(ledger);
     }
   }
 

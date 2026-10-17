@@ -38,4 +38,14 @@ public record ProjectedAchievement(
         && "PUBLIC".equals(visibility)
         && "EFFECTIVE".equals(effectiveStatus);
   }
+
+  /**
+   * 是否对公开读可见：公开且已生效。
+   *
+   * <p>与 {@link #eligibleForRealityView()} 的区别是不看数据性质：显式演示作用域下，被标记为
+   * 模拟或混合的公开条目仍应能看到自己的作者与领域，否则演示模式会变成一堆空壳卡片。
+   */
+  public boolean publiclyVisible() {
+    return "PUBLIC".equals(visibility) && "EFFECTIVE".equals(effectiveStatus);
+  }
 }

@@ -125,8 +125,8 @@ public class AdminCatalogService {
     view.put("contributions", contributions.countContributions());
     view.put("topics", topics.countTopics());
     view.put("sourceRecords", sourceRecords.countAll());
-    view.put("dedupCandidatesOpen", governance.countOpenCandidates());
-    view.put("anomaliesOpen", governance.countOpenAnomalies());
+    view.put("dedupCandidatesOpen", governance.countOpenCandidates(actor));
+    view.put("anomaliesOpen", governance.countOpenAnomalies(actor));
     view.put("catalogRevision", outbox.currentRevision());
     view.put("requiredPublicRevision", outbox.requiredPublicRevision());
 
@@ -180,8 +180,13 @@ public class AdminCatalogService {
     // 这里要判的是「当前是否处于待治理状态」，不是 publiclyEligible()。后者表达的是「已经是
     // EFFECTIVE」，用它取反会把待治理成果全部挡在门外——人工确认发布对唯一该走这条路的实体
     // 永远返回 409，而错误文案还写着「只有待治理状态的成果可以确认发布」，正好相反。
-    if (achievement.effectiveStatus() != EffectiveStatus.PENDING_GOVERNANCE) {
-      throw BusinessException.versionConflict("只有待治理状态的成果可以确认发布");
+    //
+    // 已下架（WITHDRAWN）也允许重新确认：撤销是治理端的下架动作，如果它不可逆，那么一次误撤
+    // 或一次「先下架、核实后再上架」的处置就把成果永久钉死在不可见状态——既没有入口恢复，
+    // 也没有任何提示说明只能等来源重新采集。下架与重新上架是一对对称的人工动作，都要留审计。
+    if (achievement.effectiveStatus() != EffectiveStatus.PENDING_GOVERNANCE
+        && achievement.effectiveStatus() != EffectiveStatus.WITHDRAWN) {
+      throw BusinessException.versionConflict("只有待治理或已下架的成果可以确认发布");
     }
     if (!achievement.dataNature().eligibleForRealityView()) {
       throw BusinessException.businessRule("数据性质为 " + achievement.dataNature() + " 的成果不得进入默认现实视图");
@@ -472,9 +477,19 @@ public class AdminCatalogService {
   /**
    * 公开投影的规范字段集。
    *
-   * <p>字段名必须与 core 外发事件载荷中的字段名逐字一致：查询侧对「事件回放」与「快照导入」两条
-   * 来源共用同一套翻译（{@code EventPayloadReader}），靠的就是名称约定。改这里就要同步改
-   * {@code SourceIntakeService.publishEvent}，否则两条路径重新开始漂移。
+   * <p><b>与事件载荷的关系是「投影字段集一致」，不是「两份报文逐字相等」。</b>事件是「发生了什么」，
+   * 快照是「现在是什么」，必然各有独占字段。经确认允许不同的只有三处，且必须只有这三处：
+   *
+   * <ul>
+   *   <li>{@code changeKind}——事件独占，它是控制字段（UPSERT/MERGE），投影侧不读；
+   *   <li>{@code id} 在事件里叫 {@code achievementId}——同一字段的两个名字，查询侧
+   *       {@code EventPayloadReader} 两条路径互为兜底；
+   *   <li>{@code version}——快照放在载荷上，事件里由信封列 {@code aggregate_version} 承载，
+   *       两者取值必须相等（增量路径读信封、重建路径读载荷，不等就会在换代时才显形）。
+   * </ul>
+   *
+   * <p>除此之外，任一侧新增字段都必须同步到这里与 {@link CatalogChangePublisher}，否则两条路径
+   * 产出的投影出现字段级差异。{@code tests/api/smoke-contract.py} 会按上述映射做集合比对。
    *
    * <p>可见性与生效状态在这里是**必填**：它们不是展示字段，而是查询侧读路径的过滤依据。导出时省略
    * 它们，等于把「这条成果是否公开」的判断权从权威侧交给了投影侧——而投影侧的兜底是失败关闭，
