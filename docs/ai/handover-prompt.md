@@ -165,6 +165,20 @@ WB-05 只交方案）。这批改动**未提交**，工作区有未提交修改�
 - 第四批仍明确未做：到点自动创建采集任务（需先定幂等键与人工建任务的关系）、用真实来源数据标定周期、
   采集端到端（真服务 + 替身源）、真实用户短任务验证（需真人）。
 
+**随后又做了一件事：把 ADR-001 的静态判断变成实测**（改动未提交）：
+
+- 新增 `services/core-service/src/test/java/com/cognitanexus/core/it/SourcePauseConflictProbe.java`
+  （3 项）与 `bash ops/verify/source-pause-conflict.sh`。类名刻意不以 `Test`／`IT` 结尾，
+  Surefire／Failsafe 都不收集它，`mvn verify` 的 514／29 计数不变。
+- 实测三条（原样输出见 ADR-001 §2.6）：
+  ① 以「上游维护窗口，暂停采集」为理由停用来源，独占该来源的公开成果被改成 `RESTRICTED`；
+  ② 5001 条独占公开成果撤权，响应 `tightenedCount=5000`，第 5001 条仍 `PUBLIC`，响应无剩余标记；
+  ③ 两个来源都停用后，成果仍为 `PUBLIC`（`NOT EXISTS` 只看有没有第二个来源行）。
+- **探针绿 = 冲突仍在**，不是验收通过。ADR-001 §2.3／§2.5 仍为静态阅读结论，未实测。
+
+**下一步只剩两件需要人拍的事**：ADR-001 选方案 A 还是 B（决定是否新增 `display_license_status`
+与撤权作业表）；WB-04 的认领判据决策表要不要按指导文档给的方向定稿。两项都不该由 AI 自定。
+
 **已知未修（全部在 `docs/ai/测试与覆盖率报告.md` §7、§9.5 登记，不要当成已完成）**：
 
 1. `spotless:check` 在存量代码上检出 9 个文件的格式偏差（core 2 个、query 7 个）。索引有效时

@@ -21,6 +21,15 @@
 
 补充一份不属于任务书六条、但属于上下文工程的资产：[handover-prompt.md](handover-prompt.md)——自包含的接手提示词，让新的会话不依赖历史对话即可起环境、确认基线、接着做未完成项。它的「当前状态」一节要求每次交接前更新。
 
+## 1.1 待评审方案与冲突证据
+
+指导文档里两项标着「规则先评审、不自行定规则」的任务，落到下面这份 ADR 与一个取证探针：
+
+| 文件 | 内容 |
+| --- | --- |
+| [ADR-001-来源暂停与撤销展示许可.md](../architecture/adr/ADR-001-来源暂停与撤销展示许可.md) | 状态 Proposed。一个 `enabled` 布尔同时表达「暂停采集」与「撤销展示许可」，停用会把独占该来源的公开成果收紧为 RESTRICTED，与 `AC-FR01-S01-02`、`BR-606` 直接冲突。含两条候选方案、大规模撤权作业设计、待决策项；**只出方案，不改实现、不含 DDL** |
+| `services/core-service/src/test/java/com/cognitanexus/core/it/SourcePauseConflictProbe.java` + `bash ops/verify/source-pause-conflict.sh` | ADR-001 §2.1／§2.2／§2.4 的实测探针。它断言的是「当前实现做了什么」，所以**探针全绿 = 冲突仍在**；不进默认构建，避免绿灯被读成「符合需求」。输出与读法见 ADR §2.6 |
+
 与批次二（WB-06／09／10／11）同时交付的两份记录：
 
 | 文件 | 内容 |
