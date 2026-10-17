@@ -65,6 +65,30 @@
 | §8 不变量 | 三水位（采集水位、交接水位、投影水位）各自可查 | 采集侧 `ing_collect_job`、`CollectUnitOfWork`；投影侧 `evt_revision_counter` | `tests/api/smoke-ingestion.sh` |
 | §8 失败回退 | 采集失败按退避重试，不在固定周期上无限重打上游 | `services/ingestion-service/.../collect/application/CollectExecutionService.java#backoffSeconds`；迁移 `V5__fetch_backoff.sql` | `CollectExecutionServiceTest`（9 项）、`CollectMapperSqlTest`（3 项）、`tests/api/smoke-ingestion.sh` 第 13 节 |
 
+## 6.1 采集更新周期与限流退避（WB-13，对应 AC-IMPL-FR08-02 / FR09-03 / FR10-02）
+
+三个「周期」在本仓库里必须能被分别指出，混成一个数字就会出现「每 2 秒抓一次学术来源」或
+「每 7 天更新一次」（后者没有任何出处）：
+
+| 概念 | 含义 | 配置／落点 | 验证 |
+| --- | --- | --- | --- |
+| 调度轮询间隔 | 服务多久看一次任务队列 | `cn.collect.worker-interval-ms`（默认 2000 ms） | `CollectWorker`；与来源无关，故不参与任何「更新周期」判断 |
+| 失败退避 | 失败后多久才允许再试 | `ing_collect_job.next_attempt_at`（V5）；`max-backoff-seconds` 封顶 | `CollectExecutionServiceTest`（退避随次数增长、上限生效）；`CollectMapperSqlTest`（查询带退避条件） |
+| 来源业务更新周期 | 新记录发现／历史字段刷新的期望节奏 | `ing_source_run_config.new_record_interval_minutes` / `field_refresh_interval_minutes` / `update_plan_note` / `next_due_at`（V8） | `SourceRunConfigUpdatePlanTest`；`CollectMapperSqlTest`（门控条件在 SQL 里）；`ops/verify/collect-update-plan.sh`（真实库约束与门控，含反证） |
+| 限流要求 | 来源要求等多久（429／503 + `Retry-After`） | `SourceFetchException`；`CollectExecutionService#decideBackoff` | `SourceFetchExceptionTest`；`CrossrefAdapterStubTest`（真实 HTTP 替身）；`CollectExecutionServiceTest`（`RETRY_AFTER` 优先且受封顶） |
+
+口径说明（不是需求结论）：
+
+- **周期默认空置**。`NULL = 未设定`，此时不按周期排期、任务仍由人工创建驱动，与引入该字段之前完全一致；
+  需求与调研都没有给出各来源的更新节奏，因此不放任何默认值。
+- **设周期必须写依据**，由库级 CHECK 强制（`ck_ing_source_update_plan_note`）。没有出处的数字下次无法复核。
+- **周期只挡「还没开始的执行」**，不挡正在翻页的任务：`listRunnableJobIds` 的条件是
+  `total_fetched > 0 OR next_due_at IS NULL OR next_due_at <= now()`。少了后半句，一个来源两个任务时
+  会有一个停在半路。
+- **未做**：到点自动创建任务（需要先定任务幂等键与人工建任务的关系，属待评审）；
+  用真实来源数据标定各来源的周期（WB-13 要求「先从已接入来源各选一类实际数据说明理由」，本仓库
+  没有获准使用的真实来源样本，故不填）。
+
 ## 7 规范与代码的开发顺序（SDD 证据）
 
 | 环节 | 做法 | 可核对位置 |
@@ -78,4 +102,5 @@
 
 1. 检索排序的权重参数、相似度阈值仍为候选值，待 SPEC 联合评审后回填。
 2. 本仓库目前没有 `core` 侧解析入库（Intake）的专门单元测试，该段规则由接口自检与代码审查覆盖；表中已逐行如实标注，不把接口自检写成单元测试结论。
-3. 100 万 / 500 万规模的性能与 P95 目标尚未实测（属部署与性能章节范围）。
+3. 100 万规模已实测但**未达标**（见 `docs/ai/第三批-容量与恢复验证记录-2026-10-17.md`）；500 万规模与 300／1000 并发未执行。不得把「跑过 100 万」写成「容量验证通过」。
+4. 采集端到端（真实服务 + 替身来源）未跑：本轮只验证了适配器与执行服务两层，见 §6.1。
