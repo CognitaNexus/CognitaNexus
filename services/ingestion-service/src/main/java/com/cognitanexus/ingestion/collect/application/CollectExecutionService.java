@@ -2,6 +2,7 @@ package com.cognitanexus.ingestion.collect.application;
 
 import com.cognitanexus.ingestion.collect.adapter.SourceAdapter;
 import com.cognitanexus.ingestion.collect.adapter.SourceAdapterRegistry;
+import com.cognitanexus.ingestion.collect.adapter.SourceFetchException;
 import com.cognitanexus.ingestion.collect.domain.CollectModels.CollectJob;
 import com.cognitanexus.ingestion.collect.domain.CollectModels.FetchPage;
 import com.cognitanexus.ingestion.collect.domain.CollectModels.SourceRunConfig;
@@ -131,8 +132,8 @@ public class CollectExecutionService {
         // 退避时长按「连续失败第几次」算，不按累计计数：累计计数会让一个跑了很久、偶发失败一次的
         // 任务直接跳到最大退避。
         int attempt = leased.consecutiveFailures() + 1;
-        int backoff = backoffSeconds(attempt);
-        unitOfWork.recordFetchFailure(jobId, fetched.error(), backoff);
+        Backoff decision = decideBackoff(attempt, fetched.retryAfterSeconds());
+        unitOfWork.recordFetchFailure(jobId, fetched.error(), decision.seconds());
         unitOfWork.appendLog(
             jobId,
             config.id(),
@@ -142,12 +143,26 @@ public class CollectExecutionService {
             null,
             null,
             Map.of(
-                "error", fetched.error(),
-                "consecutiveFailures", attempt,
-                "backoffSeconds", backoff));
+                "error",
+                fetched.error(),
+                "consecutiveFailures",
+                attempt,
+                "backoffSeconds",
+                decision.seconds(),
+                "backoffBasis",
+                decision.basis(),
+                "retryAfterSeconds",
+                String.valueOf(fetched.retryAfterSeconds())));
         return new RunOutcome(
             false,
-            "抓取失败（第 " + attempt + " 次连续失败，退避 " + backoff + " 秒）：" + fetched.error(),
+            "抓取失败（第 "
+                + attempt
+                + " 次连续失败，退避 "
+                + decision.seconds()
+                + " 秒，依据 "
+                + decision.basis()
+                + "）："
+                + fetched.error(),
             0,
             0,
             handedOff,
@@ -170,6 +185,13 @@ public class CollectExecutionService {
         // 判据是「输入要么被交付、要么被登记异常」：还有未处置项就不算成功
         if (remaining == 0 && failed == 0) {
           unitOfWork.updateJobStatus(jobId, JobStatus.SUCCEEDED, null);
+          // 业务更新周期只在本轮真正收尾成功之后前移。中途暂停或失败不前移，否则一次故障会把
+          // 下一次正常更新整整推后一个周期，而这一推迟对外表现为「这个来源突然不更新了」。
+          java.time.Instant nextDue = config.nextDueAfter(java.time.Instant.now());
+          if (nextDue != null) {
+            configs.advanceNextDueAt(config.id(), nextDue);
+            log.info("业务更新周期前移 sourceCode={} 下次到期={}", config.sourceCode(), nextDue);
+          }
         } else {
           unitOfWork.updateJobStatus(
               jobId,
@@ -250,8 +272,19 @@ public class CollectExecutionService {
         fetchFailed);
   }
 
+  /**
+   * 单页抓取结果。
+   *
+   * <p>{@code retryAfterSeconds} 只在来源用响应头明确给出等待时间时非空（典型是 429 与 503）。
+   * 它随结果往上带，而不是在这里就地决定退避：决定退避时长要读 {@code max-backoff-seconds}，
+   * 那是服务级配置，不属于「读一页」这件事。
+   */
   private record FetchOutcome(
-      int unitOfWorkStored, int duplicated, boolean lastPage, String error) {}
+      int unitOfWorkStored,
+      int duplicated,
+      boolean lastPage,
+      String error,
+      Integer retryAfterSeconds) {}
 
   private FetchOutcome fetchOnePage(SourceRunConfig config, CollectJob job) {
     SourceAdapter adapter = adapters.require(config.adapterKind());
@@ -259,12 +292,14 @@ public class CollectExecutionService {
     try {
       // 抓取在事务外：外部 HTTP 不应持有数据库连接与行锁
       page = adapter.fetch(config, job, job.cursor());
+    } catch (SourceFetchException ex) {
+      return new FetchOutcome(0, 0, false, ex.getMessage(), ex.retryAfterSeconds());
     } catch (RuntimeException ex) {
-      return new FetchOutcome(0, 0, false, ex.getMessage());
+      return new FetchOutcome(0, 0, false, ex.getMessage(), null);
     }
     CollectUnitOfWork.StageResult result =
         unitOfWork.stagePage(config, job, page, 0, page.nextCursor());
-    return new FetchOutcome(result.stored(), result.duplicated(), page.lastPage(), null);
+    return new FetchOutcome(result.stored(), result.duplicated(), page.lastPage(), null, null);
   }
 
   private int drainPendingHandoffs(CollectJob job) {
@@ -455,6 +490,33 @@ public class CollectExecutionService {
   private int backoffSeconds(int attempt) {
     long base = 1L << Math.min(Math.max(attempt - 1, 0), 30);
     return (int) Math.min(base, properties.maxBackoffSeconds());
+  }
+
+  /** 退避的决定与它的依据。把依据一起带出来，是为了让日志与运行记录能回答「为什么等这么久」。 */
+  record Backoff(int seconds, String basis) {}
+
+  /**
+   * 决定这次失败后等多久。
+   *
+   * <p>两种依据，优先级不同：
+   *
+   * <ul>
+   *   <li>{@code RETRY_AFTER}：来源在响应头里明确要求的时间。这是对方的事实，优先级最高——
+   *       用自己的退避覆盖它，等于在对方限流期间继续敲门，限流窗口被不断刷新，看起来像来源一直
+   *       不可用；
+   *   <li>{@code EXPONENTIAL_BACKOFF}：自己的推算，1、2、4、8…秒。
+   * </ul>
+   *
+   * <p>两者都被 {@code max-backoff-seconds} 兜住，但兜的方向不同：来源要求的时间若超过上限，
+   * 取上限并在依据里保留 {@code RETRY_AFTER}，这样「来源要求等一天，我们只等了 5 分钟」这件事
+   * 能从运行记录里看出来，而不是悄悄变成一个普通退避。
+   */
+  private Backoff decideBackoff(int attempt, Integer retryAfterSeconds) {
+    if (retryAfterSeconds == null) {
+      return new Backoff(backoffSeconds(attempt), "EXPONENTIAL_BACKOFF");
+    }
+    int cap = properties.maxBackoffSeconds();
+    return new Backoff(Math.min(Math.max(retryAfterSeconds, 1), cap), "RETRY_AFTER");
   }
 
   /** 一轮执行的结果。 */

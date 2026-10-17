@@ -45,8 +45,19 @@ class CollectMapperSqlTest {
   void runnableQueryHonoursBackoffWindow() throws Exception {
     String sql = selectSqlOf("listRunnableJobIds", int.class);
 
-    assertThat(sql).contains("next_attempt_at IS NULL OR next_attempt_at <= now()");
+    assertThat(sql).contains("j.next_attempt_at IS NULL OR j.next_attempt_at <= now()");
     assertThat(sql).contains("status IN ('PENDING', 'RUNNING')");
+  }
+
+  @Test
+  @DisplayName("可执行任务查询带业务周期门控，且不拦住已经开工的任务")
+  void runnableQueryHonoursBusinessCadence() throws Exception {
+    String sql = selectSqlOf("listRunnableJobIds", int.class);
+
+    // 少了这个条件：设了「每季度更新」的来源照样每 2 秒被取出来跑，周期配置等于摆设。
+    assertThat(sql).contains("c.next_due_at IS NULL OR c.next_due_at <= now()");
+    assertThat(sql).as("周期只挡「还没开始」的执行，不能把正在翻页的任务停在半路").contains("j.total_fetched > 0 OR");
+    assertThat(sql).contains("JOIN ing_source_run_config c ON c.id = j.source_config_id");
   }
 
   @Test

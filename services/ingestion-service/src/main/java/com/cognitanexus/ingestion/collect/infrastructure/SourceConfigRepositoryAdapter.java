@@ -74,4 +74,18 @@ public class SourceConfigRepositoryAdapter implements CollectRepositories.Source
     return mapper.updateRunParameters(
         id, queryExpression, pageSize, licenseReviewState, licenseNote);
   }
+
+  @Override
+  public int updateUpdatePlan(
+      String id,
+      Integer newRecordIntervalMinutes,
+      Integer fieldRefreshIntervalMinutes,
+      String note) {
+    return mapper.updateUpdatePlan(id, newRecordIntervalMinutes, fieldRefreshIntervalMinutes, note);
+  }
+
+  @Override
+  public int advanceNextDueAt(String id, java.time.Instant nextDueAt) {
+    return mapper.advanceNextDueAt(id, nextDueAt);
+  }
 }

@@ -223,20 +223,21 @@ public class NsfAdapter implements SourceAdapter {
       HttpResponse<byte[]> response =
           httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
       if (response.statusCode() != 200) {
-        throw new BusinessException(
-            ErrorCode.DEPENDENCY_UNAVAILABLE, "NSF 返回 " + response.statusCode());
+        // 带上 Retry-After：来源明确说了等多久时，用自己的指数退避覆盖它是错的
+        throw SourceFetchException.httpStatus(
+            "NSF",
+            response.statusCode(),
+            response.headers().firstValue("Retry-After").orElse(null));
       }
       byte[] body = response.body();
       if (body.length > maxResponseBytes) {
-        throw new BusinessException(
-            ErrorCode.BUSINESS_RULE_VIOLATION, "NSF 响应超过允许上限 " + maxResponseBytes + " 字节，已拒绝解析");
+        throw SourceFetchException.oversized("NSF", maxResponseBytes);
       }
       return objectMapper.readTree(body);
     } catch (BusinessException ex) {
       throw ex;
     } catch (Exception ex) {
-      throw new BusinessException(
-          ErrorCode.DEPENDENCY_UNAVAILABLE, "抓取 NSF 失败：" + ex.getClass().getSimpleName());
+      throw SourceFetchException.transport("NSF", ex);
     }
   }
 

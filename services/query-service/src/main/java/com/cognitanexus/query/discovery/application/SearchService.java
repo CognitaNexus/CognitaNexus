@@ -11,6 +11,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 检索用例。
@@ -46,18 +48,28 @@ public class SearchService {
     this.properties = properties;
   }
 
+  /**
+   * 成果检索。
+   *
+   * <p>必须在一个 REPEATABLE READ 只读事务里完成：一次请求要读水位、总数、列表、作者和领域，
+   * 前后共五组 SQL。投影是在同一 generation 内逐事件提交的，固定 generation 并不能固定修订——
+   * 默认的 READ COMMITTED 让每条语句各取一个新快照，中间若有新事件提交，就会出现
+   * 「total 是 1、items 是 2，却标着同一个 queryVersion」的响应。
+   *
+   * <p>只加 {@code readOnly=true} 不够：它只声明不写，不改变可见性规则。这里的隔离级别才是
+   * 「同一快照」的实际来源。事务是单请求级、只读、立即结束，不持有跨请求快照。
+   *
+   * <p>公开资格屏障仍在本事务内第一步读取：撤权发生后新发起的请求看到的仍是同一次快照内的
+   * 屏障结果，不会出现「屏障用旧值放行、列表用新值拒绝」的错位。
+   */
+  @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
   public Map<String, Object> search(SearchQuery query) {
     PublicBarrierGuard.BarrierSnapshot barrier = guard.assertPubliclyServed();
     validatePaging(query);
-
+    validateSort(query);
+    assertVersion(query, barrier);
+    // 回显给调用方的版本必须与校验用的是同一个值，否则前端拿到的 token 与下一次比较的对象不同。
     String expectedVersion = query.versionFor(barrier.publishedRevision());
-    if (query.queryVersion() != null
-        && !query.queryVersion().isBlank()
-        && !expectedVersion.equals(query.queryVersion())) {
-      throw new BusinessException(
-          com.cognitanexus.sharedkernel.ErrorCode.QUERY_VERSION_CHANGED,
-          "查询版本已变化（条件或已发布数据发生变更）。请保留当前条件重新发起第一页请求。" + "服务端不会在版本不一致时继续分页，以免把两个快照的结果混在同一个列表里");
-    }
 
     SearchCriteria criteria = criteriaOf(query);
     String generation = barrier.activeGeneration();
@@ -121,9 +133,19 @@ public class SearchService {
   }
 
   /** 学者检索：只统计合格关系在公开生效成果上的出现次数。 */
+  @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
   public Map<String, Object> searchScholars(SearchQuery query) {
     PublicBarrierGuard.BarrierSnapshot barrier = guard.assertPubliclyServed();
     validatePaging(query);
+    // 学者与成果对「过期 token」必须采取同一策略：成果拒绝、学者放行，会让前端只有在学者页
+    // 才能看到「版本不一致却翻页成功」的组合，而那一页恰恰也是分页的。
+    assertVersion(query, barrier);
+    if (query.sort() != null && !SearchQuery.SORT_SCHOLAR_ACHIEVEMENTS_DESC.equals(query.sort())) {
+      // 支撑排序的 SQL 只有一种：按公开合格成果数降序、同数按学者标识稳定排序。
+      // 接受一个不生效的排序参数，比直接拒绝更糟——用户会以为结果已按他选的顺序排列。
+      throw com.cognitanexus.sharedkernel.BusinessException.invalidArgument(
+          "学者检索当前只支持 " + SearchQuery.SORT_SCHOLAR_ACHIEVEMENTS_DESC + "（按公开成果数降序）");
+    }
     SearchCriteria criteria = criteriaOf(query);
     String generation = barrier.activeGeneration();
     long total = mapper.countScholars(generation, criteria);
@@ -189,15 +211,41 @@ public class SearchService {
       throw BusinessException.invalidArgument(
           "交互式翻页偏移上限为 " + properties.searchMaxOffset() + " 条，请缩小检索范围（例如增加年份或领域条件）而不是继续深翻页");
     }
+  }
+
+  /**
+   * 成果检索的排序白名单。
+   *
+   * <p>与分页校验分开：学者检索只有一种受支持的排序，两套白名单混在同一个方法里会让
+   * 「学者传 achievements_desc」被成果白名单拒掉，错误信息还指向一堆没有意义的取值。
+   */
+  private static void validateSort(SearchQuery query) {
     if (query.sort() != null && !SearchQuery.allowedSorts().contains(query.sort())) {
       throw BusinessException.invalidArgument(
           "排序字段必须是以下之一：" + String.join("、", SearchQuery.allowedSorts()));
     }
   }
 
+  /**
+   * 校验分页携带的查询版本。
+   *
+   * <p>两个检索入口共用同一条判据：条件摘要或发布修订任一变化，旧 token 都作废。
+   */
+  private static void assertVersion(SearchQuery query, PublicBarrierGuard.BarrierSnapshot barrier) {
+    String expectedVersion = query.versionFor(barrier.publishedRevision());
+    if (query.queryVersion() != null
+        && !query.queryVersion().isBlank()
+        && !expectedVersion.equals(query.queryVersion())) {
+      throw new BusinessException(
+          com.cognitanexus.sharedkernel.ErrorCode.QUERY_VERSION_CHANGED,
+          "查询版本已变化（条件或已发布数据发生变更）。请保留当前条件重新发起第一页请求。" + "服务端不会在版本不一致时继续分页，以免把两个快照的结果混在同一个列表里");
+    }
+  }
+
   private static SearchCriteria criteriaOf(SearchQuery query) {
     return new SearchCriteria(
         query.keywordNorm(),
+        SearchQuery.likePatternOf(query.keywordNorm()),
         query.type(),
         query.yearFrom(),
         query.yearTo(),

@@ -398,6 +398,24 @@ public interface AchievementMapper {
       @Param("normalizedValue") String normalizedValue);
 
   /**
+   * 某实体在某类标识下已登记的全部规范值。
+   *
+   * <p>用在「同名但标识不同」的判据里：需要知道既有学者是否已经持有**另一个** ORCID。
+   * 只用 {@code hasRegisteredIdentifier} 答不出这一点——只有 OpenAlex ID 的学者和已经有别的 ORCID
+   * 的学者，对「新来的 ORCID 是同一人补登还是另一个同名者」意味着完全不同的处置。
+   */
+  @Select(
+      """
+      SELECT normalized_value FROM core_identifier_registry
+      WHERE entity_type = #{entityType} AND entity_id = #{entityId}
+        AND identifier_kind = #{kind}
+      """)
+  List<String> findRegisteredValues(
+      @Param("entityType") String entityType,
+      @Param("entityId") String entityId,
+      @Param("kind") String kind);
+
+  /**
    * 注册稳定标识。
    *
    * <p>冲突时返回 0 行影响而不是抛错：未经证实的冲突标识必须转为治理候选，
@@ -689,6 +707,39 @@ public interface AchievementMapper {
       @Param("titleNorm") String titleNorm,
       @Param("threshold") double threshold,
       @Param("limit") int limit);
+
+  /**
+   * 单条成果与给定题名的三元组相似度。
+   *
+   * <p>为什么不在 Java 里自己写一个：入榜候选用的就是 PostgreSQL 的 {@code similarity()}，
+   * 另写一份实现会让「成候选」与「判矛盾」用两把尺子，同一条记录在两处得到相反结论。
+   */
+  @Select(
+      """
+      SELECT similarity(title_norm, #{titleNorm}) FROM core_achievement WHERE id = #{achievementId}
+      """)
+  Double titleSimilarity(
+      @Param("achievementId") String achievementId, @Param("titleNorm") String titleNorm);
+
+  /**
+   * 对「稳定标识 → 规范实体」的 check-then-insert 加事务级互斥。
+   *
+   * <p>为什么要锁：两个来源并发首次导入同一 DOI 时，双方都查不到标识注册行，于是各自新建成果，
+   * 后提交的一方在 {@code uk_core_paper_doi_norm} 上失败，<b>整个批次事务回滚</b>——调用方只看到
+   * 一次 500，数据上却查不出是谁和谁撞了。锁住标识键之后，后到的一方在这里等前一方提交，
+   * 醒来时标识已注册，于是走「追加来源」路径，行为与串行执行完全一致。
+   *
+   * <p>用 {@code pg_advisory_xact_lock} 而不是表锁或 SELECT FOR UPDATE：没有行可就地锁住（标识行
+   * 尚不存在正是要解决的问题），而咨询锁天然随事务结束释放，不会因异常留下死锁。
+   *
+   * <p>键用 {@code hashtextextended} 取 64 位哈希而不是 32 位的 {@code hashtext}：后者在一批
+   * DOI 上就可能撞出无关互斥，虽然只影响并发度，但会让压测结果无法解释。
+   */
+  @Select(
+      """
+      SELECT count(*) FROM (SELECT pg_advisory_xact_lock(hashtextextended(#{key}, 0))) AS locked
+      """)
+  int lockStableIdentifier(@Param("key") String key);
 
   @Select(
       """

@@ -70,10 +70,7 @@ public class TopicInferenceService {
 
   /** 单条成果的处理结果。unresolvedReason 仅在判不出时非空。 */
   public record Item(
-      String achievementId,
-      String title,
-      List<Assignment> assignments,
-      String unresolvedReason) {}
+      String achievementId, String title, List<Assignment> assignments, String unresolvedReason) {}
 
   /**
    * 一批推断的结果。
@@ -130,8 +127,7 @@ public class TopicInferenceService {
         unresolved++;
         String why = unresolvedReason(item);
         if (!dryRun) {
-          inferences.upsertInference(
-              item.achievementId(), ruleVersion, "UNRESOLVED", 0, null, why);
+          inferences.upsertInference(item.achievementId(), ruleVersion, "UNRESOLVED", 0, null, why);
         }
         addSample(samples, new Item(item.achievementId(), item.title(), List.of(), why));
         continue;
@@ -142,7 +138,8 @@ public class TopicInferenceService {
       if (!dryRun) {
         // 换词表版本重算时先清掉旧版本的归属：同一成果上挂着两版推断，读起来像是它有两个来源，
         // 而实际上只是一次重算没收干净。
-        supersededRows += inferences.deleteInferredOfOtherVersions(item.achievementId(), ruleVersion);
+        supersededRows +=
+            inferences.deleteInferredOfOtherVersions(item.achievementId(), ruleVersion);
         for (TopicClassification classification : got) {
           String topicId = topics.findOrCreate(classification.fieldName());
           int affected =
@@ -303,8 +300,7 @@ public class TopicInferenceService {
    * 词表缺词。因此这里把最高得分、阈值与命中的判别词一并写出来。
    */
   private String unresolvedReason(TopicInferenceRepository.PendingAchievement item) {
-    boolean noText =
-        blank(item.title()) && blank(item.venue()) && blank(item.abstractText());
+    boolean noText = blank(item.title()) && blank(item.venue()) && blank(item.abstractText());
     if (noText) {
       return "题名、期刊与摘要均为空，没有可用于判断的文本";
     }

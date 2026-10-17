@@ -2,8 +2,8 @@ package com.cognitanexus.core.taxonomy.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.cognitanexus.core.taxonomy.domain.TopicClassifier.Candidate;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -129,8 +129,9 @@ class TopicClassifierTest {
 
     @Test
     void abstractOnlyHitIsHalved() {
-      assertThat(classifier.rank(null, null, "alpha")).singleElement().satisfies(
-          candidate -> assertThat(candidate.score()).isEqualTo(2.5));
+      assertThat(classifier.rank(null, null, "alpha"))
+          .singleElement()
+          .satisfies(candidate -> assertThat(candidate.score()).isEqualTo(2.5));
       // 折半后低于阈值：只出现在摘要里的证据不足以支撑一条归属
       assertThat(classifier.classify(null, null, "alpha")).isEmpty();
     }
@@ -164,8 +165,7 @@ class TopicClassifierTest {
 
     @Test
     void atMostTwoFields() {
-      List<TopicClassification> got =
-          classifier.classify("alpha gamma epsilon", null, null);
+      List<TopicClassification> got = classifier.classify("alpha gamma epsilon", null, null);
       assertThat(got).hasSizeLessThanOrEqualTo(2);
     }
   }
@@ -178,10 +178,8 @@ class TopicClassifierTest {
     void tieIsBrokenByFieldNameNotByVocabularyOrder() throws IOException {
       String tieFieldA = "{\"canonicalName\":\"甲\",\"terms\":[{\"term\":\"omega\",\"weight\":5}]}";
       String tieFieldB = "{\"canonicalName\":\"乙\",\"terms\":[{\"term\":\"omega\",\"weight\":5}]}";
-      TopicClassifier forward =
-          new TopicClassifier(taxonomy(tieFieldA + "," + tieFieldB));
-      TopicClassifier reversed =
-          new TopicClassifier(taxonomy(tieFieldB + "," + tieFieldA));
+      TopicClassifier forward = new TopicClassifier(taxonomy(tieFieldA + "," + tieFieldB));
+      TopicClassifier reversed = new TopicClassifier(taxonomy(tieFieldB + "," + tieFieldA));
       assertThat(names(forward.classify("omega", null, null)))
           .isEqualTo(names(reversed.classify("omega", null, null)));
     }
@@ -217,7 +215,8 @@ class TopicClassifierTest {
           new TopicClassifier(
               taxonomy("{\"canonicalName\":\"甲\",\"terms\":[{\"term\":\"rna\",\"weight\":5}]}"));
       assertThat(shortClassifier.classify("Internal Revenue Report", null, null)).isEmpty();
-      assertThat(names(shortClassifier.classify("RNA Sequencing", null, null))).containsExactly("甲");
+      assertThat(names(shortClassifier.classify("RNA Sequencing", null, null)))
+          .containsExactly("甲");
     }
 
     @Test
@@ -240,8 +239,7 @@ class TopicClassifierTest {
         abstractText.append(term).append(' ');
       }
       TopicClassifier wide =
-          new TopicClassifier(
-              taxonomy("{\"canonicalName\":\"甲\",\"terms\":[" + terms + "]}"));
+          new TopicClassifier(taxonomy("{\"canonicalName\":\"甲\",\"terms\":[" + terms + "]}"));
       List<Candidate> ranked = wide.rank(null, null, abstractText.toString());
       assertThat(ranked.get(0).evidence()).contains("命中 12 项").contains("另有 4 项");
     }

@@ -48,8 +48,7 @@ class PublicCatalogQueryServiceTest {
     scholars = mock(ScholarRepository.class);
     ContributionRepository contributions = mock(ContributionRepository.class);
     TopicRepository topics = mock(TopicRepository.class);
-    service =
-        new PublicCatalogQueryService(achievements, scholars, contributions, topics);
+    service = new PublicCatalogQueryService(achievements, scholars, contributions, topics);
     // 这些查询在校验通过后才发生；默认给空，避免每个用例重复声明。
     lenient().when(achievements.findPaper(anyString())).thenReturn(Optional.empty());
     lenient().when(achievements.findPatent(anyString())).thenReturn(Optional.empty());
@@ -80,10 +79,14 @@ class PublicCatalogQueryServiceTest {
   @DisplayName("被合并的旧标识跳到幸存实体，并说明这是一次跳转")
   void mergedIdRedirectsToSurvivor() {
     when(achievements.findById("ach_old"))
-        .thenReturn(Optional.of(achievement("ach_old", EffectiveStatus.WITHDRAWN, Visibility.PUBLIC, "ach_new")));
+        .thenReturn(
+            Optional.of(
+                achievement("ach_old", EffectiveStatus.WITHDRAWN, Visibility.PUBLIC, "ach_new")));
     when(achievements.resolveSurvivorId("ach_old")).thenReturn(Optional.of("ach_new"));
     when(achievements.findById("ach_new"))
-        .thenReturn(Optional.of(achievement("ach_new", EffectiveStatus.EFFECTIVE, Visibility.PUBLIC, null)));
+        .thenReturn(
+            Optional.of(
+                achievement("ach_new", EffectiveStatus.EFFECTIVE, Visibility.PUBLIC, null)));
 
     Map<String, Object> view = service.achievementDetail("ach_old");
 
@@ -96,10 +99,15 @@ class PublicCatalogQueryServiceTest {
   @DisplayName("跳转不能绕过公开资格：幸存实体待治理时，旧标识一样打不开")
   void redirectToPendingEntityIsNotFound() {
     when(achievements.findById("ach_old"))
-        .thenReturn(Optional.of(achievement("ach_old", EffectiveStatus.WITHDRAWN, Visibility.PUBLIC, "ach_new")));
+        .thenReturn(
+            Optional.of(
+                achievement("ach_old", EffectiveStatus.WITHDRAWN, Visibility.PUBLIC, "ach_new")));
     when(achievements.resolveSurvivorId("ach_old")).thenReturn(Optional.of("ach_new"));
     when(achievements.findById("ach_new"))
-        .thenReturn(Optional.of(achievement("ach_new", EffectiveStatus.PENDING_GOVERNANCE, Visibility.RESTRICTED, null)));
+        .thenReturn(
+            Optional.of(
+                achievement(
+                    "ach_new", EffectiveStatus.PENDING_GOVERNANCE, Visibility.RESTRICTED, null)));
 
     assertThatThrownBy(() -> service.achievementDetail("ach_old"))
         .isInstanceOf(BusinessException.class)
@@ -112,10 +120,14 @@ class PublicCatalogQueryServiceTest {
   @DisplayName("幸存实体受限时同样打不开，不因「是从旧标识来的」而放宽")
   void redirectToRestrictedEntityIsNotFound() {
     when(achievements.findById("ach_old"))
-        .thenReturn(Optional.of(achievement("ach_old", EffectiveStatus.WITHDRAWN, Visibility.PUBLIC, "ach_new")));
+        .thenReturn(
+            Optional.of(
+                achievement("ach_old", EffectiveStatus.WITHDRAWN, Visibility.PUBLIC, "ach_new")));
     when(achievements.resolveSurvivorId("ach_old")).thenReturn(Optional.of("ach_new"));
     when(achievements.findById("ach_new"))
-        .thenReturn(Optional.of(achievement("ach_new", EffectiveStatus.EFFECTIVE, Visibility.RESTRICTED, null)));
+        .thenReturn(
+            Optional.of(
+                achievement("ach_new", EffectiveStatus.EFFECTIVE, Visibility.RESTRICTED, null)));
 
     assertThatThrownBy(() -> service.achievementDetail("ach_old"))
         .isInstanceOf(BusinessException.class);
@@ -125,7 +137,10 @@ class PublicCatalogQueryServiceTest {
   @DisplayName("未合并但不可见的成果：不存在与不可见对外表现一致")
   void hiddenEntityLooksMissing() {
     when(achievements.findById("ach_1"))
-        .thenReturn(Optional.of(achievement("ach_1", EffectiveStatus.PENDING_GOVERNANCE, Visibility.RESTRICTED, null)));
+        .thenReturn(
+            Optional.of(
+                achievement(
+                    "ach_1", EffectiveStatus.PENDING_GOVERNANCE, Visibility.RESTRICTED, null)));
 
     assertThatThrownBy(() -> service.achievementDetail("ach_1"))
         .isInstanceOf(BusinessException.class)
@@ -137,14 +152,30 @@ class PublicCatalogQueryServiceTest {
   void scholarRedirectCarriesContributions() {
     Scholar merged =
         new Scholar(
-            "sch_old", "张三", "张三", DataNature.REAL, Scholar.ClaimedStatus.UNCLAIMED,
-            "北京航空航天大学", null, "sch_new", 1L,
-            Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-01-01T00:00:00Z"));
+            "sch_old",
+            "张三",
+            "张三",
+            DataNature.REAL,
+            Scholar.ClaimedStatus.UNCLAIMED,
+            "北京航空航天大学",
+            null,
+            "sch_new",
+            1L,
+            Instant.parse("2026-01-01T00:00:00Z"),
+            Instant.parse("2026-01-01T00:00:00Z"));
     Scholar survivor =
         new Scholar(
-            "sch_new", "张三", "张三", DataNature.REAL, Scholar.ClaimedStatus.CLAIMED,
-            "北京航空航天大学", "研究简介", null, 2L,
-            Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-01-01T00:00:00Z"));
+            "sch_new",
+            "张三",
+            "张三",
+            DataNature.REAL,
+            Scholar.ClaimedStatus.CLAIMED,
+            "北京航空航天大学",
+            "研究简介",
+            null,
+            2L,
+            Instant.parse("2026-01-01T00:00:00Z"),
+            Instant.parse("2026-01-01T00:00:00Z"));
     when(scholars.findById("sch_old")).thenReturn(Optional.of(merged));
     when(scholars.resolveSurvivorId("sch_old")).thenReturn(Optional.of("sch_new"));
     when(scholars.findById("sch_new")).thenReturn(Optional.of(survivor));

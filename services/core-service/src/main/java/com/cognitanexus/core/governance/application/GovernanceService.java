@@ -1082,7 +1082,8 @@ public class GovernanceService {
         .anyMatch(left::contains);
   }
 
-  private static String identifierKey(GovernanceRepositories.MergeTargetRepository.RegisteredIdentifier id) {
+  private static String identifierKey(
+      GovernanceRepositories.MergeTargetRepository.RegisteredIdentifier id) {
     return id.identifierKind() + "|" + id.scope() + "|" + id.normalizedValue();
   }
 
@@ -1113,8 +1114,7 @@ public class GovernanceService {
             && !survivor.nameNorm().isBlank()
             && survivor.nameNorm().equals(merged.nameNorm());
     if (!sameName && !sharesIdentifier(survivorId, mergedId)) {
-      throw BusinessException.businessRule(
-          "两位学者的规范姓名不同，且没有共同的稳定标识，不能合并：请先核验是否为同一人并补充依据");
+      throw BusinessException.businessRule("两位学者的规范姓名不同，且没有共同的稳定标识，不能合并：请先核验是否为同一人并补充依据");
     }
 
     Optional<String> survivorAuthority = mergeTargets.findActiveAuthorityId(survivorId);

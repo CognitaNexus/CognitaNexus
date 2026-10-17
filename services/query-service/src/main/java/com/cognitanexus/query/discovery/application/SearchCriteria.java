@@ -10,10 +10,14 @@ package com.cognitanexus.query.discovery.application;
  * 模板表达式里容易被写成引用比较，而那种错误不会报错，只会让过滤条件静默失效。
  *
  * @param keywordNorm 已按与投影相同的规则归一化的关键词；null 表示不含关键词条件
+ * @param keywordLike 关键词转成 LIKE 模式后的值：{@code %} 与 {@code _} 已按字面转义。
+ *     直接拿 keywordNorm 拼 LIKE 模式会让用户输入的一个 {@code %} 变成「匹配全部」，
+ *     而检索结果看起来仍然正常，属于不会报错的错误。相似度计算仍用 keywordNorm。
  * @param organization 发生时机构名，精确匹配；web 层刻意不做模糊匹配，避免把相似机构名混为一谈
  */
 public record SearchCriteria(
     String keywordNorm,
+    String keywordLike,
     String type,
     Integer yearFrom,
     Integer yearTo,

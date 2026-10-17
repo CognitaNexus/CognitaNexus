@@ -109,9 +109,10 @@ watch(() => scope.nature, load)
           v-model="heroKeyword"
           type="search"
           aria-label="成果检索关键词"
-          placeholder="输入标题关键词、DOI 或作者姓名"
+          placeholder="输入题名关键词、发表载体或 DOI"
         />
         <button type="submit">检索成果</button>
+        <RouterLink class="btn" to="/search?scope=scholars">按姓名找学者</RouterLink>
       </form>
 
       <div class="hero-modes">

@@ -123,6 +123,29 @@ onMounted(detail.run)
         </div>
 
         <div class="panel">
+          <div class="panel-body">
+            <div class="btn-row">
+              <RouterLink class="btn small" :to="`/portal?scholarId=${encodeURIComponent(id)}`">
+                {{ String(detail.data.value.claimedStatus) === 'CLAIMED' ? '对这个门户提交认领申请' : '申请管理这个门户' }}
+              </RouterLink>
+              <RouterLink class="btn small" :to="`/network?scholarId=${encodeURIComponent(id)}`">
+                查看合作网络
+              </RouterLink>
+            </div>
+            <p class="tiny faint" style="margin: 10px 0 0">
+              <template v-if="String(detail.data.value.claimedStatus) === 'CLAIMED'">
+                该门户已有生效的管理人。提交申请不等于转移授权：已有管理人不会被一次申请自动替换，
+                审核会按争议流程处理。
+              </template>
+              <template v-else>
+                认领只授予这个门户的管理权，不会把你名下的同名成果自动改为本人确认；
+                审核会核对材料与说明，结果以服务端返回为准。
+              </template>
+            </p>
+          </div>
+        </div>
+
+        <div class="panel">
           <div class="panel-head"><h2>研究简介</h2></div>
           <div class="panel-body">
             <p v-if="detail.data.value.researchSummary" style="margin: 0; white-space: pre-wrap">

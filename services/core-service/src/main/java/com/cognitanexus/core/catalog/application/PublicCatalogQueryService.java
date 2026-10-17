@@ -75,8 +75,7 @@ public class PublicCatalogQueryService {
       redirectedFrom = achievementId;
     }
 
-    if (!target.visibility().publiclyVisible()
-        || !target.effectiveStatus().publiclyEligible()) {
+    if (!target.visibility().publiclyVisible() || !target.effectiveStatus().publiclyEligible()) {
       // 不存在与不可见对外不可区分，避免通过状态码探测受限对象
       throw BusinessException.notFound("成果不存在或尚不可见");
     }

@@ -45,6 +45,33 @@ const jobDetailNote = ref('')
 const selectedJobId = ref('')
 
 const sourceReasons = reactive<Record<string, string>>({})
+
+/**
+ * 业务更新周期的草稿：按来源标识存。空串表示「不设定」，不是 0——
+ * 0 会被库级 CHECK 拒绝，而空串代表这个人还没决定，两者不能混。
+ */
+const planDrafts = reactive<
+  Record<string, { newRecord: string; fieldRefresh: string; note: string }>
+>({})
+
+function planDraftOf(row: Row) {
+  const key = String(row.id)
+  if (!planDrafts[key]) {
+    planDrafts[key] = { newRecord: '', fieldRefresh: '', note: '' }
+  }
+  return planDrafts[key]
+}
+
+/** 分钟转成「人话」：1440 分钟写成 1 天，避免运维在 10080 这种数字上心算。 */
+function minutesLabel(value: unknown) {
+  const minutes = Number(value)
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return '未设定'
+  }
+  if (minutes % 1440 === 0) return `${minutes / 1440} 天`
+  if (minutes % 60 === 0) return `${minutes / 60} 小时`
+  return `${minutes} 分钟`
+}
 const jobForm = reactive({ sourceId: '', jobKey: '', reason: '' })
 const busy = ref('')
 const actionError = ref('')
@@ -172,6 +199,40 @@ function syncSource(row: Row) {
     `sync:${String(row.id)}`,
     () => ingestionApi.syncSource(String(row.id)),
     '已从核心服务同步权威配置。若权威配置版本更高，本地运行参数会被覆盖为权威值。',
+    loadSources,
+  )
+}
+
+function saveUpdatePlan(row: Row) {
+  const draft = planDraftOf(row)
+  const newRecord = draft.newRecord.trim() === '' ? null : Number(draft.newRecord.trim())
+  const fieldRefresh = draft.fieldRefresh.trim() === '' ? null : Number(draft.fieldRefresh.trim())
+  if (newRecord !== null && (!Number.isInteger(newRecord) || newRecord < 60 || newRecord > 525600)) {
+    actionError.value = '发现新记录的周期须在 60 到 525600 分钟之间（1 小时到 1 年），留空表示不设定。'
+    return
+  }
+  if (
+    fieldRefresh !== null &&
+    (!Number.isInteger(fieldRefresh) || fieldRefresh < 60 || fieldRefresh > 525600)
+  ) {
+    actionError.value = '字段刷新周期须在 60 到 525600 分钟之间（1 小时到 1 年），留空表示不设定。'
+    return
+  }
+  if ((newRecord !== null || fieldRefresh !== null) && draft.note.trim() === '') {
+    actionError.value = '设定更新周期必须写明依据（来源声明频率／许可条款／人工评估），否则这个数字下次无法复核。'
+    return
+  }
+  run(
+    `plan:${String(row.id)}`,
+    () =>
+      ingestionApi.setSourceUpdatePlan(String(row.id), {
+        newRecordIntervalMinutes: newRecord,
+        fieldRefreshIntervalMinutes: fieldRefresh,
+        note: draft.note.trim() || undefined,
+      }),
+    newRecord === null && fieldRefresh === null
+      ? '已撤销业务更新周期：该来源退回「只由人工创建任务驱动」。'
+      : '业务更新周期已保存。它只决定「多久该跑一轮」，与任务轮询间隔、失败退避是三件事。',
     loadSources,
   )
 }
@@ -405,7 +466,51 @@ onMounted(loadAll)
               <dd class="tiny">{{ (row.allowedFields as string[])?.join(', ') || '—' }}</dd>
               <dt>许可说明</dt>
               <dd class="tiny">{{ String(row.licenseNote ?? '—') }}</dd>
+              <dt>更新周期</dt>
+              <dd class="tiny">
+                发现新记录 {{ minutesLabel(row.newRecordIntervalMinutes) }} · 字段刷新
+                {{ minutesLabel(row.fieldRefreshIntervalMinutes) }}
+                <span v-if="!row.hasUpdatePlan" class="faint">
+                  （未设定：任务只由人工创建驱动，不会自动按周期排期）
+                </span>
+              </dd>
+              <dt>下次到期</dt>
+              <dd class="tiny">{{ row.nextDueAt ? String(row.nextDueAt) : '未排期' }}</dd>
+              <dt>周期依据</dt>
+              <dd class="tiny">{{ String(row.updatePlanNote ?? '—') }}</dd>
             </dl>
+
+            <div class="btn-row" style="margin-bottom: 8px">
+              <input
+                v-model="planDraftOf(row).newRecord"
+                type="number"
+                min="60"
+                max="525600"
+                placeholder="发现新记录（分钟，留空=不设定）"
+                style="flex: 1; min-width: 200px"
+              />
+              <input
+                v-model="planDraftOf(row).fieldRefresh"
+                type="number"
+                min="60"
+                max="525600"
+                placeholder="字段刷新（分钟，留空=不设定）"
+                style="flex: 1; min-width: 200px"
+              />
+              <input
+                v-model="planDraftOf(row).note"
+                type="text"
+                placeholder="周期依据（设定周期时必填）"
+                style="flex: 1; min-width: 240px"
+              />
+              <button
+                class="btn small"
+                :disabled="busy === `plan:${String(row.id)}`"
+                @click="saveUpdatePlan(row)"
+              >
+                保存周期
+              </button>
+            </div>
 
             <div class="btn-row" style="margin-bottom: 8px">
               <input

@@ -9,7 +9,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.cognitanexus.query.consistency.PublicBarrierGuard;
@@ -52,18 +51,15 @@ class NetworkServiceTest {
         .thenReturn(new PublicBarrierGuard.BarrierSnapshot(120L, 120L, 120L, 120L, "42"));
     when(mapper.listScholarNames(anyString(), anyList())).thenReturn(List.of());
     edges = new ArrayList<>();
-    when(mapper.listEdgesOfScholars(
-            anyString(), any(), any(), any(), anyList(), anyInt()))
+    when(mapper.listEdgesOfScholars(anyString(), any(), any(), any(), anyList(), anyInt()))
         .thenAnswer(
             invocation -> {
               Collection<String> scholars = invocation.getArgument(4);
               int limit = invocation.getArgument(5);
               return edges.stream()
                   .filter(
-                      row ->
-                          scholars.contains(row.scholarA()) || scholars.contains(row.scholarB()))
-                  .sorted(
-                      Comparator.comparing(EdgeRow::scholarA).thenComparing(EdgeRow::scholarB))
+                      row -> scholars.contains(row.scholarA()) || scholars.contains(row.scholarB()))
+                  .sorted(Comparator.comparing(EdgeRow::scholarA).thenComparing(EdgeRow::scholarB))
                   .limit(limit)
                   .toList();
             });
@@ -103,12 +99,16 @@ class NetworkServiceTest {
     Map<String, Object> depth1 = service.neighborhood("s_a", 1, 0, "REAL", null, null);
     @SuppressWarnings("unchecked")
     List<Map<String, Object>> nodes1 = (List<Map<String, Object>>) depth1.get("nodes");
-    assertThat(nodes1).extracting(node -> node.get("scholarId")).containsExactlyInAnyOrder("s_a", "s_b");
+    assertThat(nodes1)
+        .extracting(node -> node.get("scholarId"))
+        .containsExactlyInAnyOrder("s_a", "s_b");
 
     Map<String, Object> depth2 = service.neighborhood("s_a", 2, 0, "REAL", null, null);
     @SuppressWarnings("unchecked")
     List<Map<String, Object>> nodes2 = (List<Map<String, Object>>) depth2.get("nodes");
-    assertThat(nodes2).extracting(node -> node.get("scholarId")).containsExactlyInAnyOrder("s_a", "s_b", "s_c");
+    assertThat(nodes2)
+        .extracting(node -> node.get("scholarId"))
+        .containsExactlyInAnyOrder("s_a", "s_b", "s_c");
   }
 
   @Test
@@ -137,14 +137,30 @@ class NetworkServiceTest {
   }
 
   @Test
-  @DisplayName("起点与终点相同按 0 跳返回，且不触发任何图查询")
-  void samePointIsZeroHopsWithoutQuery() {
+  @DisplayName("起点与终点相同且确有合作边时按 0 跳返回，DTO 形状与正常路径一致")
+  void samePointIsZeroHopsWhenInScope() {
+    edges.add(new EdgeRow("s_a", "s_b", 1));
+
     Map<String, Object> view = service.shortestPath("s_a", "s_a", "REAL", null, null);
 
     assertThat(view.get("reachable")).isEqualTo(true);
     assertThat(view.get("hops")).isEqualTo(0);
     assertThat(view.get("path")).isEqualTo(List.of("s_a"));
-    verifyNoInteractions(mapper);
+    // 与正常路径保持同一形状：调用方不必为零跳单独判空。
+    assertThat(view).containsKey("pathNodes");
+  }
+
+  @Test
+  @DisplayName("起点与终点相同但该学者不在当前范围内时，不伪造 0 跳可达")
+  void samePointOutsideScopeIsNotReachable() {
+    // 没有任何边：可能是未公开、关系不合格，或筛选条件把他排除了。
+    // 改动前这里会返回 reachable=true 且不带 pathNodes，任意不存在的 ID 都能冒充有效路径。
+    Map<String, Object> view = service.shortestPath("s_missing", "s_missing", "REAL", null, null);
+
+    assertThat(view.get("reachable")).isEqualTo(false);
+    assertThat(view.get("hops")).isNull();
+    assertThat(view.get("path")).isEqualTo(List.of());
+    assertThat(view.get("note")).asString().contains("没有合格公开合作边");
   }
 
   @Test

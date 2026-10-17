@@ -116,7 +116,13 @@ public class SourceRunConfigService {
             command.licenseNote(),
             command.rateLimitPerMinute() <= 0 ? 30 : command.rateLimitPerMinute(),
             command.enabled(),
-            0);
+            0,
+            // 新登记的来源一律「未设定更新周期」：周期必须由人给出依据后单独设定，
+            // 不能因为「一般一个月更新一次」这种说法就填一个默认值（WB-13）。
+            null,
+            null,
+            null,
+            null);
     if (!configs.register(config)) {
       throw BusinessException.versionConflict("该来源代码已登记运行配置：" + command.sourceCode());
     }
@@ -270,6 +276,78 @@ public class SourceRunConfigService {
         .orElse(false);
   }
 
+  /**
+   * 设定来源的业务更新周期。
+   *
+   * <p>三个周期概念在这里必须分清，否则会写出「每 2 秒抓一次学术来源」这种把执行机制当业务事实
+   * 的配置：
+   *
+   * <ul>
+   *   <li>轮询间隔（{@code cn.collect.worker-interval-ms}）——服务多久看一次队列，属实例参数；
+   *   <li>失败退避（任务上的 {@code nextAttemptAt}）——失败后多久才允许再试，属执行机制；
+   *   <li>业务更新周期（本方法）——这个来源的新记录与历史字段<em>应当</em>多久更新一次。
+   * </ul>
+   *
+   * <p>本方法只处理第三个。设定时强制要求写依据：一个没有出处的数字，下一次评审时没人能判断
+   * 它是否还成立。两个周期都为 null 表示撤销周期，行为退回「只由人工创建任务驱动」。
+   */
+  @Transactional
+  public SourceRunConfig updateUpdatePlan(
+      ActorContext actor, String sourceId, UpdatePlanCommand command) {
+    SourceRunConfig config =
+        configs.findById(sourceId).orElseThrow(() -> BusinessException.notFound("采集运行配置不存在"));
+    Integer newRecord = command.newRecordIntervalMinutes();
+    Integer fieldRefresh = command.fieldRefreshIntervalMinutes();
+    boolean clearing = newRecord == null && fieldRefresh == null;
+    if (!clearing) {
+      if (command.note() == null || command.note().isBlank()) {
+        throw BusinessException.invalidArgument("设定更新周期必须说明依据（来源声明频率／许可条款／人工评估），否则数字无从复核");
+      }
+      requireInterval(newRecord, "发现新记录的周期");
+      requireInterval(fieldRefresh, "字段刷新周期");
+    }
+    Map<String, Object> before = new LinkedHashMap<>();
+    before.put("newRecordIntervalMinutes", config.newRecordIntervalMinutes());
+    before.put("fieldRefreshIntervalMinutes", config.fieldRefreshIntervalMinutes());
+    before.put("updatePlanNote", config.updatePlanNote());
+
+    configs.updateUpdatePlan(
+        sourceId, newRecord, fieldRefresh, clearing ? config.updatePlanNote() : command.note());
+    SourceRunConfig updated = configs.findById(sourceId).orElseThrow();
+    audit.record(
+        actor,
+        "INGESTION_SOURCE_UPDATE_PLAN_SET",
+        "SOURCE",
+        sourceId,
+        before,
+        Map.of(
+            "newRecordIntervalMinutes",
+            String.valueOf(updated.newRecordIntervalMinutes()),
+            "fieldRefreshIntervalMinutes",
+            String.valueOf(updated.fieldRefreshIntervalMinutes()),
+            "updatePlanNote",
+            String.valueOf(updated.updatePlanNote()),
+            "nextDueAt",
+            String.valueOf(updated.nextDueAt())),
+        clearing ? "撤销业务更新周期" : command.note().trim());
+    log.info(
+        "业务更新周期已设定 sourceCode={} newRecord={} fieldRefresh={} nextDue={}",
+        config.sourceCode(),
+        updated.newRecordIntervalMinutes(),
+        updated.fieldRefreshIntervalMinutes(),
+        updated.nextDueAt());
+    return updated;
+  }
+
+  private static void requireInterval(Integer minutes, String label) {
+    if (minutes == null) {
+      return;
+    }
+    if (minutes < 60 || minutes > 525_600) {
+      throw BusinessException.invalidArgument(label + "须在 60 到 525600 分钟之间（1 小时到 1 年）");
+    }
+  }
+
   /** 登记命令。 */
   public record RegisterCommand(
       String sourceCode,
@@ -290,6 +368,15 @@ public class SourceRunConfigService {
       String licenseReviewState,
       String licenseNote,
       String reason) {}
+
+  /**
+   * 业务更新周期命令。
+   *
+   * <p>两个周期都用 Integer 而不是 int：{@code null} 是「未设定」这个有意义的取值，
+   * 不能与 0 混为一谈（0 会被库级 CHECK 拒绝，而 null 是撤销周期）。
+   */
+  public record UpdatePlanCommand(
+      Integer newRecordIntervalMinutes, Integer fieldRefreshIntervalMinutes, String note) {}
 
   /** 同步结果。 */
   public record SyncOutcome(

@@ -26,7 +26,8 @@ class MatchTextTest {
 
     @Test
     void hyphenAndPunctuationActAsWordSeparators() {
-      assertThat(MatchText.normalize("Graph-Neural-Network-Based")).isEqualTo(" graph neural network based ");
+      assertThat(MatchText.normalize("Graph-Neural-Network-Based"))
+          .isEqualTo(" graph neural network based ");
       assertThat(MatchText.normalize("a, b; c")).isEqualTo(" a b c ");
     }
 

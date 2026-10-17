@@ -67,6 +67,19 @@ function resetAction() {
   actionNote.value = ''
 }
 
+/** 认领材料元信息。服务端只给元信息与受保护下载路径，材料本体不进入列表响应。 */
+function evidenceOf(row: Row): Array<Record<string, unknown>> {
+  const raw = row.evidence
+  return Array.isArray(raw) ? (raw as Array<Record<string, unknown>>) : []
+}
+
+function formatSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '大小未知'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MiB`
+}
+
 async function run(key: string, fn: () => Promise<unknown>, note: string, reload: () => Promise<unknown>) {
   resetAction()
   busy.value = key
@@ -226,6 +239,26 @@ onMounted(loadAll)
             <p class="small" style="margin: 8px 0">
               {{ String(row.statement ?? row.note ?? '（申请人未填写说明）') }}
             </p>
+
+            <div class="tiny" style="margin: 0 0 10px">
+              <div class="dim">
+                材料 {{ evidenceOf(row).length }} 份 · 本体经核心服务鉴权后代理下载，列表里不含路径
+              </div>
+              <div v-if="evidenceOf(row).length === 0" class="faint" style="margin-top: 4px">
+                申请人尚未上传材料。仅凭说明不足以核验身份时，请选择「需补证」，并在审核意见里写明需要哪一类材料。
+              </div>
+              <div
+                v-for="item in evidenceOf(row)"
+                :key="String(item.id)"
+                style="margin-top: 5px"
+              >
+                <a :href="`/core${String(item.downloadUrl)}`">下载材料</a>
+                · {{ String(item.contentType) }} · {{ formatSize(Number(item.sizeBytes)) }}
+                · <span class="mono faint">{{ String(item.createdAt) }}</span>
+                · 指纹 <span class="mono faint">{{ String(item.contentHash).slice(0, 16) }}…</span>
+              </div>
+            </div>
+
             <div class="field" style="margin: 0 0 8px">
               <label :for="`claim-reason-${String(row.id)}`">审核意见（必填）</label>
               <input

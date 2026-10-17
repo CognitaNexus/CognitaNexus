@@ -115,8 +115,7 @@ public class AnalyticsService {
       // 不区分「领域不存在」与「该领域没有公开成果」：区分二者等于向外确认了一条尚未公开的
       // 成果的存在。公开读路径只回答它被允许回答的那部分，用户从分面点进来时不会走到这里。
       throw new BusinessException(
-          ErrorCode.NOT_FOUND,
-          "领域 " + id + " 在当前数据性质口径下没有可公开的成果（领域可能不存在，或相关成果尚未公开）");
+          ErrorCode.NOT_FOUND, "领域 " + id + " 在当前数据性质口径下没有可公开的成果（领域可能不存在，或相关成果尚未公开）");
     }
 
     Map<String, Object> topic = new LinkedHashMap<>();
@@ -130,8 +129,7 @@ public class AnalyticsService {
     totals.put("achievements", header.achievements());
     totals.put("sourceProvided", header.sourceAmount());
     totals.put("systemInferred", header.inferredAmount());
-    totals.put(
-        "scholarsWithQualifiedRelation", mapper.topicScholarCount(generation, id, nature));
+    totals.put("scholarsWithQualifiedRelation", mapper.topicScholarCount(generation, id, nature));
     totals.put(
         "achievementsWithUnknownOrganization",
         mapper.topicUnknownOrganization(generation, id, nature));
@@ -144,8 +142,10 @@ public class AnalyticsService {
     data.put(
         "topOrganizations",
         rows(mapper.topicOrganizations(generation, id, nature, TOPIC_RANK_LIMIT), Map.of()));
-    data.put("topScholars", scholars(mapper.topicScholars(generation, id, nature, TOPIC_RANK_LIMIT)));
-    data.put("topVenues", rows(mapper.topicVenues(generation, id, nature, TOPIC_RANK_LIMIT), Map.of()));
+    data.put(
+        "topScholars", scholars(mapper.topicScholars(generation, id, nature, TOPIC_RANK_LIMIT)));
+    data.put(
+        "topVenues", rows(mapper.topicVenues(generation, id, nature, TOPIC_RANK_LIMIT), Map.of()));
     data.put(
         "representativeAchievements",
         achievements(mapper.topicRepresentative(generation, id, nature, TOPIC_RANK_LIMIT)));
@@ -209,17 +209,11 @@ public class AnalyticsService {
     rules.put("achievements", "按去重成果实体计数，只含该领域下的公开生效成果");
     rules.put(
         "topics",
-        "领域为多对多，sourceProvided 为来源元数据给出的分类，systemInferred 为本系统按受控词表推断，"
-            + "两者之和等于该领域的成果总数");
-    rules.put(
-        "organizations",
-        "只统计该领域成果的发生时机构，同成果同机构只计一次，跨机构各计一次；未知机构单列不计入排名");
-    rules.put(
-        "scholars", "只统计该领域成果上关系为 AUTO 与 SELF_CONFIRMED 的学者；待核验/争议/已排除不计入");
+        "领域为多对多，sourceProvided 为来源元数据给出的分类，systemInferred 为本系统按受控词表推断，" + "两者之和等于该领域的成果总数");
+    rules.put("organizations", "只统计该领域成果的发生时机构，同成果同机构只计一次，跨机构各计一次；未知机构单列不计入排名");
+    rules.put("scholars", "只统计该领域成果上关系为 AUTO 与 SELF_CONFIRMED 的学者；待核验/争议/已排除不计入");
     rules.put("venues", "按领域内成果数计，不是期刊总发文量");
-    rules.put(
-        "representativeAchievements",
-        "按发表年份降序、同年再按引用量降序；引用量按来源分别给出，不同来源之间不可比较");
+    rules.put("representativeAchievements", "按发表年份降序、同年再按引用量降序；引用量按来源分别给出，不同来源之间不可比较");
     return rules;
   }
 
@@ -255,8 +249,7 @@ public class AnalyticsService {
       Map<String, Object> view = new LinkedHashMap<>();
       view.put("topicId", row.bucket());
       view.put("canonicalName", row.canonicalName());
-      view.put(
-          "canonicalNameKnown", row.canonicalName() != null && !row.canonicalName().isBlank());
+      view.put("canonicalNameKnown", row.canonicalName() != null && !row.canonicalName().isBlank());
       view.put("achievements", row.amount());
       view.put("sourceProvided", row.sourceAmount());
       view.put("systemInferred", row.inferredAmount());

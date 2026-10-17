@@ -164,6 +164,22 @@ public interface CatalogRepositories {
 
     /** 收紧可见性；只降不升，且仅在当前可见性不同时产生一次版本变更。 */
     int tightenVisibility(String achievementId, String visibility);
+
+    /**
+     * 单条成果与给定归一题名的相似度；成果不存在时返回 {@code null}（与「相似度为 0」区分）。
+     *
+     * <p>与 {@link #findSimilarByTitle} 用同一个 PostgreSQL {@code similarity()}，
+     * 保证「够得上候选」与「算不算明显矛盾」是同一种尺子量出来的。
+     */
+    Double titleSimilarity(String achievementId, String titleNorm);
+
+    /**
+     * 对稳定标识加事务级互斥，串行化同一标识的首次入库判定。
+     *
+     * <p>见 {@code AchievementMapper.lockStableIdentifier} 的说明：没有这把锁时，并发的
+     * check-then-insert 会让后到的一方撞唯一约束、整批回滚。
+     */
+    void lockStableIdentifier(String kind, String normalizedValue);
   }
 
   /** 学者仓储。同名不直接合并：这里只提供精确匹配候选，置信判断在治理层。 */
@@ -255,7 +271,8 @@ public interface CatalogRepositories {
      * @param assignmentKind SOURCE=来源元数据给出的分类，INFERRED=本系统按受控词表推断
      * @param confidence 推断置信度 0..1；来源分类为 null（来源不提供这个概念）
      */
-    record TopicAssignment(String topicId, String assignmentKind, java.math.BigDecimal confidence) {}
+    record TopicAssignment(
+        String topicId, String assignmentKind, java.math.BigDecimal confidence) {}
 
     /** 按规范名查找或创建；返回 topicId。 */
     String findOrCreate(String canonicalName);
@@ -308,6 +325,14 @@ public interface CatalogRepositories {
 
     /** 该实体是否有任何已登记的稳定标识。用于裁决后重评估发布时复核「有无稳定标识」这一条件。 */
     boolean hasRegistration(String entityType, String entityId);
+
+    /**
+     * 该实体在某类标识下已登记的全部规范值。
+     *
+     * <p>判「同名但标识不同」需要它：既有学者已持有另一个 ORCID，说明来的是另一个同名者；
+     * 既有学者一个标识都没有，则可能只是这一次才带上标识。两种处置不同，不能都按「同名就复用」。
+     */
+    List<String> registeredValues(String entityType, String entityId, IdentifierKind kind);
   }
 
   /** 字段级溯源。自动更新只写 SOURCE 级，不得覆盖人工与已审核值。 */

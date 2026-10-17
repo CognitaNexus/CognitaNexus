@@ -278,7 +278,13 @@ public class PortalService {
               "CLAIM_REQUEST",
               claim.id(),
               null,
-              Map.of("incumbentAuthorityId", holder.id(), "incumbentAccountId", holder.accountId()),
+              Map.of(
+                  "incumbentAuthorityId",
+                  holder.id(),
+                  "incumbentAccountId",
+                  holder.accountId(),
+                  "detection",
+                  "PRE_CHECK"),
               reason));
       return new DecisionResult("DISPUTED", holder.id(), "该门户已有生效授权，竞争认领不转移原授权，已标记争议");
     }
@@ -290,8 +296,23 @@ public class PortalService {
                 authorityId, claim.accountId(), claim.scholarId(), claim.id(), now),
             actor.accountIdValue());
     if (!granted) {
-      // 并发插入被部分唯一索引拦下：同样按竞争认领处理，不覆盖先到者
+      // 并发插入被部分唯一索引拦下：同样按竞争认领处理，不覆盖先到者。
+      // 这条路径没有「先查到的持有者」可写进证据，但同样要留审计：只留下「申请变成 DISPUTED」
+      // 这一个结果，事后无法区分「当时确有并发」与「有人手工改判」，也无法解释为什么没有第二条授权。
       transition(claim, ClaimRequest.Status.DISPUTED, actor, "并发竞争认领：" + reason, now);
+      audit.record(
+          AuditRecorder.AuditEntry.of(
+              actor,
+              "CLAIM_COMPETITION_DETECTED",
+              "CLAIM_REQUEST",
+              claim.id(),
+              null,
+              Map.of(
+                  "incumbentAuthorityId", "",
+                  "incumbentAccountId", "",
+                  "detection", "UNIQUE_INDEX",
+                  "constraint", "uk_iam_portal_authority_active"),
+              reason));
       return new DecisionResult("DISPUTED", null, "并发竞争认领，未授予授权");
     }
 
@@ -381,6 +402,67 @@ public class PortalService {
     requireApplicantOrAdmin(actor, claim);
     byte[] content = evidenceStorage.read(evidence.fileRef());
     return new EvidenceDownload(evidence, content);
+  }
+
+  /**
+   * 按申请读取材料元信息。
+   *
+   * <p>材料本体仍只能经 {@link #downloadEvidence} 鉴权下载；这里给的是「这份申请有哪些材料、
+   * 分别是什么类型、多大、什么时候传的」，让审核者能在页面上判断该看哪一份，而不是拿到一堆
+   * 没有标识的附件。申请人本人与具备审核能力者可见，权限判断复用下载路径的同一条规则。
+   */
+  @Transactional(readOnly = true)
+  public List<ClaimEvidence> listEvidenceForClaim(ActorContext actor, String claimId) {
+    ClaimRequest claim =
+        claims.findClaimById(claimId).orElseThrow(() -> BusinessException.notFound("申请不存在"));
+    requireApplicantOrAdmin(actor, claim);
+    return claims.listEvidence(claimId);
+  }
+
+  /**
+   * 申请人本人批量取材料元信息。
+   *
+   * <p>只返回本账号名下申请的材料：入参的 claimId 可能来自前端，不能因为「是页面传的」就采信。
+   * 与下载接口同一条规则——不是本人、也没有审核能力，就拿不到这份材料的存在性。
+   */
+  @Transactional(readOnly = true)
+  public Map<String, List<ClaimEvidence>> evidenceOfClaimsForApplicant(
+      ActorContext actor, List<String> claimIds) {
+    if (actor == null) {
+      throw new BusinessException(ErrorCode.AUTH_REQUIRED, "请先登录");
+    }
+    Map<String, List<ClaimEvidence>> grouped = new LinkedHashMap<>();
+    if (claimIds.isEmpty()) {
+      return grouped;
+    }
+    List<ClaimRequest> mine = claims.listClaimsByAccount(actor.accountIdValue(), 100);
+    java.util.Set<String> ownIds = new java.util.HashSet<>();
+    for (ClaimRequest claim : mine) {
+      ownIds.add(claim.id());
+    }
+    for (String claimId : claimIds) {
+      if (ownIds.contains(claimId)) {
+        grouped.put(claimId, claims.listEvidence(claimId));
+      }
+    }
+    return grouped;
+  }
+
+  /**
+   * 审核队列批量取材料。
+   *
+   * <p>审核页一次列出多条申请，逐条再发一次请求会让「这一页有没有材料」变成 N+1 次往返，
+   * 且中途失败时页面会呈现一半有材料一半空白的假象。审核能力在这里显式校验一次。
+   */
+  @Transactional(readOnly = true)
+  public Map<String, List<ClaimEvidence>> evidenceOfClaimsForReview(
+      ActorContext actor, List<String> claimIds) {
+    Capabilities.require(actor, RoleNames.CAP_CLAIM_REVIEW);
+    Map<String, List<ClaimEvidence>> grouped = new LinkedHashMap<>();
+    for (String claimId : claimIds) {
+      grouped.put(claimId, claims.listEvidence(claimId));
+    }
+    return grouped;
   }
 
   // ===========================================================================

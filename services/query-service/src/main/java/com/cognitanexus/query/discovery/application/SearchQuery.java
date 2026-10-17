@@ -37,6 +37,14 @@ public record SearchQuery(
   public static final String SORT_TITLE_ASC = "title_asc";
   public static final String SORT_CITATIONS_DESC = "citations_desc";
 
+  /**
+   * 学者检索唯一受支持的排序：按公开合格成果数降序、同数按学者标识稳定排序。
+   *
+   * <p>单独命名而不是复用成果的排序键：两者的可比字段不同，混用会让「排序生效了」变成一句
+   * 无法验证的话。
+   */
+  public static final String SORT_SCHOLAR_ACHIEVEMENTS_DESC = "achievements_desc";
+
   private static final List<String> ALLOWED_SORTS =
       List.of(SORT_RELEVANCE, SORT_YEAR_DESC, SORT_YEAR_ASC, SORT_TITLE_ASC, SORT_CITATIONS_DESC);
 
@@ -81,6 +89,30 @@ public record SearchQuery(
   public static String normalizeKeyword(String raw) {
     String normalized = TextNormalizer.normalize(raw);
     return normalized == null || normalized.isBlank() ? null : normalized;
+  }
+
+  /**
+   * 把归一化关键词转成 LIKE 模式里可安全拼接的片段。
+   *
+   * <p>用户输入的 {@code %} 或 {@code _} 必须当成普通字符：前者会让 {@code LIKE '%x%'} 变成
+   * 「任意内容」，搜一个 % 得到全库结果；后者会把单字符位置变成通配。这类错误不会报错，
+   * 也不影响页面渲染，只是悄悄给出了错的答案，所以要在进入 SQL 之前就转义。
+   *
+   * <p>PostgreSQL 的 LIKE 默认转义字符是反斜杠，因此只转义参数本身，不需要额外 ESCAPE 子句。
+   */
+  public static String likePatternOf(String keywordNorm) {
+    if (keywordNorm == null) {
+      return null;
+    }
+    StringBuilder escaped = new StringBuilder(keywordNorm.length() + 8);
+    for (int i = 0; i < keywordNorm.length(); i++) {
+      char ch = keywordNorm.charAt(i);
+      if (ch == '\\' || ch == '%' || ch == '_') {
+        escaped.append('\\');
+      }
+      escaped.append(ch);
+    }
+    return escaped.toString();
   }
 
   /** 页码偏移；超出交互上限时由调用方返回可解释的拒绝，不伪报无结果。 */

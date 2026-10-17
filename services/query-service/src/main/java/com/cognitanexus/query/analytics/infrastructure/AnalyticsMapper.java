@@ -36,11 +36,7 @@ public interface AnalyticsMapper {
    * 归属表上，取 max 即可得到（同一领域在同一代内的名称一致）。
    */
   record TopicCountRow(
-      String bucket,
-      String canonicalName,
-      long amount,
-      long sourceAmount,
-      long inferredAmount) {}
+      String bucket, String canonicalName, long amount, long sourceAmount, long inferredAmount) {}
 
   record YearRow(Integer year, long amount) {}
 

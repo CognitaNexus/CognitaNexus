@@ -1,0 +1,20 @@
+Pager usage is off.
+               metric                |  value  
+-------------------------------------+---------
+ 审定修订号                          | 0
+ 原始来源记录                        | 0
+ 规范参与关系                        | 0
+ 合格参与关系（AUTO/SELF_CONFIRMED） | 0
+ 稳定标识登记                        | 0
+ 来源归属行                          | 0
+ 论文 DOI 已归一                     | 550438
+ 规范实体总数                        | 1000000
+ PUBLIC + EFFECTIVE                  | 827553
+ 按类型 PATENT                       | 149860
+ 按类型 PAPER                        | 550438
+ 按类型 AWARD                        | 99524
+ 按类型 PROJECT                      | 200178
+ 已合并（merged_into 非空）          | 0
+ 数据性质 SIMULATED                  | 1000000
+(15 rows)
+

@@ -34,6 +34,14 @@
     <mybatis-starter.version>3.0.5</mybatis-starter.version>
     <archunit.version>1.4.1</archunit.version>
     <testcontainers.version>1.21.3</testcontainers.version>
+    <!--
+      集成测试（*IT，由 failsafe 执行）需要真实 PostgreSQL 实例，默认不随 mvn verify 跑：
+      常规构建不应被「本机有没有起测试库」绑死。要跑：
+        bash ops/local/test-db.sh start
+        ./mvnw -B -ntp verify -Dcn.it.skip=false -Dspotless.check.skip=true
+      默认 skip 是显式记录的状态，不是「跑过并通过」；测试报告里按两次不同命令分别记。
+    -->
+    <cn.it.skip>true</cn.it.skip>
     <!-- 覆盖率门禁：三个核心模块各自的包前缀，见编码规范 8.3 -->
     <jacoco.line.coverage.minimum>0.80</jacoco.line.coverage.minimum>
   </properties>
@@ -96,6 +104,8 @@
             <includes>
               <include>**/*IT.java</include>
             </includes>
+            <!-- 见 properties 里的 cn.it.skip 说明：默认跳过，跑集成测试要显式打开。 -->
+            <skipITs>${cn.it.skip}</skipITs>
           </configuration>
           <executions>
             <execution>

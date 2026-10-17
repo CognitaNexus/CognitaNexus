@@ -101,8 +101,7 @@ final class ScopedGraphLoader {
       int remaining = maxEdges - loadedEdges.size();
       int limit = Math.max(remaining, 0) + 1;
       List<NetworkMapper.EdgeRow> rows =
-          mapper.listEdgesOfScholars(
-              generation, dataNature, topicId, organization, chunk, limit);
+          mapper.listEdgesOfScholars(generation, dataNature, topicId, organization, chunk, limit);
       boolean saturated = rows.size() >= limit;
       for (NetworkMapper.EdgeRow row : rows) {
         String a = row.scholarA();
@@ -130,14 +129,11 @@ final class ScopedGraphLoader {
       if (visited.size() > maxNodes) {
         throw new BusinessException(
             ErrorCode.GRAPH_SCOPE_TOO_LARGE,
-            "以给定起点为中心的合作子图含学者超过节点上限 "
-                + maxNodes
-                + "，请降低深度，或增加领域/机构筛选条件");
+            "以给定起点为中心的合作子图含学者超过节点上限 " + maxNodes + "，请降低深度，或增加领域/机构筛选条件");
       }
       if (loadedEdges.size() > maxEdges || (saturated && loadedEdges.size() >= maxEdges)) {
         throw new BusinessException(
-            ErrorCode.GRAPH_SCOPE_TOO_LARGE,
-            "给定范围内的合作边超过上限 " + maxEdges + " 条，请增加领域或机构筛选条件");
+            ErrorCode.GRAPH_SCOPE_TOO_LARGE, "给定范围内的合作边超过上限 " + maxEdges + " 条，请增加领域或机构筛选条件");
       }
     }
     return discovered;

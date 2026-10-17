@@ -130,4 +130,32 @@ class SearchQueryTest {
     List<String> sorts = SearchQuery.allowedSorts();
     assertThat(sorts).isSameAs(SearchQuery.allowedSorts());
   }
+
+  @Test
+  @DisplayName("LIKE 模式转义：用户输入的 % 与 _ 按字面处理，不会变成通配符")
+  void likePatternEscapesWildcards() {
+    // 不转义时 "100%" 会拼成 LIKE '%100%%'，等价于「以 100 开头的任意内容」；
+    // 搜一个单独的 "%" 则直接命中全库。这类错误不报错、页面也正常，只是答案错了。
+    assertThat(SearchQuery.likePatternOf("100%")).isEqualTo("100\\%");
+    assertThat(SearchQuery.likePatternOf("a_b")).isEqualTo("a\\_b");
+    assertThat(SearchQuery.likePatternOf("%")).isEqualTo("\\%");
+    assertThat(SearchQuery.likePatternOf("_")).isEqualTo("\\_");
+  }
+
+  @Test
+  @DisplayName("LIKE 模式转义：反斜杠本身要转义，普通关键词保持原样")
+  void likePatternEscapesBackslashAndKeepsPlainText() {
+    assertThat(SearchQuery.likePatternOf("a\\b")).isEqualTo("a\\\\b");
+    assertThat(SearchQuery.likePatternOf("graph neural")).isEqualTo("graph neural");
+    assertThat(SearchQuery.likePatternOf(null)).isNull();
+  }
+
+  @Test
+  @DisplayName("归一化与 LIKE 转义是两件事：normalizeKeyword 保留字面，转义只发生在拼 SQL 之前")
+  void normalizeAndEscapeAreSeparateSteps() {
+    // 相似度计算用的是归一化值，它必须保留 % 本身；只有拼进 LIKE 模式时才转义。
+    assertThat(SearchQuery.normalizeKeyword(" 100% ")).isEqualTo("100%");
+    assertThat(SearchQuery.likePatternOf(SearchQuery.normalizeKeyword(" 100% ")))
+        .isEqualTo("100\\%");
+  }
 }

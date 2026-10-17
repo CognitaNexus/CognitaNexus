@@ -13,8 +13,6 @@ import com.cognitanexus.query.platform.persistence.JsonCodec;
 import com.cognitanexus.query.projection.application.ProjectionRepositories.ReadModelStore;
 import com.cognitanexus.query.projection.domain.InboxEventRecord;
 import com.cognitanexus.query.projection.domain.ProjectedAchievement;
-import com.cognitanexus.query.projection.domain.ProjectedContribution;
-import com.cognitanexus.query.projection.domain.ProjectedTopic;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.List;
@@ -40,11 +38,13 @@ class ProjectionApplierTest {
   void setUp() {
     store = mock(ReadModelStore.class);
     ProjectionProperties properties =
-        new ProjectionProperties("query", 500, 5, 200, true, 2000L, 20000, 60000, 800L, 10000, 20, 100);
+        new ProjectionProperties(
+            "query", 500, 5, 200, true, 2000L, 20000, 60000, 800L, 10000, 20, 100);
     applier = new ProjectionApplier(store, new JsonCodec(new ObjectMapper()), properties);
   }
 
-  private static InboxEventRecord event(String status, String visibility, List<Map<String, Object>> contributors) {
+  private static InboxEventRecord event(
+      String status, String visibility, List<Map<String, Object>> contributors) {
     return new InboxEventRecord(
         "inb_1",
         "query",
@@ -58,23 +58,34 @@ class ProjectionApplierTest {
         Instant.parse("2026-06-01T00:00:00Z"),
         "trace",
         Map.of(
-            "changeKind", QueryEventTypes.CHANGE_UPSERT,
-            "achievementId", "ach_1",
-            "title", "某成果",
-            "type", "PAPER",
-            "dataNature", "REAL",
-            "visibility", visibility,
-            "effectiveStatus", status,
-            "publicationYear", 2024,
-            "contributions", contributors,
-            "topics", List.of("top_1")),
+            "changeKind",
+            QueryEventTypes.CHANGE_UPSERT,
+            "achievementId",
+            "ach_1",
+            "title",
+            "某成果",
+            "type",
+            "PAPER",
+            "dataNature",
+            "REAL",
+            "visibility",
+            visibility,
+            "effectiveStatus",
+            status,
+            "publicationYear",
+            2024,
+            "contributions",
+            contributors,
+            "topics",
+            List.of("top_1")),
         0);
   }
 
   private static List<Map<String, Object>> twoAuthors() {
     return List.of(
         Map.of("scholarId", "sch_1", "scholarName", "甲", "relationState", "AUTO", "authorOrder", 1),
-        Map.of("scholarId", "sch_2", "scholarName", "乙", "relationState", "AUTO", "authorOrder", 2));
+        Map.of(
+            "scholarId", "sch_2", "scholarName", "乙", "relationState", "AUTO", "authorOrder", 2));
   }
 
   @Test
@@ -84,8 +95,22 @@ class ProjectionApplierTest {
         .thenReturn(
             Optional.of(
                 new ProjectedAchievement(
-                    "ach_1", "PAPER", "某成果", "某成果", "REAL", "PUBLIC", "EFFECTIVE",
-                    2024, null, null, null, null, null, null, 3L, 42L)));
+                    "ach_1",
+                    "PAPER",
+                    "某成果",
+                    "某成果",
+                    "REAL",
+                    "PUBLIC",
+                    "EFFECTIVE",
+                    2024,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    3L,
+                    42L)));
     when(store.listContributions("gen0007", "ach_1")).thenReturn(List.of());
 
     ProjectionApplier.Outcome outcome =
@@ -103,8 +128,22 @@ class ProjectionApplierTest {
         .thenReturn(
             Optional.of(
                 new ProjectedAchievement(
-                    "ach_1", "PAPER", "某成果", "某成果", "REAL", "PUBLIC", "WITHDRAWN",
-                    2024, null, null, null, null, null, null, 4L, 43L)));
+                    "ach_1",
+                    "PAPER",
+                    "某成果",
+                    "某成果",
+                    "REAL",
+                    "PUBLIC",
+                    "WITHDRAWN",
+                    2024,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    4L,
+                    43L)));
 
     applier.apply("gen0007", event("WITHDRAWN", "PUBLIC", twoAuthors()), Optional.empty());
 
@@ -122,8 +161,22 @@ class ProjectionApplierTest {
         .thenReturn(
             Optional.of(
                 new ProjectedAchievement(
-                    "ach_1", "PAPER", "某成果", "某成果", "REAL", "RESTRICTED", "EFFECTIVE",
-                    2024, null, null, null, null, null, null, 5L, 44L)));
+                    "ach_1",
+                    "PAPER",
+                    "某成果",
+                    "某成果",
+                    "REAL",
+                    "RESTRICTED",
+                    "EFFECTIVE",
+                    2024,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    5L,
+                    44L)));
 
     applier.apply("gen0007", event("EFFECTIVE", "RESTRICTED", twoAuthors()), Optional.empty());
 
@@ -138,8 +191,22 @@ class ProjectionApplierTest {
         .thenReturn(
             Optional.of(
                 new ProjectedAchievement(
-                    "ach_1", "PAPER", "某成果", "某成果", "SIMULATED", "PUBLIC", "EFFECTIVE",
-                    2024, null, null, null, null, null, null, 6L, 45L)));
+                    "ach_1",
+                    "PAPER",
+                    "某成果",
+                    "某成果",
+                    "SIMULATED",
+                    "PUBLIC",
+                    "EFFECTIVE",
+                    2024,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    6L,
+                    45L)));
     when(store.listContributions("gen0007", "ach_1")).thenReturn(List.of());
 
     applier.apply("gen0007", event("EFFECTIVE", "PUBLIC", twoAuthors()), Optional.empty());

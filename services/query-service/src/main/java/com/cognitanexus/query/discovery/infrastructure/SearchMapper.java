@@ -83,8 +83,8 @@ public interface SearchMapper {
         <if test="criteria.yearFrom != null">AND a.publication_year &gt;= #{criteria.yearFrom}</if>
         <if test="criteria.yearTo != null">AND a.publication_year &lt;= #{criteria.yearTo}</if>
         <if test="criteria.keywordNorm != null">
-          AND (a.title_norm LIKE '%' || #{criteria.keywordNorm} || '%'
-               OR lower(coalesce(a.venue, '')) LIKE '%' || #{criteria.keywordNorm} || '%'
+          AND (a.title_norm LIKE '%' || #{criteria.keywordLike} || '%'
+               OR lower(coalesce(a.venue, '')) LIKE '%' || #{criteria.keywordLike} || '%'
                OR lower(coalesce(a.doi, '')) = #{criteria.keywordNorm})
         </if>
         <if test="criteria.organization != null">
@@ -127,8 +127,8 @@ public interface SearchMapper {
         <if test="criteria.yearFrom != null">AND a.publication_year &gt;= #{criteria.yearFrom}</if>
         <if test="criteria.yearTo != null">AND a.publication_year &lt;= #{criteria.yearTo}</if>
         <if test="criteria.keywordNorm != null">
-          AND (a.title_norm LIKE '%' || #{criteria.keywordNorm} || '%'
-               OR lower(coalesce(a.venue, '')) LIKE '%' || #{criteria.keywordNorm} || '%'
+          AND (a.title_norm LIKE '%' || #{criteria.keywordLike} || '%'
+               OR lower(coalesce(a.venue, '')) LIKE '%' || #{criteria.keywordLike} || '%'
                OR lower(coalesce(a.doi, '')) = #{criteria.keywordNorm})
         </if>
         <if test="criteria.organization != null">
@@ -247,7 +247,7 @@ public interface SearchMapper {
             AND a.data_nature = #{criteria.dataNature}
           </if>
           <if test="criteria.keywordNorm != null">
-            AND lower(coalesce(c.scholar_name, '')) LIKE '%' || #{criteria.keywordNorm} || '%'
+            AND lower(coalesce(c.scholar_name, '')) LIKE '%' || #{criteria.keywordLike} || '%'
           </if>
         GROUP BY c.scholar_id
       ) s

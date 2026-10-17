@@ -108,25 +108,40 @@ public class DataQualityScanService {
     List<String> badYearIds = data.yearOutOfRangeIds(MAX_RECORD_FINDINGS + 1);
     boolean yearTruncated = badYearIds.size() > MAX_RECORD_FINDINGS;
     List<String> yearIds = yearTruncated ? badYearIds.subList(0, MAX_RECORD_FINDINGS) : badYearIds;
-    Map<String, DataQualityRepository.Sample> yearSamples = byId(data.yearOutOfRangeSamples(
-        MAX_RECORD_FINDINGS));
-    Outcome yearOutcome = upsertRecords(
-        GovernanceAnomaly.KIND_YEAR_OUT_OF_RANGE,
-        yearIds,
-        id -> recordDetail(
+    Map<String, DataQualityRepository.Sample> yearSamples =
+        byId(data.yearOutOfRangeSamples(MAX_RECORD_FINDINGS));
+    Outcome yearOutcome =
+        upsertRecords(
             GovernanceAnomaly.KIND_YEAR_OUT_OF_RANGE,
-            id,
-            "年份 " + yearOf(yearSamples.get(id)) + " 超出合理区间 [" + MIN_YEAR + ", " + maxYear + "]",
-            "publication_year 落在 [" + MIN_YEAR + ", " + maxYear + "] 之外；"
-                + "来源把非年份内容写进了年份字段，或解析时发生了截断/位移",
-            "核对来源原始记录中的年份字段；确认正确年份后在成果上人工补齐，不要按相邻数字猜测",
-            yearSamples.containsKey(id) ? sampleView(yearSamples.get(id)) : Map.of(),
-            yearTruncated),
-        actor);
+            yearIds,
+            id ->
+                recordDetail(
+                    GovernanceAnomaly.KIND_YEAR_OUT_OF_RANGE,
+                    id,
+                    "年份 "
+                        + yearOf(yearSamples.get(id))
+                        + " 超出合理区间 ["
+                        + MIN_YEAR
+                        + ", "
+                        + maxYear
+                        + "]",
+                    "publication_year 落在 ["
+                        + MIN_YEAR
+                        + ", "
+                        + maxYear
+                        + "] 之外；"
+                        + "来源把非年份内容写进了年份字段，或解析时发生了截断/位移",
+                    "核对来源原始记录中的年份字段；确认正确年份后在成果上人工补齐，不要按相邻数字猜测",
+                    yearSamples.containsKey(id) ? sampleView(yearSamples.get(id)) : Map.of(),
+                    yearTruncated),
+            actor);
     created += yearOutcome.created();
     refreshed += yearOutcome.refreshed();
     // 截断时不做「问题已消失」的复核：没被扫到的条目会被误判成已解决。
-    int yearClosed = yearTruncated ? 0 : reconcileRecords(GovernanceAnomaly.KIND_YEAR_OUT_OF_RANGE, yearIds, actor);
+    int yearClosed =
+        yearTruncated
+            ? 0
+            : reconcileRecords(GovernanceAnomaly.KIND_YEAR_OUT_OF_RANGE, yearIds, actor);
     autoClosed += yearClosed;
     findings.add(
         new Finding(
@@ -146,19 +161,23 @@ public class DataQualityScanService {
         conflictTruncated ? conflictIds.subList(0, MAX_RECORD_FINDINGS) : conflictIds;
     Map<String, DataQualityRepository.Sample> conflictSamples =
         byId(data.topicKindConflictSamples(MAX_RECORD_FINDINGS));
-    Outcome conflictOutcome = upsertRecords(
-        GovernanceAnomaly.KIND_TOPIC_KIND_CONFLICT,
-        conflictPage,
-        id -> recordDetail(
+    Outcome conflictOutcome =
+        upsertRecords(
             GovernanceAnomaly.KIND_TOPIC_KIND_CONFLICT,
-            id,
-            "同一成果同一领域同时存在来源给定与推断归属",
-            "core_achievement_topic 中同一 (成果, 领域) 同时存在 assignment_kind=SOURCE 与 "
-                + "assignment_kind=INFERRED；来源分类在场时推断归属应已被撤销",
-            "核查该领域的归属来源；撤销多余的推断归属行，保留来源给定的那条（来源原值不得被推断覆盖）",
-            conflictSamples.containsKey(id) ? sampleView(conflictSamples.get(id)) : Map.of(),
-            conflictTruncated),
-        actor);
+            conflictPage,
+            id ->
+                recordDetail(
+                    GovernanceAnomaly.KIND_TOPIC_KIND_CONFLICT,
+                    id,
+                    "同一成果同一领域同时存在来源给定与推断归属",
+                    "core_achievement_topic 中同一 (成果, 领域) 同时存在 assignment_kind=SOURCE 与 "
+                        + "assignment_kind=INFERRED；来源分类在场时推断归属应已被撤销",
+                    "核查该领域的归属来源；撤销多余的推断归属行，保留来源给定的那条（来源原值不得被推断覆盖）",
+                    conflictSamples.containsKey(id)
+                        ? sampleView(conflictSamples.get(id))
+                        : Map.of(),
+                    conflictTruncated),
+            actor);
     created += conflictOutcome.created();
     refreshed += conflictOutcome.refreshed();
     int conflictClosed =
@@ -186,8 +205,7 @@ public class DataQualityScanService {
             "已生效成果没有任何领域归属",
             "effective_status=EFFECTIVE 且 merged_into_id 为空，且 core_achievement_topic 无任何行；"
                 + "这类成果不会出现在领域分面与领域统计里",
-            "补齐领域归属。推断归属必须标 assignment_kind=INFERRED 并写明规则版本，"
-                + "不得写成来源给定",
+            "补齐领域归属。推断归属必须标 assignment_kind=INFERRED 并写明规则版本，" + "不得写成来源给定",
             actor);
     created += noTopic.created();
     refreshed += noTopic.refreshed();
@@ -251,12 +269,7 @@ public class DataQualityScanService {
             null,
             Map.of("openAnomalies", openTotal),
             "巡检新建 " + created + " 条、复核 " + refreshed + " 条、自动关闭 " + autoClosed + " 条"));
-    log.info(
-        "数据质量巡检完成：新建 {} 复核 {} 自动关闭 {} 当前未处理 {}",
-        created,
-        refreshed,
-        autoClosed,
-        openTotal);
+    log.info("数据质量巡检完成：新建 {} 复核 {} 自动关闭 {} 当前未处理 {}", created, refreshed, autoClosed, openTotal);
 
     return new Report(
         RULE_VERSION,
@@ -272,7 +285,10 @@ public class DataQualityScanService {
 
   /** 逐条登记：同一实体只保留一条未处理异常。 */
   private Outcome upsertRecords(
-      String kind, List<String> ids, java.util.function.Function<String, Map<String, Object>> detailOf, ActorContext actor) {
+      String kind,
+      List<String> ids,
+      java.util.function.Function<String, Map<String, Object>> detailOf,
+      ActorContext actor) {
     int created = 0;
     int refreshed = 0;
     for (String id : new LinkedHashSet<>(ids)) {
@@ -397,9 +413,7 @@ public class DataQualityScanService {
     detail.put("threshold", NAME_PENDING_MIN_COUNT);
     detail.put("samples", samples);
     detail.put(
-        "suggestedAction",
-        "逐人核验：结合机构、研究方向与代表作判断是否同一人。确认后由本人在门户确认关系，"
-            + "或由治理端对关系作出裁决；不得凭姓名相同批量确认");
+        "suggestedAction", "逐人核验：结合机构、研究方向与代表作判断是否同一人。确认后由本人在门户确认关系，" + "或由治理端对关系作出裁决；不得凭姓名相同批量确认");
     detail.put("ruleVersion", RULE_VERSION);
     detail.put("scannedAt", Instant.now().toString());
 
@@ -435,7 +449,13 @@ public class DataQualityScanService {
     detail.put("dedupeKey", "ALL");
     detail.put(
         "summary",
-        "同名但未合并的学者姓名组 " + groups.size() + " 组、涉及学者 " + total + " 人（每组至少 " + NAME_GROUP_MIN_COUNT + " 人）");
+        "同名但未合并的学者姓名组 "
+            + groups.size()
+            + " 组、涉及学者 "
+            + total
+            + " 人（每组至少 "
+            + NAME_GROUP_MIN_COUNT
+            + " 人）");
     detail.put(
         "criteria",
         "core_scholar 按 name_norm 分组，组内 merged_into_id 为空的人数 ≥ "
@@ -444,14 +464,12 @@ public class DataQualityScanService {
     detail.put("groupCount", groups.size());
     detail.put("scholarCount", total);
     detail.put("groups", groupViews);
-    detail.put(
-        "suggestedAction",
-        "按机构、研究方向、代表作逐一比对后，对确认同一人的学者执行合并；"
-            + "不得仅凭姓名相同合并（BR-IMP-03）");
+    detail.put("suggestedAction", "按机构、研究方向、代表作逐一比对后，对确认同一人的学者执行合并；" + "不得仅凭姓名相同合并（BR-IMP-03）");
     detail.put("ruleVersion", RULE_VERSION);
     detail.put("scannedAt", Instant.now().toString());
 
-    return writeAggregate(GovernanceAnomaly.KIND_DUPLICATE_SCHOLAR_NAME, groups.size(), detail, actor);
+    return writeAggregate(
+        GovernanceAnomaly.KIND_DUPLICATE_SCHOLAR_NAME, groups.size(), detail, actor);
   }
 
   private AggregateOutcome writeAggregate(
@@ -533,7 +551,9 @@ public class DataQualityScanService {
     view.put("type", sample.type());
     view.put("publicationYear", sample.publicationYear());
     view.put("yearKnown", sample.publicationYear() != null);
-    view.put("publicationYearLabel", sample.publicationYear() == null ? "未知" : String.valueOf(sample.publicationYear()));
+    view.put(
+        "publicationYearLabel",
+        sample.publicationYear() == null ? "未知" : String.valueOf(sample.publicationYear()));
     return view;
   }
 

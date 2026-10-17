@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.cognitanexus.ingestion.collect.adapter.SourceAdapter;
 import com.cognitanexus.ingestion.collect.adapter.SourceAdapterRegistry;
+import com.cognitanexus.ingestion.collect.adapter.SourceFetchException;
 import com.cognitanexus.ingestion.collect.domain.AdapterKind;
 import com.cognitanexus.ingestion.collect.domain.CollectModels.CollectJob;
 import com.cognitanexus.ingestion.collect.domain.CollectModels.FetchPage;
@@ -21,11 +22,13 @@ import com.cognitanexus.ingestion.platform.client.CoreInternalClient;
 import com.cognitanexus.ingestion.platform.persistence.JsonCodec;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -91,7 +94,12 @@ class CollectExecutionServiceTest {
         null,
         60,
         true,
-        1);
+        1,
+        // 未设定业务更新周期：本类的用例只关心执行与退避，周期门控另有专门用例
+        null,
+        null,
+        null,
+        null);
   }
 
   private static CollectJob job(int consecutiveFailures, Instant nextAttemptAt) {
@@ -194,6 +202,96 @@ class CollectExecutionServiceTest {
     service.runOnce("job_1", "worker-1");
 
     verify(unitOfWork).recordFetchFailure("job_1", "上游返回 400", 300);
+  }
+
+  @Test
+  @DisplayName("429 带 Retry-After：按来源要求等待，不用自己的 1 秒退避覆盖它")
+  void retryAfterOverridesExponentialBackoff() {
+    givenRunnable(job(0, null));
+    when(adapter.fetch(any(), any(), any()))
+        .thenThrow(SourceFetchException.httpStatus("Crossref", 429, "60"));
+
+    service.runOnce("job_1", "worker-1");
+
+    // 1 秒是本地推算；来源明确说它要 60 秒时继续每秒敲门，等于把限流窗口不断刷新
+    verify(unitOfWork).recordFetchFailure(eq("job_1"), anyString(), eq(60));
+  }
+
+  @Test
+  @DisplayName("Retry-After 也受运行参数封顶：异常响应头不能把任务冻结数天")
+  void retryAfterIsCappedByConfiguration() {
+    givenRunnable(job(0, null));
+    when(adapter.fetch(any(), any(), any()))
+        .thenThrow(SourceFetchException.httpStatus("Crossref", 429, "86400"));
+
+    service.runOnce("job_1", "worker-1");
+
+    verify(unitOfWork).recordFetchFailure(eq("job_1"), anyString(), eq(300));
+  }
+
+  @Test
+  @DisplayName("Retry-After: 0 / 过期日期：至少等 1 秒，避免立刻打回去形成紧循环")
+  void retryAfterZeroStillWaitsOneSecond() {
+    givenRunnable(job(0, null));
+    when(adapter.fetch(any(), any(), any()))
+        .thenThrow(SourceFetchException.httpStatus("Crossref", 429, "0"));
+
+    service.runOnce("job_1", "worker-1");
+
+    verify(unitOfWork).recordFetchFailure(eq("job_1"), anyString(), eq(1));
+  }
+
+  @Test
+  @DisplayName("运行记录里留下退避依据：事后能回答「为什么等 60 秒」")
+  void backoffBasisIsRecorded() {
+    givenRunnable(job(0, null));
+    when(adapter.fetch(any(), any(), any()))
+        .thenThrow(SourceFetchException.httpStatus("Crossref", 429, "60"));
+
+    service.runOnce("job_1", "worker-1");
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, Object>> payload = ArgumentCaptor.forClass(Map.class);
+    verify(unitOfWork)
+        .appendLog(
+            eq("job_1"),
+            eq("src_1"),
+            eq("FETCH"),
+            eq("RETRY_SCHEDULED"),
+            any(),
+            any(),
+            any(),
+            payload.capture());
+    assertThat(payload.getValue())
+        .containsEntry("backoffBasis", "RETRY_AFTER")
+        .containsEntry("backoffSeconds", 60)
+        .containsEntry("retryAfterSeconds", "60");
+  }
+
+  @Test
+  @DisplayName("没有 Retry-After 时依据是本地指数退避，不会被误记成来源要求")
+  void exponentialBackoffBasisIsRecorded() {
+    givenRunnable(job(0, null));
+    when(adapter.fetch(any(), any(), any())).thenThrow(new IllegalStateException("上游返回 400"));
+
+    service.runOnce("job_1", "worker-1");
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, Object>> payload = ArgumentCaptor.forClass(Map.class);
+    verify(unitOfWork)
+        .appendLog(
+            eq("job_1"),
+            eq("src_1"),
+            eq("FETCH"),
+            eq("RETRY_SCHEDULED"),
+            any(),
+            any(),
+            any(),
+            payload.capture());
+    assertThat(payload.getValue())
+        .containsEntry("backoffBasis", "EXPONENTIAL_BACKOFF")
+        .containsEntry("backoffSeconds", 1)
+        .containsEntry("retryAfterSeconds", "null");
   }
 
   @Test

@@ -39,7 +39,11 @@ final class CollectRowMapper {
         row.licenseNote(),
         row.rateLimitPerMinute(),
         row.enabled(),
-        row.syncedConfigVersion());
+        row.syncedConfigVersion(),
+        row.newRecordIntervalMinutes(),
+        row.fieldRefreshIntervalMinutes(),
+        row.updatePlanNote(),
+        row.nextDueAt());
   }
 
   static CollectJob toJob(CollectMapper.JobRow row) {

@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -189,6 +190,30 @@ public class AdminIngestionController {
     return ApiResponse.ok(toSourceView(config), TraceIdHolder.current());
   }
 
+  /**
+   * 设定或撤销来源的业务更新周期。
+   *
+   * <p>单独一个端点而不是塞进 {@code PATCH /sources/{id}}：改周期必须同时给依据，而那份依据是
+   * 审计要留的东西；把它混进「顺手改分页大小」的接口里，最后一定会有一次改动没有理由。
+   * 两个周期都传 null 表示撤销周期（行为退回到只由人工创建任务驱动）。
+   */
+  @PutMapping("/sources/{sourceId}/update-plan")
+  public ApiResponse<Map<String, Object>> setUpdatePlan(
+      @PathVariable String sourceId, @RequestBody SourceUpdatePlanRequest request) {
+    if (request == null) {
+      throw BusinessException.invalidArgument("请求体不能为空；撤销周期请把两个周期字段都传 null");
+    }
+    SourceRunConfig config =
+        sources.updateUpdatePlan(
+            ActorContextHolder.currentOrNull(),
+            sourceId,
+            new SourceRunConfigService.UpdatePlanCommand(
+                request.newRecordIntervalMinutes(),
+                request.fieldRefreshIntervalMinutes(),
+                request.note()));
+    return ApiResponse.ok(toSourceView(config), TraceIdHolder.current());
+  }
+
   // ---------------------------------------------------------------------------
   // 采集任务
   // ---------------------------------------------------------------------------
@@ -346,6 +371,13 @@ public class AdminIngestionController {
     view.put("rateLimitPerMinute", config.rateLimitPerMinute());
     view.put("enabled", config.enabled());
     view.put("licenseApproved", config.licenseApproved());
+    // 业务更新计划：三个字段必须一起给。只给周期不给 next_due_at，运维无法回答
+    // 「它为什么还没跑」；只给 next_due_at 不给理由，则无法判断这个数字是否还成立。
+    view.put("newRecordIntervalMinutes", config.newRecordIntervalMinutes());
+    view.put("fieldRefreshIntervalMinutes", config.fieldRefreshIntervalMinutes());
+    view.put("updatePlanNote", config.updatePlanNote());
+    view.put("nextDueAt", config.nextDueAt() == null ? null : config.nextDueAt().toString());
+    view.put("hasUpdatePlan", config.hasUpdatePlan());
     return view;
   }
 
@@ -424,6 +456,15 @@ public class AdminIngestionController {
 
   /** 启用或停用采集。 */
   public record SourceEnabledRequest(Boolean enabled, String reason) {}
+
+  /**
+   * 业务更新周期请求。
+   *
+   * <p>两个周期都可为 null（表示未设定／撤销）。刻意不设默认值：默认值会变成「没人决定过的周期」，
+   * 而这正是 WB-13 指出的问题。
+   */
+  public record SourceUpdatePlanRequest(
+      Integer newRecordIntervalMinutes, Integer fieldRefreshIntervalMinutes, String note) {}
 
   /** 更新执行参数；null 表示不改该字段。 */
   public record SourceUpdateRequest(

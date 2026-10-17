@@ -41,14 +41,19 @@ public interface CollectMapper {
       String licenseNote,
       int rateLimitPerMinute,
       boolean enabled,
-      int syncedConfigVersion) {}
+      int syncedConfigVersion,
+      Integer newRecordIntervalMinutes,
+      Integer fieldRefreshIntervalMinutes,
+      String updatePlanNote,
+      Instant nextDueAt) {}
 
   @Select(
       """
       SELECT id, source_code, display_name, adapter_kind, base_endpoint, query_expression,
              page_size, allowed_fields, config_version,
              license_review_state, license_note, rate_limit_per_minute, enabled,
-             synced_config_version
+             synced_config_version, new_record_interval_minutes, field_refresh_interval_minutes,
+             update_plan_note, next_due_at
       FROM ing_source_run_config WHERE source_code = #{sourceCode}
       """)
   Optional<SourceRunConfigRow> findConfigByCode(@Param("sourceCode") String sourceCode);
@@ -58,7 +63,8 @@ public interface CollectMapper {
       SELECT id, source_code, display_name, adapter_kind, base_endpoint, query_expression,
              page_size, allowed_fields, config_version,
              license_review_state, license_note, rate_limit_per_minute, enabled,
-             synced_config_version
+             synced_config_version, new_record_interval_minutes, field_refresh_interval_minutes,
+             update_plan_note, next_due_at
       FROM ing_source_run_config WHERE id = #{id}
       """)
   Optional<SourceRunConfigRow> findConfigById(@Param("id") String id);
@@ -68,7 +74,8 @@ public interface CollectMapper {
       SELECT id, source_code, display_name, adapter_kind, base_endpoint, query_expression,
              page_size, allowed_fields, config_version,
              license_review_state, license_note, rate_limit_per_minute, enabled,
-             synced_config_version
+             synced_config_version, new_record_interval_minutes, field_refresh_interval_minutes,
+             update_plan_note, next_due_at
       FROM ing_source_run_config ORDER BY source_code
       """)
   List<SourceRunConfigRow> listConfigs();
@@ -145,6 +152,56 @@ public interface CollectMapper {
       @Param("pageSize") Integer pageSize,
       @Param("licenseReviewState") String licenseReviewState,
       @Param("licenseNote") String licenseNote);
+
+  /**
+   * 设定来源的业务更新周期。
+   *
+   * <p>设定后立刻到期（{@code next_due_at = now()}）：改周期的人期望它马上按新节奏跑一次，
+   * 而不是等一个按旧周期算出来的时刻。两列都传 null 表示撤销周期，此时 {@code next_due_at}
+   * 回到 NULL，行为退回「只由人工创建任务驱动」。
+   *
+   * <p>理由（{@code update_plan_note}）由库级 CHECK 强制非空，见 V8 迁移；这里不做第二份校验，
+   * 但服务层会先给出可读的错误信息，而不是把约束异常直接抛给调用方。
+   */
+  @Update(
+      """
+      UPDATE ing_source_run_config
+      SET new_record_interval_minutes = #{newRecordIntervalMinutes},
+          field_refresh_interval_minutes = #{fieldRefreshIntervalMinutes},
+          update_plan_note = #{note},
+          next_due_at = CASE
+                          WHEN #{newRecordIntervalMinutes} IS NULL
+                           AND #{fieldRefreshIntervalMinutes} IS NULL THEN NULL
+                          ELSE now()
+                        END,
+          updated_at = now()
+      WHERE id = #{id}
+      """)
+  int updateUpdatePlan(
+      @Param("id") String id,
+      @Param("newRecordIntervalMinutes") Integer newRecordIntervalMinutes,
+      @Param("fieldRefreshIntervalMinutes") Integer fieldRefreshIntervalMinutes,
+      @Param("note") String note);
+
+  /**
+   * 一次按周期的执行收尾后，把下次到期时间前移。
+   *
+   * <p>只写「更晚」的值：并发收尾（两个实例的相同任务）里较旧的推算不得把到期时间拉回过去，
+   * 否则同一条业务周期会被执行两次。传 null 表示未设定周期，直接置空。
+   */
+  @Update(
+      """
+      UPDATE ing_source_run_config
+      SET next_due_at = CASE
+                          WHEN #{nextDueAt}::timestamptz IS NULL THEN NULL
+                          WHEN next_due_at IS NULL THEN #{nextDueAt}::timestamptz
+                          WHEN #{nextDueAt}::timestamptz > next_due_at THEN #{nextDueAt}::timestamptz
+                          ELSE next_due_at
+                        END,
+          updated_at = now()
+      WHERE id = #{id}
+      """)
+  int advanceNextDueAt(@Param("id") String id, @Param("nextDueAt") Instant nextDueAt);
 
   // ---------------------------------------------------------------------------
   // 采集任务
@@ -664,13 +721,19 @@ public interface CollectMapper {
    * 任务会一直占据队首，后面的任务永远轮不到。
    *
    * <p>不含 PAUSED：暂停是管理员的显式决定，后台执行器不得把它自动恢复。
+   *
+   * <p>业务周期门控（{@code next_due_at}）只挡「还没开始的执行」，不挡「已经抓过东西的执行」：
+   * 一个来源若有两个任务，其中一个完成时会把到期时间推到下一个周期，此时另一个正在翻页的任务
+   * 若也被挡住，就会停在半路——周期管的是「多久开一次新一轮」，不是「一轮能不能做完」。
    */
   @Select(
       """
-      SELECT id FROM ing_collect_job
-      WHERE status IN ('PENDING', 'RUNNING')
-        AND (next_attempt_at IS NULL OR next_attempt_at <= now())
-      ORDER BY updated_at, id
+      SELECT j.id FROM ing_collect_job j
+      JOIN ing_source_run_config c ON c.id = j.source_config_id
+      WHERE j.status IN ('PENDING', 'RUNNING')
+        AND (j.next_attempt_at IS NULL OR j.next_attempt_at <= now())
+        AND (j.total_fetched > 0 OR c.next_due_at IS NULL OR c.next_due_at <= now())
+      ORDER BY j.updated_at, j.id
       LIMIT #{limit}
       """)
   List<String> listRunnableJobIds(@Param("limit") int limit);

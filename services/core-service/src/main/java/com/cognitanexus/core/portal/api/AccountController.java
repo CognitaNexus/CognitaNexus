@@ -2,6 +2,7 @@ package com.cognitanexus.core.portal.api;
 
 import com.cognitanexus.core.catalog.application.ContributionRelationService;
 import com.cognitanexus.core.identity.domain.PortalAuthority;
+import com.cognitanexus.core.platform.security.ActorContext;
 import com.cognitanexus.core.platform.security.ActorContextHolder;
 import com.cognitanexus.core.platform.web.ApiResponse;
 import com.cognitanexus.core.platform.web.TraceIdHolder;
@@ -54,15 +55,23 @@ public class AccountController {
     ClaimRequest claim =
         portal.submitClaim(
             ActorContextHolder.currentOrNull(), body.scholarId(), body.statement(), idempotencyKey);
-    return ResponseEntity.ok(ApiResponse.ok(claimView(claim), TraceIdHolder.current()));
+    // 新建的申请一定没有材料，但仍显式给空数组：同一个 DTO 在创建、列表、重提三处形状一致，
+    // 前端不需要为「这个接口没有 evidence 字段」单独分支。
+    return ResponseEntity.ok(ApiResponse.ok(claimView(claim, List.of()), TraceIdHolder.current()));
   }
 
   @GetMapping("/claims")
   public ResponseEntity<ApiResponse<List<Map<String, Object>>>> myClaims(
       @RequestParam(defaultValue = "50") int limit) {
+    ActorContext actor = ActorContextHolder.currentOrNull();
+    List<ClaimRequest> mine = portal.listMyClaims(actor, limit);
+    // 材料元信息随申请一起给：申请人要能看到「我这份申请传了什么」，才谈得上补证与重提。
+    // 材料本体仍走受保护下载，这里不含文件路径与文件名。
+    Map<String, List<ClaimEvidence>> evidenceByClaim =
+        portal.evidenceOfClaimsForApplicant(actor, mine.stream().map(ClaimRequest::id).toList());
     List<Map<String, Object>> items =
-        portal.listMyClaims(ActorContextHolder.currentOrNull(), limit).stream()
-            .map(AccountController::claimView)
+        mine.stream()
+            .map(claim -> claimView(claim, evidenceByClaim.getOrDefault(claim.id(), List.of())))
             .toList();
     return ResponseEntity.ok(ApiResponse.ok(items, TraceIdHolder.current()));
   }
@@ -118,10 +127,12 @@ public class AccountController {
   @PostMapping("/claims/{claimId}/resubmit")
   public ResponseEntity<ApiResponse<Map<String, Object>>> resubmit(
       @PathVariable String claimId, @RequestBody ResubmitRequest body) {
+    ActorContext actor = ActorContextHolder.currentOrNull();
+    ClaimRequest claim = portal.resubmit(actor, claimId, body.statement());
+    // 重提后的材料清单要一起回给调用方：申请人刚补过材料，响应里没有清单会让人以为材料没保存。
     return ResponseEntity.ok(
         ApiResponse.ok(
-            claimView(
-                portal.resubmit(ActorContextHolder.currentOrNull(), claimId, body.statement())),
+            claimView(claim, portal.listEvidenceForClaim(actor, claim.id())),
             TraceIdHolder.current()));
   }
 
@@ -169,8 +180,7 @@ public class AccountController {
       @RequestParam String scholarId, @RequestParam(defaultValue = "50") int limit) {
     return ResponseEntity.ok(
         ApiResponse.ok(
-            relations.listOwnedContributions(
-                ActorContextHolder.currentOrNull(), scholarId, limit),
+            relations.listOwnedContributions(ActorContextHolder.currentOrNull(), scholarId, limit),
             TraceIdHolder.current()));
   }
 
@@ -215,6 +225,33 @@ public class AccountController {
     view.put("decidedAt", claim.decidedAt());
     view.put("decisionReason", claim.decisionReason());
     view.put("version", claim.version());
+    view.put("canResubmit", claim.status() == ClaimRequest.Status.NEED_MORE_EVIDENCE);
+    view.put("canAttachEvidence", claim.status().open());
+    return view;
+  }
+
+  /**
+   * 带材料元信息的认领视图。
+   *
+   * <p>只给元信息，不含 fileRef／磁盘路径／上传时的原始文件名：材料本体必须走
+   * {@code GET /api/v1/account/claims/evidence/{id}} 的鉴权代理下载，页面上的直链会把
+   * 「谁可以读」交给浏览器决定。downloadUrl 是受保护端点的相对路径，不是文件地址。
+   */
+  static Map<String, Object> claimView(ClaimRequest claim, List<ClaimEvidence> evidences) {
+    Map<String, Object> view = claimView(claim);
+    List<Map<String, Object>> items = new ArrayList<>();
+    for (ClaimEvidence evidence : evidences) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("id", evidence.id());
+      item.put("contentType", evidence.contentType());
+      item.put("sizeBytes", evidence.sizeBytes());
+      item.put("contentHash", evidence.contentHash());
+      item.put("createdAt", evidence.createdAt());
+      item.put("downloadUrl", "/api/v1/account/claims/evidence/" + evidence.id());
+      items.add(item);
+    }
+    view.put("evidence", items);
+    view.put("evidenceNote", "材料本体不在列表响应里，只能经鉴权代理下载；申请人本人与授权审核者可读");
     return view;
   }
 

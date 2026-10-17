@@ -226,7 +226,9 @@ public class GovernanceRepositoryAdapter
 
   @Override
   public List<Sample> yearOutOfRangeSamples(int limit) {
-    return mapper.yearOutOfRangeSamples(limit).stream().map(GovernanceRepositoryAdapter::toSample).toList();
+    return mapper.yearOutOfRangeSamples(limit).stream()
+        .map(GovernanceRepositoryAdapter::toSample)
+        .toList();
   }
 
   @Override

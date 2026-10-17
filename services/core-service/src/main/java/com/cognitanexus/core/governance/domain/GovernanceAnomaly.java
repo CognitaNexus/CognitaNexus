@@ -58,10 +58,22 @@ public record GovernanceAnomaly(
    */
   public static final String KIND_AMBIGUOUS_SCHOLAR_NAME = "AMBIGUOUS_SCHOLAR_NAME";
 
+  /**
+   * 稳定标识一致但证据矛盾：同一 DOI／申请号等标识命中了既有成果，但本条记录的题名、年份、作者或类型与之明显不一致。
+   *
+   * <p>为什么不能沿用 {@link #KIND_IDENTIFIER_CONFLICT}：那条是「同一标识被两个实体抢注」，处置动作是确定归并方向；
+   * 这条是「标识一致、内容像两篇不同的东西」，多半是上游 DOI 填错、复用或被劫持，处置动作是核实来源而不是合并。
+   * 两者混在一个类型里，处置人无法判断该看哪一边。
+   *
+   * <p>登记本条时既有成果的字段与指标一律不被改写：矛盾记录的题名、年份、引用量都可能属于另一篇文献。
+   */
+  public static final String KIND_METADATA_CONFLICT = "METADATA_CONFLICT";
+
   private static final Map<String, String> LABELS =
       Map.ofEntries(
           Map.entry(KIND_STRUCTURE_INVALID, "结构不合法"),
           Map.entry(KIND_IDENTIFIER_CONFLICT, "稳定标识冲突"),
+          Map.entry(KIND_METADATA_CONFLICT, "标识一致但证据矛盾"),
           Map.entry(KIND_MISSING_REQUIRED_FIELD, "缺少必填字段"),
           Map.entry(KIND_SOURCE_DISABLED, "来源已停用"),
           Map.entry(KIND_UNMAPPED_CATEGORY, "来源分类无法映射"),

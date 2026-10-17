@@ -1,26 +1,32 @@
 <script setup lang="ts">
 /**
- * 成果检索页。
+ * 检索页：成果与学者两个作用域共用一个页面。
  *
- * 两个必须做对的交互细节：
+ * 三条必须做对的交互细节：
  *
- * 1. **查询版本**：分页时带上第一页拿到的 queryVersion。服务端会在已发布修订前进后拒绝继续
- *    分页（QUERY_VERSION_CHANGED），这时不能装作没事继续显示，也不能把两页结果拼在一起——
- *    而是明确告诉用户「数据已更新，请重新开始」，并自动回到第一页。
- * 2. **筛选条件写进地址栏**：检索结果需要可分享、可回退。把条件放在组件内部状态里，用户
- *    刷新或分享链接就会丢掉所有条件，看到一份「不同条件的同名页面」。
+ * 1. **作用域与筛选条件写进地址栏**：检索结果需要可分享、可回退。条件放在组件内部状态里，
+ *    用户刷新或分享链接就会丢掉所有条件，看到一份「不同条件的同名页面」；前进／后退也会
+ *    只改地址不改结果。这里以路由为唯一条件来源：用户操作先写 URL，路由变化再驱动检索。
+ * 2. **请求竞态**：连续检索时慢的旧请求可能晚于新请求返回，把旧结果盖在新条件上。每次请求
+ *    带一个递增序号，回来时不是最新那次就整段丢弃——列表、loading 与错误一起丢弃，不能只丢列表。
+ * 3. **查询版本**：分页时带第一页拿到的 queryVersion。服务端在已发布修订前进后拒绝继续分页
+ *    （QUERY_VERSION_CHANGED）。这时自动重取一次是合理的，但**只能一次**：无限重试会让
+ *    用户看不到任何提示，也不知道自己已经被挪回第一页。
  *
- * 结果列表按文献条目的排版组织（标题—作者—来源—计量），这是学术检索站的通行读法。
+ * 学者检索与成果检索是两项不同的能力：学者结果的字段只有姓名、公开成果数与最早年份，
+ * 不足以区分同名者，因此每条都给出档案入口，让用户进档案按机构核对，而不是在列表里猜。
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { queryApi } from '@/api'
 import { ApiError } from '@/api/http'
-import type { Facets, SearchOptions, SearchPage, TopicView } from '@/api/types'
+import type { AchievementKind, Facets, ScholarPage, SearchOptions, SearchPage, TopicView } from '@/api/types'
 import { useAsync } from '@/composables/useAsync'
 import { useScopeStore } from '@/stores/scope'
 import AsyncBlock from '@/components/AsyncBlock.vue'
 import Pager from '@/components/Pager.vue'
+
+type Scope = 'achievements' | 'scholars'
 
 const route = useRoute()
 const router = useRouter()
@@ -29,13 +35,15 @@ const scope = useScopeStore()
 const facets = useAsync<Facets>(() => queryApi.facets(scope.nature, 50))
 const options = useAsync<SearchOptions>(() => queryApi.options())
 
-const keyword = ref((route.query.q as string) ?? '')
-const yearFrom = ref((route.query.yearFrom as string) ?? '')
-const yearTo = ref((route.query.yearTo as string) ?? '')
-const organization = ref((route.query.organization as string) ?? '')
-const topic = ref((route.query.topic as string) ?? '')
-const sort = ref((route.query.sort as string) ?? 'relevance')
-const page = ref(Number(route.query.page ?? 1))
+const searchScope = ref<Scope>(route.query.scope === 'scholars' ? 'scholars' : 'achievements')
+const keyword = ref(text(route.query.q))
+const type = ref(text(route.query.type))
+const yearFrom = ref(text(route.query.yearFrom))
+const yearTo = ref(text(route.query.yearTo))
+const organization = ref(text(route.query.organization))
+const topic = ref(text(route.query.topic))
+const sort = ref(text(route.query.sort) || 'relevance')
+const page = ref(positiveInt(route.query.page))
 
 /** 折叠筛选条件：默认收起，让结果尽可能早地出现在首屏。 */
 const filtersOpen = ref(
@@ -49,92 +57,186 @@ const versionNotice = ref('')
 const loading = ref(false)
 const error = ref('')
 const errorCode = ref('')
-const data = ref<SearchPage | null>(null)
+const achievementData = ref<SearchPage | null>(null)
+const scholarData = ref<ScholarPage | null>(null)
 
-/** 排序取值的说明。只给代号会让读者不知道 relevance 与 cited 的差别。 */
+/** 请求序号：只有最新一次请求允许写回状态。 */
+let requestSeq = 0
+/** 上一次由本页写入的地址，用来区分「自己改的 URL」与「用户前进／后退／打开分享链接」。 */
+let selfNavigated = ''
+
+/**
+ * 排序标签。
+ *
+ * <p>键必须与服务端返回的枚举逐字一致（下划线，不是连字符）：写成 `year-desc` 时下拉框里
+ * 显示的是后端代号 `year_desc`，用户看到的是一串英文标识符。
+ */
 const SORT_LABELS: Record<string, string> = {
   relevance: '相关度',
-  year: '年份（新→旧）',
-  'year-desc': '年份（新→旧）',
-  'year-asc': '年份（旧→新）',
-  citations: '引用量（多→少）',
-  'citation-desc': '引用量（多→少）',
-  title: '标题',
+  year_desc: '年份（新→旧）',
+  year_asc: '年份（旧→新）',
+  title_asc: '标题',
+  citations_desc: '引用量（多→少）',
 }
+
+const TYPE_LABELS: Record<AchievementKind, string> = {
+  PAPER: '论文',
+  PATENT: '专利',
+  PROJECT: '项目',
+  AWARD: '获奖',
+}
+
+const TYPES: AchievementKind[] = ['PAPER', 'PATENT', 'PROJECT', 'AWARD']
 
 function sortLabel(value: string): string {
   return SORT_LABELS[value] ?? value
 }
 
-function syncUrl() {
-  router.replace({
-    query: {
-      q: keyword.value || undefined,
-      yearFrom: yearFrom.value || undefined,
-      yearTo: yearTo.value || undefined,
-      organization: organization.value || undefined,
-      topic: topic.value || undefined,
-      sort: sort.value === 'relevance' ? undefined : sort.value,
-      page: page.value > 1 ? String(page.value) : undefined,
-    },
-  })
+function typeLabel(value: string): string {
+  return TYPE_LABELS[value as AchievementKind] ?? value
 }
 
+/** 从路由参数还原条件。空字符串表示「不限」，与 URL 里没有该参数等价。 */
+function applyRoute() {
+  searchScope.value = route.query.scope === 'scholars' ? 'scholars' : 'achievements'
+  keyword.value = text(route.query.q)
+  type.value = text(route.query.type)
+  yearFrom.value = text(route.query.yearFrom)
+  yearTo.value = text(route.query.yearTo)
+  organization.value = text(route.query.organization)
+  topic.value = text(route.query.topic)
+  sort.value = text(route.query.sort) || 'relevance'
+  page.value = positiveInt(route.query.page)
+}
+
+function buildQuery(): Record<string, string> {
+  const query: Record<string, string> = {}
+  if (keyword.value) query.q = keyword.value
+  if (searchScope.value === 'scholars') query.scope = 'scholars'
+  // 学者检索没有类型、年份、机构、领域这些条件；把它们写进 URL 会让人以为条件生效了。
+  if (searchScope.value === 'achievements') {
+    if (type.value) query.type = type.value
+    if (yearFrom.value) query.yearFrom = yearFrom.value
+    if (yearTo.value) query.yearTo = yearTo.value
+    if (organization.value) query.organization = organization.value
+    if (topic.value) query.topic = topic.value
+    if (sort.value !== 'relevance') query.sort = sort.value
+  }
+  if (page.value > 1) query.page = String(page.value)
+  return query
+}
+
+async function syncUrl() {
+  const target = router.resolve({ path: '/search', query: buildQuery() }).fullPath
+  if (target === route.fullPath) return
+  selfNavigated = target
+  await router.replace({ path: '/search', query: buildQuery() })
+}
+
+/**
+ * 执行检索。
+ *
+ * <p>notice 由调用方决定是否清空：版本过期时本方法会被自己再调一次，若在这里清空提示，
+ * 那句「数据已更新，已重新查询」会在用户看到之前就被抹掉。
+ */
 async function search(resetVersion = false) {
   if (resetVersion) pinnedVersion.value = null
+  const mine = ++requestSeq
   loading.value = true
   error.value = ''
   errorCode.value = ''
-  versionNotice.value = ''
+
+  const scholarMode = searchScope.value === 'scholars'
   try {
-    const pageData = await queryApi.searchAchievements({
-      q: keyword.value || undefined,
-      yearFrom: yearFrom.value ? Number(yearFrom.value) : undefined,
-      yearTo: yearTo.value ? Number(yearTo.value) : undefined,
-      organization: organization.value || undefined,
-      topic: topic.value || undefined,
-      dataNature: scope.nature,
-      sort: sort.value,
-      page: page.value,
-      size: 10,
-      queryVersion: pinnedVersion.value ?? undefined,
-    })
-    data.value = pageData
-    if (pinnedVersion.value === null) pinnedVersion.value = pageData.queryVersion
-    scope.observe(pageData)
+    if (scholarMode) {
+      const pageData = await queryApi.searchScholars({
+        q: keyword.value || undefined,
+        dataNature: scope.nature,
+        page: page.value,
+        size: 10,
+      })
+      if (mine !== requestSeq) return
+      scholarData.value = pageData
+      achievementData.value = null
+      scope.observe(pageData)
+      pinnedVersion.value = pageData.queryVersion
+    } else {
+      const pageData = await queryApi.searchAchievements({
+        q: keyword.value || undefined,
+        type: (type.value || undefined) as AchievementKind | undefined,
+        yearFrom: yearFrom.value ? Number(yearFrom.value) : undefined,
+        yearTo: yearTo.value ? Number(yearTo.value) : undefined,
+        organization: organization.value || undefined,
+        topic: topic.value || undefined,
+        dataNature: scope.nature,
+        sort: sort.value,
+        page: page.value,
+        size: 10,
+        queryVersion: pinnedVersion.value ?? undefined,
+      })
+      if (mine !== requestSeq) return
+      achievementData.value = pageData
+      scholarData.value = null
+      if (pinnedVersion.value === null) pinnedVersion.value = pageData.queryVersion
+      scope.observe(pageData)
+    }
+    if (mine !== requestSeq) return
+    loading.value = false
   } catch (cause) {
-    if (cause instanceof ApiError && cause.isQueryVersionChanged) {
-      // 版本过期不是错误，是「数据在这两页之间变了」。回到第一页重新取一份一致的快照，
-      // 并把这件事说出来——静默重取会让用户以为翻页正常，实际看到的还是第一页。
+    // 旧请求的错误同样要丢：它描述的是用户已经放弃的那次查询。
+    if (mine !== requestSeq) return
+    if (cause instanceof ApiError && cause.isQueryVersionChanged && !scholarMode) {
+      if (versionNotice.value === '') {
+        // 第一次遇到版本变化：回到第一页重取一份一致快照，并把这件事说出来。
+        versionNotice.value =
+          '本次翻页期间公开数据已更新。为避免把两个时刻的结果混在同一列表里，已回到第一页重新查询一次。'
+        pinnedVersion.value = null
+        page.value = 1
+        loading.value = false
+        await syncUrl()
+        await search(true)
+        return
+      }
       versionNotice.value =
-        '本次翻页期间公开数据已更新，为避免把两个时刻的结果混在同一列表里，已回到第一页重新查询。'
-      pinnedVersion.value = null
-      page.value = 1
-      await search(true)
+        '公开数据仍在更新，自动重试一次后仍未取到一致快照。请稍后手动刷新，或收窄条件重新检索。'
+      achievementData.value = null
+      error.value = '数据正在更新，本次请求未取到一致快照。'
+      errorCode.value = cause.code
+      loading.value = false
       return
     }
-    data.value = null
+    achievementData.value = null
+    scholarData.value = null
     error.value = cause instanceof Error ? cause.message : String(cause)
     errorCode.value = cause instanceof ApiError ? cause.code : ''
-  } finally {
     loading.value = false
   }
 }
 
 function applyFilters() {
   page.value = 1
-  syncUrl()
-  search(true)
+  versionNotice.value = ''
+  syncUrl().then(() => search(true))
 }
 
 function changePage(target: number) {
   page.value = target
-  syncUrl()
-  search(false)
+  versionNotice.value = ''
+  syncUrl().then(() => search(false))
+}
+
+function switchScope(next: Scope) {
+  if (searchScope.value === next) return
+  searchScope.value = next
+  page.value = 1
+  versionNotice.value = ''
+  error.value = ''
+  syncUrl().then(() => search(true))
 }
 
 function resetFilters() {
   keyword.value = ''
+  type.value = ''
   yearFrom.value = ''
   yearTo.value = ''
   organization.value = ''
@@ -142,8 +244,8 @@ function resetFilters() {
   sort.value = 'relevance'
   page.value = 1
   filtersOpen.value = false
-  syncUrl()
-  search(true)
+  versionNotice.value = ''
+  syncUrl().then(() => search(true))
 }
 
 const yearRangeInvalid = computed(
@@ -153,6 +255,7 @@ const yearRangeInvalid = computed(
 /** 已生效的筛选条件摘要，收起筛选区后仍能一眼看出结果被什么限制住了。 */
 const activeFilters = computed(() => {
   const items: string[] = []
+  if (type.value) items.push(`类型：${typeLabel(type.value)}`)
   if (yearFrom.value || yearTo.value) {
     items.push(`年份 ${yearFrom.value || '不限'}–${yearTo.value || '不限'}`)
   }
@@ -162,6 +265,12 @@ const activeFilters = computed(() => {
     items.push(`领域：${found?.canonicalName ?? topic.value}`)
   }
   return items
+})
+
+const isEmpty = computed(() => {
+  if (loading.value || error.value) return false
+  if (searchScope.value === 'scholars') return (scholarData.value?.items.length ?? 0) === 0
+  return (achievementData.value?.items.length ?? 0) === 0
 })
 
 /**
@@ -177,11 +286,34 @@ function topicLabel(topic: TopicView): string {
     : topic.canonicalName
 }
 
+function text(value: unknown): string {
+  return typeof value === 'string' ? value : Array.isArray(value) && typeof value[0] === 'string' ? value[0] : ''
+}
+
+function positiveInt(value: unknown): number {
+  const parsed = Number(text(value) || 1)
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 1
+}
+
 onMounted(() => {
   facets.run()
   options.run()
   search(true)
 })
+
+// 路由变化才驱动检索：用户点前进／后退、粘贴分享链接、或从导航栏进入带条件的检索页，
+// 都以地址栏为准。自己写入的地址由 selfNavigated 识别，避免同一次操作发两次请求。
+watch(
+  () => route.fullPath,
+  (fullPath) => {
+    if (!fullPath.startsWith('/search')) return
+    if (fullPath === selfNavigated) return
+    applyRoute()
+    pinnedVersion.value = null
+    versionNotice.value = ''
+    search(true)
+  },
+)
 
 // 口径切换等价于换一组数据，必须回到第一页并重新绑定版本号。
 watch(
@@ -196,7 +328,7 @@ watch(
 <template>
   <div>
     <div class="section-head" style="margin-top: 0">
-      <h2 style="font-size: 19px">成果检索</h2>
+      <h2 style="font-size: 19px">检索</h2>
       <span class="small dim">
         当前口径 <span class="mono">{{ scope.nature }}</span> · 默认只含真实公开元数据
       </span>
@@ -204,21 +336,59 @@ watch(
 
     <div class="panel">
       <div class="panel-body">
+        <div class="btn-row" style="margin-bottom: 12px">
+          <button
+            class="btn"
+            :class="{ primary: searchScope === 'achievements' }"
+            type="button"
+            @click="switchScope('achievements')"
+          >
+            成果
+          </button>
+          <button
+            class="btn"
+            :class="{ primary: searchScope === 'scholars' }"
+            type="button"
+            @click="switchScope('scholars')"
+          >
+            学者
+          </button>
+          <span class="tiny faint" style="align-self: center">
+            {{
+              searchScope === 'achievements'
+                ? '按题名、发表载体或 DOI 查找成果'
+                : '按姓名查找学者；同名者请进档案按机构核对，系统不替你做身份合并'
+            }}
+          </span>
+        </div>
+
         <form class="btn-row" @submit.prevent="applyFilters">
           <input
             v-model="keyword"
             type="search"
-            placeholder="标题关键词、DOI 或作者"
+            :placeholder="
+              searchScope === 'achievements' ? '题名关键词、发表载体或 DOI' : '学者姓名'
+            "
             style="flex: 1; min-width: 260px; height: 34px"
             aria-label="检索关键词"
           />
-          <select v-model="sort" style="width: auto; height: 34px" aria-label="排序方式">
+          <select
+            v-if="searchScope === 'achievements'"
+            v-model="sort"
+            style="width: auto; height: 34px"
+            aria-label="排序方式"
+          >
             <option v-for="item in options.data.value?.sorts ?? ['relevance']" :key="item" :value="item">
               {{ sortLabel(item) }}
             </option>
           </select>
           <button class="btn primary" type="submit" :disabled="loading || yearRangeInvalid">检索</button>
-          <button class="btn" type="button" @click="filtersOpen = !filtersOpen">
+          <button
+            v-if="searchScope === 'achievements'"
+            class="btn"
+            type="button"
+            @click="filtersOpen = !filtersOpen"
+          >
             {{ filtersOpen ? '收起筛选' : '筛选条件' }}
           </button>
           <button class="btn" type="button" :disabled="loading" @click="resetFilters">重置</button>
@@ -228,8 +398,18 @@ watch(
           已应用：{{ activeFilters.join('；') }}
         </div>
 
-        <div v-if="filtersOpen" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--rule)">
+        <div
+          v-if="filtersOpen && searchScope === 'achievements'"
+          style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--rule)"
+        >
           <div class="grid cols-3">
+            <div class="field">
+              <label for="tp">成果类型</label>
+              <select id="tp" v-model="type">
+                <option value="">不限</option>
+                <option v-for="item in TYPES" :key="item" :value="item">{{ typeLabel(item) }}</option>
+              </select>
+            </div>
             <div class="field">
               <label for="yf">起始年份</label>
               <input id="yf" v-model="yearFrom" type="number" placeholder="如 2015" />
@@ -279,26 +459,33 @@ watch(
       </div>
     </div>
 
-    <div v-if="yearRangeInvalid" class="strip warn">年份区间反向：结果必然为空。</div>
+    <div v-if="yearRangeInvalid && searchScope === 'achievements'" class="strip warn">
+      年份区间反向：结果必然为空。
+    </div>
     <div v-if="versionNotice" class="notice info">{{ versionNotice }}</div>
 
     <AsyncBlock
       :loading="loading"
       :error="error"
       :error-code="errorCode"
-      :empty="!loading && !error && (data?.items.length ?? 0) === 0"
-      empty-text="没有符合条件的成果。可放宽年份或机构条件，或清空关键词。"
+      :empty="isEmpty"
+      :empty-text="
+        searchScope === 'scholars'
+          ? '没有匹配的学者。可尝试更短的姓名片段，或换用成果检索按题名查找。'
+          : '没有符合条件的成果。可放宽类型、年份或机构条件，或清空关键词。'
+      "
     >
-      <template v-if="data">
+      <template v-if="searchScope === 'achievements' && achievementData">
         <div class="panel">
           <div class="panel-head">
-            <h2>命中 {{ data.total.toLocaleString() }} 项</h2>
+            <h2>命中 {{ achievementData.total.toLocaleString() }} 项成果</h2>
             <span class="tiny faint mono">
-              快照 {{ data.queryVersion }} · 规则 {{ data.ruleVersion }} · 排序 {{ sortLabel(data.appliedSort) }}
+              快照 {{ achievementData.queryVersion }} · 规则 {{ achievementData.ruleVersion }} · 排序
+              {{ sortLabel(achievementData.appliedSort) }}
             </span>
           </div>
 
-          <article v-for="item in data.items" :key="item.id" class="result-item">
+          <article v-for="item in achievementData.items" :key="item.id" class="result-item">
             <h3 class="result-title">
               <RouterLink :to="`/achievements/${item.id}`">{{ item.title }}</RouterLink>
             </h3>
@@ -317,7 +504,7 @@ watch(
             </div>
 
             <div class="result-meta" style="margin-top: 5px">
-              <span class="badge neutral">{{ item.type }}</span>
+              <span class="badge neutral">{{ typeLabel(item.type) }}</span>
               <!-- 必须同时挡 null 与 undefined：服务端 Jackson 配了 non_null，null 字段直接从
                    报文里消失，前端拿到的是 undefined。原来只写 !== null，于是「无关键词浏览」
                    命中的项目类成果（本来就没有引用量）会让这里执行 undefined.toLocaleString()，
@@ -348,18 +535,60 @@ watch(
           </article>
 
           <Pager
-            :page="data.page"
-            :size="data.size"
-            :total="data.total"
-            :max-offset="data.maxOffset"
+            :page="achievementData.page"
+            :size="achievementData.size"
+            :total="achievementData.total"
+            :max-offset="achievementData.maxOffset"
             :disabled="loading"
             @change="changePage"
           />
         </div>
 
         <p class="tiny faint">
-          口径说明：{{ data.scopeNote }} 深翻页上限 {{ data.maxOffset }} 条，超过时请收窄条件而不是继续翻页。
+          口径说明：{{ achievementData.scopeNote }} 深翻页上限 {{ achievementData.maxOffset }} 条，超过时请收窄条件而不是继续翻页。
         </p>
+      </template>
+
+      <template v-else-if="searchScope === 'scholars' && scholarData">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>命中 {{ scholarData.total.toLocaleString() }} 位学者</h2>
+            <span class="tiny faint mono">
+              快照 {{ scholarData.queryVersion }} · 固定按公开成果数降序（服务端当前只支持这一种学者排序）
+            </span>
+          </div>
+
+          <article v-for="item in scholarData.items" :key="item.scholarId" class="result-item">
+            <h3 class="result-title">
+              <RouterLink :to="`/scholars/${item.scholarId}`">{{ item.scholarName }}</RouterLink>
+            </h3>
+
+            <div class="result-source">
+              公开成果 {{ item.qualifiedAchievementCount }} 项
+              <template v-if="item.firstYear"> · 最早 {{ item.firstYear }} 年</template>
+              <template v-else> · <span class="faint">最早年份未知</span></template>
+            </div>
+
+            <div class="result-links">
+              <RouterLink :to="`/scholars/${item.scholarId}`">打开档案核对机构</RouterLink>
+              <RouterLink :to="`/portal?scholarId=${encodeURIComponent(item.scholarId)}`">
+                申请管理该门户
+              </RouterLink>
+              <span class="faint mono">{{ item.scholarId }}</span>
+            </div>
+          </article>
+
+          <Pager
+            :page="scholarData.page"
+            :size="scholarData.size"
+            :total="scholarData.total"
+            :max-offset="options.data.value?.maxOffset ?? 10000"
+            :disabled="loading"
+            @change="changePage"
+          />
+        </div>
+
+        <p class="tiny faint">{{ scholarData.countingNote }}</p>
       </template>
     </AsyncBlock>
   </div>

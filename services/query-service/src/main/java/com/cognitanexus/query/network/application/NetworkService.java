@@ -9,7 +9,6 @@ import com.cognitanexus.query.projection.application.ProjectionProperties;
 import com.cognitanexus.sharedkernel.BusinessException;
 import com.cognitanexus.sharedkernel.ErrorCode;
 import java.time.Instant;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -153,10 +152,35 @@ public class NetworkService {
     data.put("to", to);
 
     if (from.equals(to)) {
-      data.put("reachable", true);
-      data.put("hops", 0);
-      data.put("path", List.of(from));
-      data.put("note", "起点与终点相同，按 0 跳返回。");
+      // 零跳不等于「任何字符串等于自己就是可达路径」：必须确认这个人确实在当前范围内有合格
+      // 公开合作边。否则随便传一个不存在的 ID 也会得到 reachable=true，前端随后在
+      // path.pathNodes 上取节点时拿到空列表，把「查无此人」显示成「他自己」。
+      ScopedGraphLoader selfLoader =
+          new ScopedGraphLoader(
+              mapper,
+              generation,
+              nature,
+              topicId,
+              organization,
+              properties.graphMaxEdges(),
+              properties.graphMaxNodes());
+      selfLoader.addSeed(from);
+      selfLoader.expand(List.of(from), true);
+      boolean inScope = selfLoader.contains(from);
+      data.put("reachable", inScope);
+      data.put("hops", inScope ? 0 : null);
+      data.put("path", inScope ? List.of(from) : List.of());
+      // 与正常路径保持同一 DTO 形状：调用方不需要为零跳单独判空。
+      data.put("pathNodes", inScope ? nodeViews(generation, List.of(from)) : List.of());
+      data.put(
+          "withinLimits", Map.of("nodes", selfLoader.nodeCount(), "edges", selfLoader.edgeCount()));
+      data.put(
+          "note",
+          inScope
+              ? "起点与终点相同，按 0 跳返回。"
+              : "起点在当前范围内没有合格公开合作边（可能成果未公开或未生效、关系非 AUTO/SELF_CONFIRMED、"
+                  + "或当前筛选条件将其排除），不按 0 跳可达处理。");
+      data.put("pathRule", "起点与终点相同时，只有在当前范围内存在合格合作边才返回 0 跳路径。");
       return data;
     }
 
@@ -177,9 +201,13 @@ public class NetworkService {
       data.put("path", List.of());
       data.put(
           "note",
-          "在 " + MAX_PATH_DEPTH + " 跳范围内未找到合作路径；这不等于全图不连通，只说明最短距离超过 "
-              + MAX_PATH_DEPTH + " 跳。起点或终点若在范围内没有合格合作边，也会得到这个结果。");
-      data.put("withinLimits", Map.of("nodes", fromLoader.nodeCount(), "edges", fromLoader.edgeCount()));
+          "在 "
+              + MAX_PATH_DEPTH
+              + " 跳范围内未找到合作路径；这不等于全图不连通，只说明最短距离超过 "
+              + MAX_PATH_DEPTH
+              + " 跳。起点或终点若在范围内没有合格合作边，也会得到这个结果。");
+      data.put(
+          "withinLimits", Map.of("nodes", fromLoader.nodeCount(), "edges", fromLoader.edgeCount()));
       return data;
     }
 

@@ -11,9 +11,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.cognitanexus.core.governance.application.GovernanceRepositories.DataQualityRepository;
 import com.cognitanexus.core.governance.application.GovernanceRepositories.AnomalyRepository;
 import com.cognitanexus.core.governance.application.GovernanceRepositories.AnomalyRepository.OpenAnomalyKey;
+import com.cognitanexus.core.governance.application.GovernanceRepositories.DataQualityRepository;
 import com.cognitanexus.core.governance.domain.GovernanceAnomaly;
 import com.cognitanexus.core.platform.audit.AuditRecorder;
 import com.cognitanexus.core.platform.security.ActorContext;
@@ -67,7 +67,9 @@ class DataQualityScanServiceTest {
     lenient().when(data.ambiguousScholars(anyInt(), anyInt())).thenReturn(List.of());
     lenient().when(data.countAmbiguousScholars(anyInt())).thenReturn(0L);
     lenient().when(data.countPendingRelationsOfAmbiguous(anyInt())).thenReturn(0L);
-    lenient().when(anomalies.findOpenIdByDedupeKey(anyString(), anyString())).thenReturn(Optional.empty());
+    lenient()
+        .when(anomalies.findOpenIdByDedupeKey(anyString(), anyString()))
+        .thenReturn(Optional.empty());
     lenient().when(anomalies.listOpenOfKind(anyString(), anyInt())).thenReturn(List.of());
     lenient().when(anomalies.refreshDetail(anyString(), any())).thenReturn(true);
     lenient().when(anomalies.resolve(anyString())).thenReturn(true);
@@ -150,7 +152,8 @@ class DataQualityScanServiceTest {
 
     DataQualityScanService.Report report = service.scan(REVIEWER);
 
-    verify(anomalies, never()).listOpenOfKind(eq(GovernanceAnomaly.KIND_YEAR_OUT_OF_RANGE), anyInt());
+    verify(anomalies, never())
+        .listOpenOfKind(eq(GovernanceAnomaly.KIND_YEAR_OUT_OF_RANGE), anyInt());
     assertThat(report.findings())
         .filteredOn(f -> f.kind().equals(GovernanceAnomaly.KIND_YEAR_OUT_OF_RANGE))
         .singleElement()
@@ -179,7 +182,8 @@ class DataQualityScanServiceTest {
     assertThat(recorded.entityId()).isNull();
     assertThat(recorded.detail().get("dedupeKey")).isEqualTo("ALL");
     assertThat(recorded.detail().get("count")).isEqualTo(694L);
-    assertThat(recorded.detail().get("byType")).asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
+    assertThat(recorded.detail().get("byType"))
+        .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
         .containsEntry("PAPER", 600L)
         .containsEntry("AWARD", 94L);
     assertThat(report.created()).isEqualTo(1);
@@ -207,7 +211,8 @@ class DataQualityScanServiceTest {
         .thenReturn(
             List.of(
                 new DataQualityRepository.ScholarSample("sch_1", "Zhang Wei", "清华大学", "UNCLAIMED"),
-                new DataQualityRepository.ScholarSample("sch_2", "Zhang Wei", "北京大学", "UNCLAIMED")));
+                new DataQualityRepository.ScholarSample(
+                    "sch_2", "Zhang Wei", "北京大学", "UNCLAIMED")));
 
     service.scan(REVIEWER);
 
@@ -227,8 +232,7 @@ class DataQualityScanServiceTest {
     when(data.countAmbiguousScholars(anyInt())).thenReturn(898L);
     when(data.countPendingRelationsOfAmbiguous(anyInt())).thenReturn(7204L);
     when(data.ambiguousScholars(anyInt(), anyInt()))
-        .thenReturn(
-            List.of(new DataQualityRepository.AmbiguousScholar("sch_1", "Li Wei", 42)));
+        .thenReturn(List.of(new DataQualityRepository.AmbiguousScholar("sch_1", "Li Wei", 42)));
 
     DataQualityScanService.Report report = service.scan(REVIEWER);
 

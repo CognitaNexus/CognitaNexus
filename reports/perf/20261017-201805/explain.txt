@@ -1,0 +1,291 @@
+Pager usage is off.
+Timing is on.
+          probe           | count  
+--------------------------+--------
+ 零命中（zzz不存在）      |      0
+ 冷门词（构结构分析方法） |      0
+ 热门词（图神经网络）     | 269438
+(3 rows)
+
+Time: 2574.551 ms (00:02.575)
+                                                                                                                                                                    QUERY PLAN                                                                                                                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=62774.40..62776.73 rows=20 width=140) (actual time=1268.218..1295.235 rows=20 loops=1)
+   Buffers: shared hit=16283 read=29589
+   ->  Gather Merge  (cost=62774.40..82541.21 rows=169418 width=140) (actual time=1268.216..1295.229 rows=20 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=16283 read=29589
+         ->  Sort  (cost=61774.38..61986.15 rows=84709 width=140) (actual time=533.077..533.079 rows=20 loops=3)
+               Sort Key: (similarity(title_norm, '图神经网络'::text)) DESC, publication_year DESC NULLS LAST, achievement_id
+               Sort Method: top-N heapsort  Memory: 32kB
+               Buffers: shared hit=16283 read=29589
+               Worker 0:  Sort Method: top-N heapsort  Memory: 34kB
+               Worker 1:  Sort Method: top-N heapsort  Memory: 34kB
+               ->  Parallel Seq Scan on qry_achievement a  (cost=0.00..59520.30 rows=84709 width=140) (actual time=0.052..503.812 rows=74273 loops=3)
+                     Filter: ((generation = 'gen0001'::text) AND (effective_status = 'EFFECTIVE'::text) AND (visibility = 'PUBLIC'::text) AND (data_nature = 'SIMULATED'::text) AND ((title_norm ~~ '%图神经网络%'::text) OR (lower(COALESCE(venue, ''::text)) ~~ '%图神经网络%'::text) OR (lower(COALESCE(doi, ''::text)) = '图神经网络'::text)))
+                     Rows Removed by Filter: 259061
+                     Buffers: shared hit=16180 read=29588
+ Planning:
+   Buffers: shared hit=48 read=13
+ Planning Time: 18.198 ms
+ Execution Time: 1295.757 ms
+(20 rows)
+
+Time: 1348.940 ms (00:01.349)
+                                                                                                                                                                    QUERY PLAN                                                                                                                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=60520.52..60520.53 rows=1 width=8) (actual time=1083.588..1115.239 rows=1 loops=1)
+   Buffers: shared hit=16186 read=29582
+   ->  Gather  (cost=60520.30..60520.51 rows=2 width=8) (actual time=908.231..1115.221 rows=3 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=16186 read=29582
+         ->  Partial Aggregate  (cost=59520.30..59520.31 rows=1 width=8) (actual time=302.595..302.596 rows=1 loops=3)
+               Buffers: shared hit=16186 read=29582
+               ->  Parallel Seq Scan on qry_achievement a  (cost=0.00..59308.53 rows=84709 width=0) (actual time=0.025..296.997 rows=74273 loops=3)
+                     Filter: ((generation = 'gen0001'::text) AND (effective_status = 'EFFECTIVE'::text) AND (visibility = 'PUBLIC'::text) AND (data_nature = 'SIMULATED'::text) AND ((title_norm ~~ '%图神经网络%'::text) OR (lower(COALESCE(venue, ''::text)) ~~ '%图神经网络%'::text) OR (lower(COALESCE(doi, ''::text)) = '图神经网络'::text)))
+                     Rows Removed by Filter: 259061
+                     Buffers: shared hit=16186 read=29582
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.272 ms
+ Execution Time: 1115.282 ms
+(16 rows)
+
+Time: 1116.168 ms (00:01.116)
+                                                                                   QUERY PLAN                                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=80457.79..80460.12 rows=20 width=18) (actual time=854.389..861.466 rows=20 loops=1)
+   Buffers: shared hit=16294 read=29562
+   ->  Gather Merge  (cost=79410.05..159669.02 rows=687886 width=18) (actual time=852.062..861.182 rows=9000 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=16294 read=29562
+         ->  Sort  (cost=78410.02..79269.88 rows=343943 width=18) (actual time=229.419..229.914 rows=3000 loops=3)
+               Sort Key: publication_year DESC NULLS LAST, achievement_id
+               Sort Method: top-N heapsort  Memory: 1817kB
+               Buffers: shared hit=16294 read=29562
+               Worker 0:  Sort Method: quicksort  Memory: 25kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Parallel Seq Scan on qry_achievement a  (cost=0.00..54100.63 rows=343943 width=18) (actual time=0.021..176.380 rows=276058 loops=3)
+                     Filter: ((generation = 'gen0001'::text) AND (effective_status = 'EFFECTIVE'::text) AND (visibility = 'PUBLIC'::text) AND (data_nature = 'SIMULATED'::text))
+                     Rows Removed by Filter: 57275
+                     Buffers: shared hit=16206 read=29562
+ Planning Time: 0.195 ms
+ Execution Time: 861.867 ms
+(18 rows)
+
+Time: 862.670 ms
+                                                                                                              QUERY PLAN                                                                                                               
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=26888.36..26888.41 rows=20 width=18) (actual time=121.112..121.116 rows=20 loops=1)
+   Buffers: shared hit=7421 read=7095
+   ->  Sort  (cost=26888.36..26889.54 rows=473 width=18) (actual time=121.110..121.112 rows=20 loops=1)
+         Sort Key: a.publication_year DESC NULLS LAST, a.achievement_id
+         Sort Method: top-N heapsort  Memory: 27kB
+         Buffers: shared hit=7421 read=7095
+         ->  Nested Loop  (cost=4828.61..26875.77 rows=473 width=18) (actual time=33.608..120.762 rows=463 loops=1)
+               Buffers: shared hit=7421 read=7095
+               ->  HashAggregate  (cost=4828.19..4857.98 rows=2979 width=22) (actual time=33.351..35.462 rows=2960 loops=1)
+                     Group Key: o.generation, o.achievement_id
+                     Batches: 1  Memory Usage: 369kB
+                     Buffers: shared read=2676
+                     ->  Index Scan using ix_qry_contribution_org_name on qry_contribution_org o  (cost=0.43..4813.27 rows=2983 width=22) (actual time=0.116..31.307 rows=2963 loops=1)
+                           Index Cond: ((generation = 'gen0001'::text) AND (organization = '机构1'::text))
+                           Buffers: shared read=2676
+               ->  Index Scan using pk_qry_achievement on qry_achievement a  (cost=0.42..7.41 rows=1 width=26) (actual time=0.028..0.028 rows=0 loops=2960)
+                     Index Cond: ((generation = 'gen0001'::text) AND (achievement_id = o.achievement_id))
+                     Filter: ((publication_year >= 2018) AND (publication_year <= 2026) AND (effective_status = 'EFFECTIVE'::text) AND (visibility = 'PUBLIC'::text) AND (data_nature = 'SIMULATED'::text) AND (type = 'PAPER'::text))
+                     Rows Removed by Filter: 1
+                     Buffers: shared hit=7421 read=4419
+ Planning:
+   Buffers: shared hit=60 read=9 dirtied=4
+ Planning Time: 15.059 ms
+ Execution Time: 121.309 ms
+(24 rows)
+
+Time: 140.016 ms
+                                                                               QUERY PLAN                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=61722.33..61724.66 rows=20 width=18) (actual time=797.588..811.158 rows=20 loops=1)
+   Buffers: shared hit=77108 read=35348 written=3
+   ->  Gather Merge  (cost=61722.33..63614.33 rows=16216 width=18) (actual time=797.586..811.152 rows=20 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=77108 read=35348 written=3
+         ->  Sort  (cost=60722.30..60742.57 rows=8108 width=18) (actual time=148.351..148.354 rows=7 loops=3)
+               Sort Key: a.publication_year DESC NULLS LAST, a.achievement_id
+               Sort Method: top-N heapsort  Memory: 27kB
+               Buffers: shared hit=77108 read=35348 written=3
+               Worker 0:  Sort Method: quicksort  Memory: 25kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Nested Loop  (cost=322.45..60506.55 rows=8108 width=18) (actual time=1.878..143.648 rows=6913 loops=3)
+                     Buffers: shared hit=77081 read=35345 written=3
+                     ->  Parallel Bitmap Heap Scan on qry_achievement_topic t  (cost=322.02..16556.88 rows=9821 width=22) (actual time=1.844..40.664 rows=8329 loops=3)
+                           Recheck Cond: ((generation = 'gen0001'::text) AND (topic_id = 'topic-perf-7'::text))
+                           Heap Blocks: exact=12456
+                           Buffers: shared read=12478 written=2
+                           ->  Bitmap Index Scan on ix_qry_achievement_topic_topic  (cost=0.00..316.13 rows=23570 width=0) (actual time=3.198..3.198 rows=24987 loops=1)
+                                 Index Cond: ((generation = 'gen0001'::text) AND (topic_id = 'topic-perf-7'::text))
+                                 Buffers: shared read=22
+                     ->  Index Scan using pk_qry_achievement on qry_achievement a  (cost=0.42..4.48 rows=1 width=26) (actual time=0.012..0.012 rows=1 loops=24987)
+                           Index Cond: ((generation = 'gen0001'::text) AND (achievement_id = t.achievement_id))
+                           Filter: ((effective_status = 'EFFECTIVE'::text) AND (visibility = 'PUBLIC'::text) AND (data_nature = 'SIMULATED'::text))
+                           Rows Removed by Filter: 0
+                           Buffers: shared hit=77081 read=22867 written=1
+ Planning:
+   Buffers: shared hit=47 read=3
+ Planning Time: 9.161 ms
+ Execution Time: 811.233 ms
+(30 rows)
+
+Time: 821.189 ms
+                                                                                 QUERY PLAN                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=58901.11..58901.16 rows=20 width=55) (actual time=657.150..666.036 rows=20 loops=1)
+   Buffers: shared hit=1847 read=37625
+   ->  Sort  (cost=58901.11..58902.34 rows=492 width=55) (actual time=657.148..666.032 rows=20 loops=1)
+         Sort Key: (count(DISTINCT c.achievement_id)) DESC, c.scholar_id
+         Sort Method: quicksort  Memory: 27kB
+         Buffers: shared hit=1847 read=37625
+         ->  GroupAggregate  (cost=58822.10..58888.01 rows=492 width=55) (actual time=656.885..665.982 rows=40 loops=1)
+               Group Key: c.scholar_id
+               Buffers: shared hit=1844 read=37625
+               ->  Gather Merge  (cost=58822.10..58879.40 rows=492 width=39) (actual time=656.869..665.856 rows=480 loops=1)
+                     Workers Planned: 2
+                     Workers Launched: 2
+                     Buffers: shared hit=1844 read=37625
+                     ->  Sort  (cost=57822.08..57822.59 rows=205 width=39) (actual time=235.094..235.102 rows=160 loops=3)
+                           Sort Key: c.scholar_id, c.achievement_id
+                           Sort Method: quicksort  Memory: 55kB
+                           Buffers: shared hit=1844 read=37625
+                           Worker 0:  Sort Method: quicksort  Memory: 25kB
+                           Worker 1:  Sort Method: quicksort  Memory: 25kB
+                           ->  Nested Loop  (cost=0.42..57814.21 rows=205 width=39) (actual time=6.540..234.721 rows=160 loops=3)
+                                 Buffers: shared hit=1828 read=37625
+                                 ->  Parallel Seq Scan on qry_contribution c  (cost=0.00..55777.91 rows=248 width=47) (actual time=4.251..225.688 rows=202 loops=3)
+                                       Filter: ((generation = 'gen0001'::text) AND (scholar_name = '作者1234'::text))
+                                       Rows Removed by Filter: 999612
+                                       Buffers: shared read=37031
+                                 ->  Index Scan using pk_qry_achievement on qry_achievement a  (cost=0.42..8.21 rows=1 width=22) (actual time=0.042..0.042 rows=1 loops=605)
+                                       Index Cond: ((generation = 'gen0001'::text) AND (achievement_id = c.achievement_id))
+                                       Filter: ((effective_status = 'EFFECTIVE'::text) AND (visibility = 'PUBLIC'::text) AND (data_nature = 'SIMULATED'::text))
+                                       Rows Removed by Filter: 0
+                                       Buffers: shared hit=1828 read=594
+ Planning:
+   Buffers: shared hit=67 read=11 dirtied=1
+ Planning Time: 12.882 ms
+ Execution Time: 666.112 ms
+(34 rows)
+
+Time: 687.029 ms
+                                                                                               QUERY PLAN                                                                                                
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=329791.66..329791.71 rows=20 width=69) (actual time=3092.723..5817.357 rows=20 loops=1)
+   Buffers: shared hit=11723 read=49601, temp read=25144 written=25225
+   ->  Sort  (cost=329791.66..329791.81 rows=60 width=69) (actual time=3092.721..5817.353 rows=20 loops=1)
+         Sort Key: (count(DISTINCT t.achievement_id)) DESC, t.topic_id
+         Sort Method: top-N heapsort  Memory: 27kB
+         Buffers: shared hit=11723 read=49601, temp read=25144 written=25225
+         ->  GroupAggregate  (cost=164808.00..329790.06 rows=60 width=69) (actual time=2103.395..5817.140 rows=60 loops=1)
+               Group Key: t.topic_id
+               Buffers: shared hit=11723 read=49601, temp read=25144 written=25225
+               ->  Gather Merge  (cost=164808.00..308237.98 rows=1231513 width=42) (actual time=2088.542..5384.971 rows=1235273 loops=1)
+                     Workers Planned: 2
+                     Workers Launched: 2
+                     Buffers: shared hit=11723 read=49601, temp read=25144 written=25225
+                     ->  Sort  (cost=163807.98..165090.80 rows=513130 width=42) (actual time=1710.469..1938.085 rows=411758 loops=3)
+                           Sort Key: t.topic_id, t.achievement_id
+                           Sort Method: external merge  Disk: 20824kB
+                           Buffers: shared hit=11723 read=49601, temp read=25144 written=25225
+                           Worker 0:  Sort Method: external merge  Disk: 22440kB
+                           Worker 1:  Sort Method: external merge  Disk: 22432kB
+                           ->  Parallel Hash Join  (cost=60415.92..99355.25 rows=513130 width=42) (actual time=763.171..1034.192 rows=411758 loops=3)
+                                 Hash Cond: (t.achievement_id = a.achievement_id)
+                                 Buffers: shared hit=11649 read=49601, temp read=16932 written=16984
+                                 ->  Parallel Seq Scan on qry_achievement_topic t  (cost=0.00..23149.69 rows=621575 width=50) (actual time=6.212..172.002 rows=497260 loops=3)
+                                       Filter: (generation = 'gen0001'::text)
+                                       Buffers: shared hit=4006 read=11374
+                                 ->  Parallel Hash  (cost=54100.63..54100.63 rows=343943 width=22) (actual time=348.727..348.728 rows=276058 loops=3)
+                                       Buckets: 131072  Batches: 8  Memory Usage: 6752kB
+                                       Buffers: shared hit=7550 read=38218, temp written=3748
+                                       ->  Parallel Seq Scan on qry_achievement a  (cost=0.00..54100.63 rows=343943 width=22) (actual time=3.320..254.611 rows=276058 loops=3)
+                                             Filter: ((generation = 'gen0001'::text) AND (effective_status = 'EFFECTIVE'::text) AND (visibility = 'PUBLIC'::text) AND (data_nature = 'SIMULATED'::text))
+                                             Rows Removed by Filter: 57275
+                                             Buffers: shared hit=7550 read=38218
+ Planning:
+   Buffers: shared hit=8 read=2 dirtied=2
+ Planning Time: 0.557 ms
+ Execution Time: 5876.557 ms
+(36 rows)
+
+Time: 5877.829 ms (00:05.878)
+                                                                                            QUERY PLAN                                                                                             
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=303062.18..303062.23 rows=20 width=17) (actual time=4704.265..4704.272 rows=20 loops=1)
+   Buffers: shared hit=7646 read=52146, temp read=22285 written=22307
+   ->  Sort  (cost=303062.18..303063.43 rows=500 width=17) (actual time=4704.262..4704.268 rows=20 loops=1)
+         Sort Key: (count(DISTINCT o.achievement_id)) DESC, o.organization
+         Sort Method: top-N heapsort  Memory: 27kB
+         Buffers: shared hit=7646 read=52146, temp read=22285 written=22307
+         ->  GroupAggregate  (cost=293753.72..303048.87 rows=500 width=17) (actual time=4358.198..4703.969 rows=500 loops=1)
+               Group Key: o.organization
+               Buffers: shared hit=7646 read=52146, temp read=22285 written=22307
+               ->  Sort  (cost=293753.72..296850.44 rows=1238687 width=23) (actual time=4357.567..4531.285 rows=1242552 loops=1)
+                     Sort Key: o.organization, o.achievement_id
+                     Sort Method: external merge  Disk: 41056kB
+                     Buffers: shared hit=7646 read=52146, temp read=22285 written=22307
+                     ->  Hash Join  (cost=80921.61..142993.24 rows=1238687 width=23) (actual time=703.690..2760.486 rows=1242552 loops=1)
+                           Hash Cond: (o.achievement_id = a.achievement_id)
+                           Buffers: shared hit=7646 read=52146, temp read=12022 written=12022
+                           ->  Seq Scan on qry_contribution_org o  (cost=0.00..32779.88 rows=1500470 width=31) (actual time=0.036..276.405 rows=1500470 loops=1)
+                                 Filter: (generation = 'gen0001'::text)
+                                 Buffers: shared read=14024
+                           ->  Hash  (cost=65766.32..65766.32 rows=825463 width=22) (actual time=696.970..696.971 rows=828174 loops=1)
+                                 Buckets: 131072  Batches: 8  Memory Usage: 6493kB
+                                 Buffers: shared hit=7646 read=38122, temp written=3711
+                                 ->  Seq Scan on qry_achievement a  (cost=0.00..65766.32 rows=825463 width=22) (actual time=0.034..507.541 rows=828174 loops=1)
+                                       Filter: ((generation = 'gen0001'::text) AND (effective_status = 'EFFECTIVE'::text) AND (visibility = 'PUBLIC'::text) AND (data_nature = 'SIMULATED'::text))
+                                       Rows Removed by Filter: 171826
+                                       Buffers: shared hit=7646 read=38122
+ Planning Time: 0.252 ms
+ Execution Time: 4778.551 ms
+(28 rows)
+
+Time: 4779.510 ms (00:04.780)
+                                                                               QUERY PLAN                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ HashAggregate  (cost=60.57..60.83 rows=26 width=40) (actual time=0.410..0.416 rows=22 loops=1)
+   Group Key: e.scholar_b, (count(DISTINCT e.achievement_id))
+   Batches: 1  Memory Usage: 24kB
+   Buffers: shared read=15
+   ->  Append  (cost=29.93..60.44 rows=26 width=40) (actual time=0.285..0.400 rows=22 loops=1)
+         Buffers: shared read=15
+         ->  GroupAggregate  (cost=29.93..30.16 rows=13 width=23) (actual time=0.284..0.299 rows=22 loops=1)
+               Group Key: e.scholar_b
+               Buffers: shared read=12
+               ->  Sort  (cost=29.93..29.96 rows=13 width=29) (actual time=0.277..0.279 rows=22 loops=1)
+                     Sort Key: e.scholar_b, e.achievement_id
+                     Sort Method: quicksort  Memory: 26kB
+                     Buffers: shared read=12
+                     ->  Index Scan using ix_qry_coauthor_edge_a on qry_coauthor_edge e  (cost=0.43..29.69 rows=13 width=29) (actual time=0.115..0.250 rows=22 loops=1)
+                           Index Cond: ((generation = 'gen0001'::text) AND (scholar_a = 'sch-perf-1'::text))
+                           Buffers: shared read=12
+         ->  GroupAggregate  (cost=29.93..30.16 rows=13 width=23) (actual time=0.095..0.096 rows=0 loops=1)
+               Group Key: e_1.scholar_a
+               Buffers: shared read=3
+               ->  Sort  (cost=29.93..29.96 rows=13 width=29) (actual time=0.095..0.095 rows=0 loops=1)
+                     Sort Key: e_1.scholar_a, e_1.achievement_id
+                     Sort Method: quicksort  Memory: 25kB
+                     Buffers: shared read=3
+                     ->  Index Scan using ix_qry_coauthor_edge_b on qry_coauthor_edge e_1  (cost=0.43..29.69 rows=13 width=29) (actual time=0.089..0.089 rows=0 loops=1)
+                           Index Cond: ((generation = 'gen0001'::text) AND (scholar_b = 'sch-perf-1'::text))
+                           Buffers: shared read=3
+ Planning:
+   Buffers: shared hit=65 read=2 dirtied=1
+ Planning Time: 18.836 ms
+ Execution Time: 0.501 ms
+(30 rows)
+
+Time: 20.394 ms

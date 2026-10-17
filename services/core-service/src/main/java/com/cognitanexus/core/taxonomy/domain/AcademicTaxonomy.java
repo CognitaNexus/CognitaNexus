@@ -7,7 +7,6 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -109,7 +108,12 @@ public record AcademicTaxonomy(
       fields.add(new Field(name, List.copyOf(terms)));
     }
     return new AcademicTaxonomy(
-        version, matchMode, minScore, secondaryRatio, declaredWeight, abstractWeight,
+        version,
+        matchMode,
+        minScore,
+        secondaryRatio,
+        declaredWeight,
+        abstractWeight,
         List.copyOf(fields));
   }
 

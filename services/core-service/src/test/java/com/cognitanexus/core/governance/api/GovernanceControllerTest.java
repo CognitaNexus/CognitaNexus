@@ -10,9 +10,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.cognitanexus.core.governance.application.DataQualityScanService;
 import com.cognitanexus.core.governance.application.GovernanceRepositories;
 import com.cognitanexus.core.governance.application.GovernanceRepositories.ScoredCandidate;
-import com.cognitanexus.core.governance.application.DataQualityScanService;
 import com.cognitanexus.core.governance.application.GovernanceResolutionWorkflow;
 import com.cognitanexus.core.governance.application.GovernanceService;
 import com.cognitanexus.core.governance.domain.DedupCandidate;
@@ -92,7 +92,8 @@ class GovernanceControllerTest {
   @Test
   @DisplayName("候选列表带回总数：翻页控件必须知道还有多少条，否则只能停在第一页")
   void candidatesCarriesTotal() {
-    when(governance.listCandidates(any(PageRequest.class), any())).thenReturn(List.of(candidate("ddc_1")));
+    when(governance.listCandidates(any(PageRequest.class), any()))
+        .thenReturn(List.of(candidate("ddc_1")));
     when(governance.countOpenCandidates(any())).thenReturn(42L);
 
     ResponseEntity<ApiResponse<List<Map<String, Object>>>> response = controller.candidates(1, 20);

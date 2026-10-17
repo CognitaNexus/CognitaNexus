@@ -60,8 +60,7 @@ class TopicInferenceServiceTest {
   }
 
   private static ActorContext plainUser() {
-    return new ActorContext(
-        new AccountId("acc_user"), "user", "普通用户", Set.of(RoleNames.USER), 1L);
+    return new ActorContext(new AccountId("acc_user"), "user", "普通用户", Set.of(RoleNames.USER), 1L);
   }
 
   @BeforeEach
@@ -93,7 +92,9 @@ class TopicInferenceServiceTest {
     assertThatThrownBy(() -> service.infer(plainUser(), 10, false, "试跑"))
         .isInstanceOf(BusinessException.class)
         .satisfies(
-            ex -> assertThat(((BusinessException) ex).errorCode()).isEqualTo(ErrorCode.ACCESS_DENIED));
+            ex ->
+                assertThat(((BusinessException) ex).errorCode())
+                    .isEqualTo(ErrorCode.ACCESS_DENIED));
     verifyNoInteractions(inferences);
   }
 
@@ -103,7 +104,9 @@ class TopicInferenceServiceTest {
     assertThatThrownBy(() -> service.infer(null, 10, false, "试跑"))
         .isInstanceOf(BusinessException.class)
         .satisfies(
-            ex -> assertThat(((BusinessException) ex).errorCode()).isEqualTo(ErrorCode.AUTH_REQUIRED));
+            ex ->
+                assertThat(((BusinessException) ex).errorCode())
+                    .isEqualTo(ErrorCode.AUTH_REQUIRED));
   }
 
   @Test
@@ -164,7 +167,8 @@ class TopicInferenceServiceTest {
     ArgumentCaptor<String> outcome = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<Integer> count = ArgumentCaptor.forClass(Integer.class);
     verify(inferences)
-        .upsertInference(eq("ach_1"), eq(RULE_VERSION), outcome.capture(), count.capture(), any(), anyString());
+        .upsertInference(
+            eq("ach_1"), eq(RULE_VERSION), outcome.capture(), count.capture(), any(), anyString());
     assertThat(outcome.getValue()).isEqualTo("ASSIGNED");
     assertThat(count.getValue()).isEqualTo(2);
   }
@@ -189,11 +193,13 @@ class TopicInferenceServiceTest {
             eq("ach_2"), eq(RULE_VERSION), eq("UNRESOLVED"), eq(0), isNull(), reason.capture());
     // 只说「未分类」，治理人员无从判断是文本不足、阈值过高还是词表缺词
     assertThat(reason.getValue()).contains("没有任何词表判别词命中");
-    assertThat(report.samples()).singleElement().satisfies(
-        item -> {
-          assertThat(item.unresolvedReason()).isNotNull();
-          assertThat(item.assignments()).isEmpty();
-        });
+    assertThat(report.samples())
+        .singleElement()
+        .satisfies(
+            item -> {
+              assertThat(item.unresolvedReason()).isNotNull();
+              assertThat(item.assignments()).isEmpty();
+            });
   }
 
   @Test
@@ -213,10 +219,7 @@ class TopicInferenceServiceTest {
     verify(inferences)
         .upsertInference(
             eq("ach_3"), eq(RULE_VERSION), eq("UNRESOLVED"), eq(0), isNull(), reason.capture());
-    assertThat(reason.getValue())
-        .contains("最高得分 2.0")
-        .contains("低于阈值 4.0")
-        .contains("计算机科学与技术");
+    assertThat(reason.getValue()).contains("最高得分 2.0").contains("低于阈值 4.0").contains("计算机科学与技术");
   }
 
   @Test
@@ -250,16 +253,22 @@ class TopicInferenceServiceTest {
     assertThat(report.dryRun()).isTrue();
     assertThat(report.assigned()).isEqualTo(1);
     // dryRun 也把样本算出来，否则"先看看会判成什么"就无从看起
-    assertThat(report.samples()).singleElement().satisfies(
-        item -> assertThat(item.assignments()).singleElement().satisfies(
-            assignment -> {
-              assertThat(assignment.fieldName()).isEqualTo("人工智能");
-              // 未落库，因此没有 topicId
-              assertThat(assignment.topicId()).isNull();
-            }));
+    assertThat(report.samples())
+        .singleElement()
+        .satisfies(
+            item ->
+                assertThat(item.assignments())
+                    .singleElement()
+                    .satisfies(
+                        assignment -> {
+                          assertThat(assignment.fieldName()).isEqualTo("人工智能");
+                          // 未落库，因此没有 topicId
+                          assertThat(assignment.topicId()).isNull();
+                        }));
     verify(inferences, never())
         .linkInferred(anyString(), anyString(), anyString(), any(), anyString());
-    verify(inferences, never()).upsertInference(anyString(), anyString(), anyString(), anyInt(), any(), anyString());
+    verify(inferences, never())
+        .upsertInference(anyString(), anyString(), anyString(), anyInt(), any(), anyString());
     verify(audit, never()).record(any());
   }
 
@@ -343,7 +352,9 @@ class TopicInferenceServiceTest {
     assertThat(byKind.get(0)).containsEntry("assignmentKind", "SOURCE").containsEntry("rows", 5L);
     @SuppressWarnings("unchecked")
     List<Map<String, Object>> byOutcome = (List<Map<String, Object>>) view.get("byOutcome");
-    assertThat(byOutcome.get(1)).containsEntry("outcome", "UNRESOLVED").containsEntry("achievements", 20L);
+    assertThat(byOutcome.get(1))
+        .containsEntry("outcome", "UNRESOLVED")
+        .containsEntry("achievements", 20L);
   }
 
   @Test
@@ -358,12 +369,14 @@ class TopicInferenceServiceTest {
 
     List<Map<String, Object>> items = service.unresolved(admin(), 10);
 
-    assertThat(items).singleElement().satisfies(
-        item -> {
-          assertThat(item).containsEntry("achievementId", "ach_9");
-          assertThat(item).containsEntry("reason", "最高得分 3.0 低于阈值 4.0");
-          assertThat(item).containsEntry("inferredAt", "2026-07-01T00:00:00Z");
-        });
+    assertThat(items)
+        .singleElement()
+        .satisfies(
+            item -> {
+              assertThat(item).containsEntry("achievementId", "ach_9");
+              assertThat(item).containsEntry("reason", "最高得分 3.0 低于阈值 4.0");
+              assertThat(item).containsEntry("inferredAt", "2026-07-01T00:00:00Z");
+            });
   }
 
   @Test
@@ -381,7 +394,8 @@ class TopicInferenceServiceTest {
 
     ArgumentCaptor<BigDecimal> confidence = ArgumentCaptor.forClass(BigDecimal.class);
     verify(inferences)
-        .linkInferred(eq("ach_7"), eq("top_ai"), eq(RULE_VERSION), confidence.capture(), anyString());
+        .linkInferred(
+            eq("ach_7"), eq("top_ai"), eq(RULE_VERSION), confidence.capture(), anyString());
     assertThat(confidence.getValue().scale()).isLessThanOrEqualTo(3);
   }
 }

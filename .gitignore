@@ -44,6 +44,9 @@ tmp/
 temp/
 *.tmp
 
+# 压测的库导出（单个 38–91 MB，属可重建产物，只留计数与耗时证据）
+reports/**/*.dump
+
 # ===== IDE =====
 .idea/
 *.iml

@@ -49,7 +49,11 @@ class TaxonomyRepositoryAdapterTest {
     int affected =
         adapter()
             .linkInferred(
-                "ach_1", "top_ai", RULE_VERSION, BigDecimal.valueOf(0.769), "命中 2 项：title:graph neural=5.0");
+                "ach_1",
+                "top_ai",
+                RULE_VERSION,
+                BigDecimal.valueOf(0.769),
+                "命中 2 项：title:graph neural=5.0");
 
     assertThat(affected).isEqualTo(1);
     verify(mapper)
@@ -64,19 +68,28 @@ class TaxonomyRepositoryAdapterTest {
   @Test
   @DisplayName("台账写入把结果、条数、置信度按位传递，UNRESOLVED 不带置信度")
   void upsertInferencePassesFieldsInOrder() {
-    adapter()
-        .upsertInference("ach_2", RULE_VERSION, "UNRESOLVED", 0, null, "最高得分 2.0 低于阈值 4.0");
+    adapter().upsertInference("ach_2", RULE_VERSION, "UNRESOLVED", 0, null, "最高得分 2.0 低于阈值 4.0");
 
     verify(mapper)
         .upsertInference(
-            eq("ach_2"), eq(RULE_VERSION), eq("UNRESOLVED"), eq(0), isNull(), eq("最高得分 2.0 低于阈值 4.0"));
+            eq("ach_2"),
+            eq(RULE_VERSION),
+            eq("UNRESOLVED"),
+            eq(0),
+            isNull(),
+            eq("最高得分 2.0 低于阈值 4.0"));
 
     adapter()
         .upsertInference("ach_3", RULE_VERSION, "ASSIGNED", 2, BigDecimal.valueOf(0.486), "命中 2 项");
 
     verify(mapper)
         .upsertInference(
-            eq("ach_3"), eq(RULE_VERSION), eq("ASSIGNED"), eq(2), eq(BigDecimal.valueOf(0.486)), eq("命中 2 项"));
+            eq("ach_3"),
+            eq(RULE_VERSION),
+            eq("ASSIGNED"),
+            eq(2),
+            eq(BigDecimal.valueOf(0.486)),
+            eq("命中 2 项"));
   }
 
   @Test
@@ -103,10 +116,8 @@ class TaxonomyRepositoryAdapterTest {
   @Test
   @DisplayName("盘点查询按来源与结果两类分别转调")
   void countQueriesDelegate() {
-    when(mapper.countByKind())
-        .thenReturn(List.of(new KindCount("INFERRED", 100L, 90L)));
-    when(mapper.countByOutcome(anyString()))
-        .thenReturn(List.of(new OutcomeCount("ASSIGNED", 88L)));
+    when(mapper.countByKind()).thenReturn(List.of(new KindCount("INFERRED", 100L, 90L)));
+    when(mapper.countByOutcome(anyString())).thenReturn(List.of(new OutcomeCount("ASSIGNED", 88L)));
     when(mapper.countInferredRows(anyString())).thenReturn(100L);
     when(mapper.countAchievementsWithoutTopic()).thenReturn(3L);
 

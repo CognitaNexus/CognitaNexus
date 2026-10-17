@@ -151,6 +151,15 @@ export const accountApi = {
     })
   },
 
+  /** 补证后重新提交。只允许 NEED_MORE_EVIDENCE，claimId 不变（服务端还会再查一次状态）。 */
+  resubmitClaim(claimId: string, statement: string) {
+    return request<Record<string, unknown>>(
+      'core',
+      `/api/v1/account/claims/${encodeURIComponent(claimId)}/resubmit`,
+      { method: 'POST', body: { statement } },
+    )
+  },
+
   /**
    * 上传证明材料。
    *
@@ -513,6 +522,27 @@ export const ingestionApi = {
       'ingest',
       `/api/v1/admin/ingestion/sources/${sourceId}/sync`,
       { method: 'POST' },
+    )
+  },
+
+  /**
+   * 设定来源的业务更新周期。
+   *
+   * 三个周期互不相同，这里只改第三个：调度轮询是服务配置，失败退避由任务自己持有。
+   * 两个周期都可传 null（表示撤销），此时必须同时给 note（撤销时 note 由服务端沿用旧值）。
+   */
+  setSourceUpdatePlan(
+    sourceId: string,
+    body: {
+      newRecordIntervalMinutes: number | null
+      fieldRefreshIntervalMinutes: number | null
+      note?: string
+    },
+  ) {
+    return request<Record<string, unknown>>(
+      'ingest',
+      `/api/v1/admin/ingestion/sources/${sourceId}/update-plan`,
+      { method: 'PUT', body },
     )
   },
 

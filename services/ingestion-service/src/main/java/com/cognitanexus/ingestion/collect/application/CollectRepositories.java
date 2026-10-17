@@ -51,6 +51,20 @@ public interface CollectRepositories {
         Integer pageSize,
         String licenseReviewState,
         String licenseNote);
+
+    /**
+     * 设定业务更新周期（发现新记录／刷新历史字段各自独立，均可为 null 表示未设定）。
+     *
+     * @return 受影响行数；0 表示配置不存在
+     */
+    int updateUpdatePlan(
+        String id,
+        Integer newRecordIntervalMinutes,
+        Integer fieldRefreshIntervalMinutes,
+        String note);
+
+    /** 一次按周期的执行收尾后前移下次到期时间；传 null 表示撤销周期。 */
+    int advanceNextDueAt(String id, java.time.Instant nextDueAt);
   }
 
   /** 采集任务仓储。 */

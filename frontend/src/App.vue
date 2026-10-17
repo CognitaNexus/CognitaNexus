@@ -102,8 +102,8 @@ onMounted(loadConsistency)
           <input
             v-model="quickKeyword"
             type="search"
-            aria-label="检索成果或学者"
-            placeholder="按标题、DOI、作者检索成果"
+            aria-label="检索成果"
+            placeholder="按题名、发表载体或 DOI 检索成果"
           />
           <button type="submit">检索</button>
         </form>

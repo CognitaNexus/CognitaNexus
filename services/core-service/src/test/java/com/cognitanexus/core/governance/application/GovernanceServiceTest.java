@@ -507,7 +507,11 @@ class GovernanceServiceTest {
       // 只有治理角色的人工调用；无操作者（null）与无治理能力的系统主体都被拒绝。
       ActorContext system =
           new ActorContext(
-              new AccountId("system"), RoleNames.SYSTEM, RoleNames.SYSTEM, Set.of(RoleNames.SYSTEM), 0L);
+              new AccountId("system"),
+              RoleNames.SYSTEM,
+              RoleNames.SYSTEM,
+              Set.of(RoleNames.SYSTEM),
+              0L);
 
       assertThatThrownBy(() -> service.mergeAchievements("ach_1", "ach_2", "自动治理", null))
           .isInstanceOf(BusinessException.class)
@@ -817,7 +821,8 @@ class GovernanceServiceTest {
       when(candidates.countOpenCandidatesByFilter(0.9d)).thenReturn(3L);
 
       assertThat(
-              service.countCandidatesForWorkbench(GovernanceService.CandidateFilter.of(0.9d, null), actor))
+              service.countCandidatesForWorkbench(
+                  GovernanceService.CandidateFilter.of(0.9d, null), actor))
           .isEqualTo(3L);
       verify(candidates).countOpenCandidatesByFilter(0.9d);
     }
@@ -1084,7 +1089,8 @@ class GovernanceServiceTest {
       when(mergeTargets.previewSources("ach_2"))
           .thenReturn(List.of(source("rec_1"), source("rec_2")));
 
-      Map<String, Object> sources = section(service.previewMerge("ach_1", "ach_2", actor), "sources");
+      Map<String, Object> sources =
+          section(service.previewMerge("ach_1", "ach_2", actor), "sources");
 
       assertThat(sources)
           .containsEntry("survivorRows", 1)
@@ -1455,8 +1461,7 @@ class GovernanceServiceTest {
     @Test
     @DisplayName("普通用户调用学者合并被拒，且不写台账")
     void plainUserCannotMergeScholars() {
-      assertThatThrownBy(
-              () -> service.mergeScholars("sch_a", "sch_b", "越权尝试", plainUser()))
+      assertThatThrownBy(() -> service.mergeScholars("sch_a", "sch_b", "越权尝试", plainUser()))
           .isInstanceOf(BusinessException.class)
           .hasMessageContaining("能力");
       verifyNoInteractions(scholars);

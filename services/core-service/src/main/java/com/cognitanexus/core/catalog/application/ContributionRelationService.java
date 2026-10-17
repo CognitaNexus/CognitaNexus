@@ -10,7 +10,6 @@ import com.cognitanexus.core.platform.security.Capabilities;
 import com.cognitanexus.core.platform.security.RoleNames;
 import com.cognitanexus.core.portal.application.PortalService;
 import com.cognitanexus.sharedkernel.BusinessException;
-import com.cognitanexus.sharedkernel.ErrorCode;
 import com.cognitanexus.sharedkernel.RelationState;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -226,7 +225,8 @@ public class ContributionRelationService {
     Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     int capped = Math.min(limit <= 0 ? DEFAULT_LIST_SIZE : limit, MAX_LIST_SIZE);
     List<Map<String, Object>> items = new ArrayList<>();
-    for (Contribution contribution : contributions.listByRelationState(RelationState.DISPUTED, capped)) {
+    for (Contribution contribution :
+        contributions.listByRelationState(RelationState.DISPUTED, capped)) {
       items.add(view(contribution, achievements.findById(contribution.achievementId())));
     }
     return items;
@@ -254,12 +254,9 @@ public class ContributionRelationService {
         // 允许
       }
       case PENDING_VERIFY ->
-          throw BusinessException.businessRule(
-              "该关系处于待核验状态，本人的" + action + "不能替代证据核验；请先由治理端核验");
-      case DISPUTED ->
-          throw BusinessException.businessRule("该关系处于争议状态，请先撤回异议或等待治理端裁决");
-      case EXCLUDED ->
-          throw BusinessException.businessRule("该关系已被判定不成立，如需恢复请联系治理端");
+          throw BusinessException.businessRule("该关系处于待核验状态，本人的" + action + "不能替代证据核验；请先由治理端核验");
+      case DISPUTED -> throw BusinessException.businessRule("该关系处于争议状态，请先撤回异议或等待治理端裁决");
+      case EXCLUDED -> throw BusinessException.businessRule("该关系已被判定不成立，如需恢复请联系治理端");
       default -> throw BusinessException.businessRule("当前状态不支持该操作：" + current.name());
     }
   }
@@ -279,15 +276,15 @@ public class ContributionRelationService {
       // 关系状态是公开投影的一部分（贡献者列表与共著网络都读它），迁移后必须重新外发；
       // 不重发的话，公开视图会继续按旧状态把争议关系显示成确定合作。
       catalogChanges.publish(
-          achievement.get(),
-          Math.max(contribution.version(), achievement.get().version()));
+          achievement.get(), Math.max(contribution.version(), achievement.get().version()));
     } else {
       log.warn(
           "关系状态已迁移，但读不到所属成果，未外发目录变更 contributionId={} achievementId={}",
           contribution.id(),
           contribution.achievementId());
     }
-    Contribution refreshed = contributions.findContributionById(contribution.id()).orElse(contribution);
+    Contribution refreshed =
+        contributions.findContributionById(contribution.id()).orElse(contribution);
     Map<String, Object> view = view(refreshed, achievement);
     view.put("previousState", from.name());
     return withNote(view, note);
@@ -302,8 +299,7 @@ public class ContributionRelationService {
     return view;
   }
 
-  private Map<String, Object> view(
-      Contribution contribution, Optional<Achievement> achievement) {
+  private Map<String, Object> view(Contribution contribution, Optional<Achievement> achievement) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("contributionId", contribution.id());
     view.put("scholarId", contribution.scholarId());

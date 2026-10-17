@@ -93,14 +93,17 @@ public final class TopicClassifier {
         double effective =
             term.weight() * (declared ? taxonomy.declaredWeight() : taxonomy.abstractWeight());
         score += effective;
-        hits.add(new Hit(inTitle ? "title" : inVenue ? "venue" : "abstract", term.text(), effective));
+        hits.add(
+            new Hit(inTitle ? "title" : inVenue ? "venue" : "abstract", term.text(), effective));
       }
       if (score > 0) {
         ranked.add(new Candidate(field.canonicalName(), round(score), evidence(hits)));
       }
     }
     ranked.sort(
-        Comparator.comparingDouble(Candidate::score).reversed().thenComparing(Candidate::fieldName));
+        Comparator.comparingDouble(Candidate::score)
+            .reversed()
+            .thenComparing(Candidate::fieldName));
     return List.copyOf(ranked);
   }
 

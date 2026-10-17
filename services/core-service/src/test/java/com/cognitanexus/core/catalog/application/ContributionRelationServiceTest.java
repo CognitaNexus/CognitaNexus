@@ -65,10 +65,8 @@ class ContributionRelationServiceTest {
   @BeforeEach
   void setUp() {
     service =
-        new ContributionRelationService(
-            contributions, achievements, portal, catalogChanges, audit);
-    owner =
-        new ActorContext(new AccountId("acc_owner"), "owner", "本人", Set.of(RoleNames.USER), 1L);
+        new ContributionRelationService(contributions, achievements, portal, catalogChanges, audit);
+    owner = new ActorContext(new AccountId("acc_owner"), "owner", "本人", Set.of(RoleNames.USER), 1L);
     stranger =
         new ActorContext(new AccountId("acc_other"), "other", "路人", Set.of(RoleNames.USER), 1L);
     admin =
@@ -107,8 +105,7 @@ class ContributionRelationServiceTest {
   }
 
   private void givenContribution(RelationState state) {
-    when(contributions.findContributionById("ctb_1"))
-        .thenReturn(Optional.of(contribution(state)));
+    when(contributions.findContributionById("ctb_1")).thenReturn(Optional.of(contribution(state)));
   }
 
   /**
@@ -213,7 +210,8 @@ class ContributionRelationServiceTest {
     assertThat(view.get("qualified")).isEqualTo(false);
     verify(audit)
         .record(
-            org.mockito.ArgumentMatchers.argThat(entry -> "RELATION_DISPUTED".equals(entry.action())));
+            org.mockito.ArgumentMatchers.argThat(
+                entry -> "RELATION_DISPUTED".equals(entry.action())));
     verify(catalogChanges).publish(any(Achievement.class), anyLong());
   }
 
@@ -244,7 +242,8 @@ class ContributionRelationServiceTest {
   @DisplayName("迁移影响 0 行时按版本冲突报错，而不是当作成功")
   void concurrentChangeIsReported() {
     givenContribution(RelationState.AUTO);
-    when(contributions.transitionRelationState("ctb_1", RelationState.AUTO, RelationState.SELF_CONFIRMED))
+    when(contributions.transitionRelationState(
+            "ctb_1", RelationState.AUTO, RelationState.SELF_CONFIRMED))
         .thenReturn(0);
 
     assertThatThrownBy(() -> service.confirmByOwner(owner, "ctb_1"))

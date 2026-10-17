@@ -75,7 +75,9 @@ class PublicProjectionAssembler {
     for (TopicAssignment assignment : topics.listAssignmentsOf(achievementId)) {
       Map<String, Object> view = new LinkedHashMap<>();
       view.put("id", assignment.topicId());
-      topics.findTopic(assignment.topicId()).ifPresent(t -> view.put("canonicalName", t.canonicalName()));
+      topics
+          .findTopic(assignment.topicId())
+          .ifPresent(t -> view.put("canonicalName", t.canonicalName()));
       view.put("assignmentKind", assignment.assignmentKind());
       if (assignment.confidence() != null) {
         view.put("confidence", assignment.confidence().doubleValue());

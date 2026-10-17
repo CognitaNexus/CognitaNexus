@@ -113,8 +113,17 @@ class AdminCatalogConfirmTest {
         .thenReturn(
             Optional.of(
                 new com.cognitanexus.core.catalog.domain.AchievementDetails.Paper(
-                    "ach_withdrawn", "10.1000/x", "10.1000/x", "A Journal", null, null, 3, "Crossref", null)));
-    when(achievements.updatePublicationState(eq("ach_withdrawn"), anyString(), anyString(), anyLong()))
+                    "ach_withdrawn",
+                    "10.1000/x",
+                    "10.1000/x",
+                    "A Journal",
+                    null,
+                    null,
+                    3,
+                    "Crossref",
+                    null)));
+    when(achievements.updatePublicationState(
+            eq("ach_withdrawn"), anyString(), anyString(), anyLong()))
         .thenReturn(1);
     when(publicCatalog.publiclyVisible("ach_withdrawn")).thenReturn(false);
 
@@ -129,25 +138,29 @@ class AdminCatalogConfirmTest {
   @Test
   @DisplayName("已生效的成果不能被「再次确认」：这不是一个可以重复执行的动作")
   void effectiveCannotBeConfirmedAgain() {
-    when(achievements.findById("ach_live")).thenReturn(Optional.of(paper("ach_live", EffectiveStatus.EFFECTIVE)));
+    when(achievements.findById("ach_live"))
+        .thenReturn(Optional.of(paper("ach_live", EffectiveStatus.EFFECTIVE)));
 
     assertThatThrownBy(() -> service.confirmPublication(actor, "ach_live", "重复确认"))
         .isInstanceOf(BusinessException.class)
         .hasMessageContaining("待治理或已下架");
 
-    verify(achievements, never()).updatePublicationState(anyString(), anyString(), anyString(), anyLong());
+    verify(achievements, never())
+        .updatePublicationState(anyString(), anyString(), anyString(), anyLong());
   }
 
   @Test
   @DisplayName("类型扩展不是一个的成果仍然不能发布：重新上架也不能绕过放行条件")
   void withdrawnStillNeedsExactlyOneExtension() {
-    when(achievements.findById("ach_broken")).thenReturn(Optional.of(paper("ach_broken", EffectiveStatus.WITHDRAWN)));
+    when(achievements.findById("ach_broken"))
+        .thenReturn(Optional.of(paper("ach_broken", EffectiveStatus.WITHDRAWN)));
     when(achievements.findPaper("ach_broken")).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> service.confirmPublication(actor, "ach_broken", "恢复上架"))
         .isInstanceOf(BusinessException.class)
         .hasMessageContaining("类型扩展数量");
 
-    verify(achievements, never()).updatePublicationState(anyString(), anyString(), anyString(), anyLong());
+    verify(achievements, never())
+        .updatePublicationState(anyString(), anyString(), anyString(), anyLong());
   }
 }

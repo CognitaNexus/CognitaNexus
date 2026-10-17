@@ -320,4 +320,24 @@ export interface ClaimRequest {
   decidedAt: string | null
   decisionReason: string | null
   version: number
+  /** 服务端按申请状态给出的可重提／可追加材料标记，不在前端重复判断状态机。 */
+  canResubmit?: boolean
+  canAttachEvidence?: boolean
+  evidence?: ClaimEvidence[]
+  evidenceNote?: string
+}
+
+/**
+ * 认领材料元信息。
+ *
+ * 只有元信息：材料本体必须经受保护端点下载。downloadUrl 是受保护端点的相对路径，
+ * 不是文件地址，也不是静态目录链接——把它当直链存起来会在权限变化后失效。
+ */
+export interface ClaimEvidence {
+  id: string
+  contentType: string
+  sizeBytes: number
+  contentHash: string
+  createdAt: string
+  downloadUrl: string
 }

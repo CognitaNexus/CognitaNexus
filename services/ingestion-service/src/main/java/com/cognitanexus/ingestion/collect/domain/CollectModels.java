@@ -16,7 +16,23 @@ public final class CollectModels {
 
   private CollectModels() {}
 
-  /** 采集运行配置（core 侧来源配置的执行副本）。 */
+  /**
+   * 采集运行配置（core 侧来源配置的执行副本）。
+   *
+   * <p>后四个字段描述的是<b>业务更新计划</b>，与「调度轮询间隔」（服务实例参数）和「失败退避」
+   * （任务自己的 {@code nextAttemptAt}）是三件不同的事，不能互相推断：
+   *
+   * <ul>
+   *   <li>{@code newRecordIntervalMinutes}：多久去发现一批新记录；
+   *   <li>{@code fieldRefreshIntervalMinutes}：已入库成果的历史字段与引用量多久刷新一次；
+   *   <li>{@code updatePlanNote}：上面两个数字的取值依据（来源声明频率／许可条款／人工评估）；
+   *   <li>{@code nextDueAt}：下一次允许按业务周期执行的时刻。
+   * </ul>
+   *
+   * <p>两个周期都可以为 {@code null}，{@code null} 的含义是「未设定」，此时不按周期排期，
+   * 任务仍由人工创建驱动——与引入更新计划之前的行为一致。不允许因为「一般一个月更新一次」
+   * 之类说法就填一个默认值：没有出处的周期在下一次评审时无法判断是否还成立。
+   */
   public record SourceRunConfig(
       String id,
       String sourceCode,
@@ -31,7 +47,11 @@ public final class CollectModels {
       String licenseNote,
       int rateLimitPerMinute,
       boolean enabled,
-      int syncedConfigVersion) {
+      int syncedConfigVersion,
+      Integer newRecordIntervalMinutes,
+      Integer fieldRefreshIntervalMinutes,
+      String updatePlanNote,
+      Instant nextDueAt) {
 
     public boolean licenseApproved() {
       return "APPROVED".equals(licenseReviewState);
@@ -46,6 +66,40 @@ public final class CollectModels {
      */
     public boolean runnable(int authoritativeConfigVersion) {
       return enabled && licenseApproved() && syncedConfigVersion == authoritativeConfigVersion;
+    }
+
+    /** 是否设定了业务更新周期。未设定时任务只能由人工创建驱动。 */
+    public boolean hasUpdatePlan() {
+      return newRecordIntervalMinutes != null || fieldRefreshIntervalMinutes != null;
+    }
+
+    /**
+     * 按业务周期此刻是否到期。
+     *
+     * <p>未设定周期时恒为到期：这是「本特性不改变既有行为」的落点。让未设定周期反而挡住任务，
+     * 会把所有存量来源的采集停掉——那不是保守，是故障。
+     */
+    public boolean dueAt(Instant now) {
+      return nextDueAt == null || !nextDueAt.isAfter(now);
+    }
+
+    /**
+     * 从给定时刻推算下一次到期时刻；未设定周期时返回 {@code null}。
+     *
+     * <p>取两个周期里较近的那个：新记录的发现不能被字段刷新拖慢，反之亦然。两者都设定时，
+     * 较近的周期决定节奏，另一项在它真正到期之前不会执行——具体执行哪一项由任务键区分，
+     * 本方法只回答「什么时候该再跑」。
+     */
+    public Instant nextDueAfter(Instant from) {
+      Long minutes = null;
+      if (newRecordIntervalMinutes != null) {
+        minutes = newRecordIntervalMinutes.longValue();
+      }
+      if (fieldRefreshIntervalMinutes != null
+          && (minutes == null || fieldRefreshIntervalMinutes < minutes)) {
+        minutes = fieldRefreshIntervalMinutes.longValue();
+      }
+      return minutes == null ? null : from.plusSeconds(minutes * 60L);
     }
   }
 

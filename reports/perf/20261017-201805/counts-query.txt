@@ -1,0 +1,27 @@
+Pager usage is off.
+              metric              |  value  
+----------------------------------+---------
+ 投影代                           | gen0001
+ 已发布修订（published_revision） | 0
+ 可检索去重成果（投影行数）       | 1000000
+ PUBLIC + EFFECTIVE               | 828174
+ 按类型 AWARD                     | 99805
+ 按类型 PAPER                     | 549633
+ 按类型 PATENT                    | 150107
+ 按类型 PROJECT                   | 200455
+ 数据性质 SIMULATED               | 1000000
+ 领域归属行                       | 1491780
+ 发生机构行                       | 1500470
+ 合作边行                         | 1724226
+ 参与关系行                       | 2999440
+(13 rows)
+
+      table_name       | total_size | heap_size | index_size 
+-----------------------+------------+-----------+------------
+ qry_contribution      | 557 MB     | 289 MB    | 268 MB
+ qry_achievement       | 460 MB     | 358 MB    | 103 MB
+ qry_coauthor_edge     | 314 MB     | 139 MB    | 175 MB
+ qry_contribution_org  | 219 MB     | 110 MB    | 109 MB
+ qry_achievement_topic | 213 MB     | 120 MB    | 93 MB
+(5 rows)
+

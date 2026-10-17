@@ -23,8 +23,7 @@ class AcademicTaxonomyTest {
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private static AcademicTaxonomy bundled() throws IOException {
-    try (InputStream in =
-        new ClassPathResource("taxonomy/academic-fields.json").getInputStream()) {
+    try (InputStream in = new ClassPathResource("taxonomy/academic-fields.json").getInputStream()) {
       return AcademicTaxonomy.load(in, MAPPER);
     }
   }
@@ -141,8 +140,7 @@ class AcademicTaxonomyTest {
 
     @Test
     void fieldWithoutTerms() {
-      assertThatThrownBy(
-              () -> fromJson(withFields("{\"canonicalName\":\"甲\",\"terms\":[]}")))
+      assertThatThrownBy(() -> fromJson(withFields("{\"canonicalName\":\"甲\",\"terms\":[]}")))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("没有定义任何判别词");
     }

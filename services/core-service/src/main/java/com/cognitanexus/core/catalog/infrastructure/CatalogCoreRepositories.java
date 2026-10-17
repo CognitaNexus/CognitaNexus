@@ -262,6 +262,17 @@ public class CatalogCoreRepositories
   }
 
   @Override
+  public Double titleSimilarity(String achievementId, String titleNorm) {
+    return achievementMapper.titleSimilarity(achievementId, titleNorm);
+  }
+
+  @Override
+  public void lockStableIdentifier(String kind, String normalizedValue) {
+    // 键包含种类：DOI「10.1234/abc」与某专利号归一后可能同形，混用同一个键只会造成无关互斥。
+    achievementMapper.lockStableIdentifier(kind + ":" + normalizedValue);
+  }
+
+  @Override
   public long countByNatureAndStatus(String dataNature, String effectiveStatus) {
     return achievementMapper.countByNatureAndStatus(dataNature, effectiveStatus);
   }
@@ -305,12 +316,13 @@ public class CatalogCoreRepositories
 
   @Override
   public Optional<Contribution> findContributionById(String contributionId) {
-    return relationshipMapper.findContributionById(contributionId).map(relationshipMapper::toDomain);
+    return relationshipMapper
+        .findContributionById(contributionId)
+        .map(relationshipMapper::toDomain);
   }
 
   @Override
-  public int transitionRelationState(
-      String contributionId, RelationState from, RelationState to) {
+  public int transitionRelationState(String contributionId, RelationState from, RelationState to) {
     return relationshipMapper.transitionRelationState(contributionId, from.name(), to.name());
   }
 
@@ -433,6 +445,11 @@ public class CatalogCoreRepositories
   @Override
   public boolean hasRegistration(String entityType, String entityId) {
     return achievementMapper.hasRegisteredIdentifier(entityType, entityId);
+  }
+
+  @Override
+  public List<String> registeredValues(String entityType, String entityId, IdentifierKind kind) {
+    return achievementMapper.findRegisteredValues(entityType, entityId, kind.name());
   }
 
   // ---------------------------------------------------------------------------

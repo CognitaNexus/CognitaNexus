@@ -401,12 +401,16 @@ class AnalyticsServiceTest {
     when(mapper.topicScholars(GENERATION, TOPIC_ID, "REAL", 10))
         .thenReturn(List.of(new AnalyticsMapper.ScholarRow("sch_1", null, 3L)));
 
-    List<Map<String, Object>> scholars = rows(service.topicInsight(TOPIC_ID, "REAL"), "topScholars");
+    List<Map<String, Object>> scholars =
+        rows(service.topicInsight(TOPIC_ID, "REAL"), "topScholars");
 
-    assertThat(scholars).singleElement().satisfies(row -> {
-      assertThat(row.get("scholarId")).isEqualTo("sch_1");
-      assertThat(row.get("nameKnown")).isEqualTo(false);
-    });
+    assertThat(scholars)
+        .singleElement()
+        .satisfies(
+            row -> {
+              assertThat(row.get("scholarId")).isEqualTo("sch_1");
+              assertThat(row.get("nameKnown")).isEqualTo(false);
+            });
   }
 
   @Test
@@ -420,12 +424,15 @@ class AnalyticsServiceTest {
     List<Map<String, Object>> items =
         rows(service.topicInsight(TOPIC_ID, "REAL"), "representativeAchievements");
 
-    assertThat(items).singleElement().satisfies(row -> {
-      assertThat(row.get("achievementId")).isEqualTo("ach_1");
-      assertThat(row.get("publicationYearKnown")).isEqualTo(false);
-      assertThat(row.get("citationCountKnown")).isEqualTo(false);
-      assertThat(row.get("citationSourceKnown")).isEqualTo(false);
-    });
+    assertThat(items)
+        .singleElement()
+        .satisfies(
+            row -> {
+              assertThat(row.get("achievementId")).isEqualTo("ach_1");
+              assertThat(row.get("publicationYearKnown")).isEqualTo(false);
+              assertThat(row.get("citationCountKnown")).isEqualTo(false);
+              assertThat(row.get("citationSourceKnown")).isEqualTo(false);
+            });
   }
 
   @Test

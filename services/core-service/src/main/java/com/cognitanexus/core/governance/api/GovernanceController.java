@@ -153,7 +153,8 @@ public class GovernanceController {
     meta.put("page", pageRequest.page());
     meta.put("size", pageRequest.size());
     meta.put(
-        "total", governance.countCandidatesForWorkbench(filter, ActorContextHolder.currentOrNull()));
+        "total",
+        governance.countCandidatesForWorkbench(filter, ActorContextHolder.currentOrNull()));
     meta.put("openTotal", summary.total());
     meta.put("high", summary.high());
     meta.put("mid", summary.mid());

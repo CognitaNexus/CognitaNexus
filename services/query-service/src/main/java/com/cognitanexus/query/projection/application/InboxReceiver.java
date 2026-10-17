@@ -90,18 +90,24 @@ public class InboxReceiver {
         publisher.publishPending(consumerId, properties.publishBatchPerBatch());
 
     ConsumerProgress progress = inbox.readProgress(consumerId);
-    boolean pendingRemaining = progress.receivedRevision() > progress.publishedRevision();
+    // 积压的判据是「见过的最大修订」，不是「已接收水位」：缺口未补齐时接收水位停在缺口前，
+    // 已落库的后继事件既不推进 received 也不推进 published，两者相等。用 received > published
+    // 判断会在这种最需要报告积压的时刻回执「没有积压」——修订 3 正躺在 qry_inbox_event 里没被投影。
+    boolean pendingRemaining = progress.highestSeenRevision() > progress.publishedRevision();
     if (pendingRemaining) {
       // 明确报告「已接收但尚未发布」：回执里的 received 只代表持久接收，
       // 若不说清这一点，调用方会把「已接收」读成「已生效」。
       log.info(
-          "事件已持久接收但投影尚未追平 consumer={} received={} published={}",
+          "事件已持久接收但投影尚未追平 consumer={} received={} highestSeen={} published={}",
           consumerId,
           progress.receivedRevision(),
+          progress.highestSeenRevision(),
           progress.publishedRevision());
     }
+    // received 取真正落库的条数，不取本批条数：整批重复时本批「收到了」但一行都没写入，
+    // 若回执 received=1，运维会看到同一事件既被接收又被判重复，无从判断到底存了几行。
     return new BatchReceipt(
-        records.size(),
+        inserted,
         duplicated,
         outcome.applied(),
         outcome.isolated(),

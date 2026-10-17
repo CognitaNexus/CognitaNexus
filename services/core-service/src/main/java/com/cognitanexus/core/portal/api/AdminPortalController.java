@@ -1,10 +1,13 @@
 package com.cognitanexus.core.portal.api;
 
+import com.cognitanexus.core.platform.security.ActorContext;
 import com.cognitanexus.core.platform.security.ActorContextHolder;
 import com.cognitanexus.core.platform.util.PageRequest;
 import com.cognitanexus.core.platform.web.ApiResponse;
 import com.cognitanexus.core.platform.web.TraceIdHolder;
 import com.cognitanexus.core.portal.application.PortalService;
+import com.cognitanexus.core.portal.domain.ClaimEvidence;
+import com.cognitanexus.core.portal.domain.ClaimRequest;
 import com.cognitanexus.core.portal.domain.PortalChangeRequest;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 认领与门户变更的审核入口。
  *
  * <p>依据：架构 V0.2 §10.1、AC-IMPL-FR05-02、AC-IMPL-FR06-02。审核人只能看到自己有权处理的队列；
- * 材料内容不在列表响应中出现，必须单独经鉴权代理下载。
+ * 材料<b>本体</b>不在列表响应中出现，列表只给类型、大小、上传时刻等元信息，内容必须单独经鉴权代理下载。
  */
 @RestController
 @RequestMapping("/api/v1/admin/core")
@@ -37,9 +40,18 @@ public class AdminPortalController {
   public ResponseEntity<ApiResponse<List<Map<String, Object>>>> claims(
       @RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size) {
     PageRequest pageRequest = PageRequest.of(page, size);
+    ActorContext actor = ActorContextHolder.currentOrNull();
+    List<ClaimRequest> open = portal.listClaimsForReview(actor, pageRequest);
+    // 审核者要能看出「这份申请有没有材料、有几份」，否则只能在页面点开下载链接去猜。
+    // 材料内容仍不进入列表，只给元信息与受保护下载路径。
+    Map<String, List<ClaimEvidence>> evidenceByClaim =
+        portal.evidenceOfClaimsForReview(actor, open.stream().map(ClaimRequest::id).toList());
     List<Map<String, Object>> items =
-        portal.listClaimsForReview(ActorContextHolder.currentOrNull(), pageRequest).stream()
-            .map(AccountController::claimView)
+        open.stream()
+            .map(
+                claim ->
+                    AccountController.claimView(
+                        claim, evidenceByClaim.getOrDefault(claim.id(), List.of())))
             .toList();
     return ResponseEntity.ok(
         ApiResponse.ok(
