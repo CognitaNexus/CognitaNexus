@@ -90,7 +90,7 @@ public class CollectExecutionService {
       return RunOutcome.notRun("任务处于 " + job.status() + "，本轮跳过");
     }
     if (!jobs.claimLease(jobId, leaseOwner, properties.leaseSeconds())) {
-      return new RunOutcome(true, "租约被其他实例持有", 0, 0, 0, false);
+      return new RunOutcome(true, "租约被其他实例持有", 0, 0, 0, false, false);
     }
 
     try {
@@ -124,17 +124,40 @@ public class CollectExecutionService {
 
       FetchOutcome fetched = fetchOnePage(config, leased);
       if (fetched.error() != null) {
-        unitOfWork.recordJobError(jobId, fetched.error());
+        // 抓取失败要退避，而且要和交接失败用同一套时长：上游持续故障（例如来源对某个查询串稳定
+        // 返回 400）时，固定间隔的重试会把一次持续故障放大成持续负载——白耗上游配额，每轮还从
+        // 同一个游标重新翻页，日志也被重复行淹掉。
+        //
+        // 退避时长按「连续失败第几次」算，不按累计计数：累计计数会让一个跑了很久、偶发失败一次的
+        // 任务直接跳到最大退避。
+        int attempt = leased.consecutiveFailures() + 1;
+        int backoff = backoffSeconds(attempt);
+        unitOfWork.recordFetchFailure(jobId, fetched.error(), backoff);
         unitOfWork.appendLog(
             jobId,
             config.id(),
             "FETCH",
-            "FAILED",
+            "RETRY_SCHEDULED",
             null,
             null,
             null,
-            Map.of("error", fetched.error()));
-        return new RunOutcome(false, "抓取失败：" + fetched.error(), 0, 0, handedOff, false);
+            Map.of(
+                "error", fetched.error(),
+                "consecutiveFailures", attempt,
+                "backoffSeconds", backoff));
+        return new RunOutcome(
+            false,
+            "抓取失败（第 " + attempt + " 次连续失败，退避 " + backoff + " 秒）：" + fetched.error(),
+            0,
+            0,
+            handedOff,
+            false,
+            true);
+      }
+      // 抓到一页即视为来源恢复：连续失败计数归零、退避窗口取消。放在抓取成功之后而不是「本轮有
+      // 进展之后」：交接是本地与 core 之间的事，它失败不该让上游的退避窗口继续累加。
+      if (leased.consecutiveFailures() > 0 || leased.nextAttemptAt() != null) {
+        unitOfWork.clearFetchFailures(jobId);
       }
 
       handedOff += drainPendingHandoffs(jobs.findById(jobId).orElseThrow());
@@ -161,7 +184,8 @@ public class CollectExecutionService {
           fetched.unitOfWorkStored(),
           fetched.duplicated(),
           handedOff,
-          finished);
+          finished,
+          false);
     } finally {
       // 释放租约但不改状态：把「可被其他实例接管」与「任务是否结束」分开
       jobs.releaseLease(jobId, leaseOwner);
@@ -177,11 +201,13 @@ public class CollectExecutionService {
    * 若一个调度周期内只抓一页，40 页的查询就要等 40 个周期；而完全无界又会把一个任务拖住不放，
    * 使同一批任务里后面的任务饿死。页数上限把两者折中成「一次调用最多占用多少次外部请求」。
    *
-   * <p>提前结束的三种情形，都<b>不</b>改动检查点：
+   * <p>提前结束的四种情形，都<b>不</b>改动检查点：
    *
    * <ul>
    *   <li>租约被其他实例持有——不是失败，交给下一轮；
-   *   <li>抓取失败——错误已写入任务，检查点保持在上次确认交接的位置；
+   *   <li>抓取失败——错误已写入任务，检查点保持在上次确认交接的位置；并且<b>立即停止本轮连推</b>：
+   *       刚排好的退避窗口是给下一次调度用的，在同一个调用里再试一次等于把退避直接作废；
+   *   <li>来源已到末页——继续抓只会重复得到末页；
    *   <li>本轮没有任何进展——继续循环只会重复得到同样的结果。
    * </ul>
    *
@@ -193,6 +219,7 @@ public class CollectExecutionService {
     int stagedTotal = 0;
     int duplicatedTotal = 0;
     int handedOffTotal = 0;
+    boolean fetchFailed = false;
     String lastMessage = "未执行任何一轮";
     for (int i = 0; i < Math.max(maxRounds, 1); i++) {
       RunOutcome outcome = runOnce(jobId, leaseOwner);
@@ -201,7 +228,10 @@ public class CollectExecutionService {
       stagedTotal += outcome.staged();
       duplicatedTotal += outcome.duplicated();
       handedOffTotal += outcome.handedOff();
-      if (outcome.leaseBusy() || outcome.sourceExhausted()) {
+      if (outcome.fetchFailed()) {
+        fetchFailed = true;
+      }
+      if (outcome.leaseBusy() || outcome.sourceExhausted() || outcome.fetchFailed()) {
         break;
       }
       if (outcome.staged() == 0 && outcome.duplicated() == 0 && outcome.handedOff() == 0) {
@@ -210,7 +240,14 @@ public class CollectExecutionService {
       productive++;
     }
     return new BatchOutcome(
-        jobId, rounds, productive, stagedTotal, duplicatedTotal, handedOffTotal, lastMessage);
+        jobId,
+        rounds,
+        productive,
+        stagedTotal,
+        duplicatedTotal,
+        handedOffTotal,
+        lastMessage,
+        fetchFailed);
   }
 
   private record FetchOutcome(
@@ -409,9 +446,14 @@ public class CollectExecutionService {
    *
    * <p>不使用随机抖动：单实例部署下抖动没有收益，而可预测的退避更容易在验收时复现。
    * 多实例部署后若出现重试同步，再按实例加入抖动。
+   *
+   * <p>上限<b>只</b>由配置决定。此前这里还有一个 {@code 1L << min(attempt - 1, 6)} 的位移上限，
+   * 使实际最大退避被固定成 64 秒，配置里的 {@code max-backoff-seconds} 永远不生效——把上限调到
+   * 300 秒的人以为故障时每 5 分钟才重试一次，实际每 64 秒一次，而且没有任何提示。
+   * 位移仍然需要上界以防溢出，但它必须远大于任何合理配置，因此取 30（约 34 年）。
    */
   private int backoffSeconds(int attempt) {
-    long base = 1L << Math.min(Math.max(attempt - 1, 0), 6);
+    long base = 1L << Math.min(Math.max(attempt - 1, 0), 30);
     return (int) Math.min(base, properties.maxBackoffSeconds());
   }
 
@@ -422,10 +464,11 @@ public class CollectExecutionService {
       int staged,
       int duplicated,
       int handedOff,
-      boolean sourceExhausted) {
+      boolean sourceExhausted,
+      boolean fetchFailed) {
 
     static RunOutcome notRun(String message) {
-      return new RunOutcome(false, message, 0, 0, 0, false);
+      return new RunOutcome(false, message, 0, 0, 0, false, false);
     }
   }
 
@@ -434,6 +477,7 @@ public class CollectExecutionService {
    *
    * @param rounds 实际尝试的轮数（含因租约占用而立即返回的轮次）
    * @param productive 产生了实际抓取或交接的轮数
+   * @param fetchFailed 本轮是否以抓取失败收尾；调用方据此选择日志级别，不必去解析 message 文本
    */
   public record BatchOutcome(
       String jobId,
@@ -442,5 +486,6 @@ public class CollectExecutionService {
       int staged,
       int duplicated,
       int handedOff,
-      String lastMessage) {}
+      String lastMessage,
+      boolean fetchFailed) {}
 }

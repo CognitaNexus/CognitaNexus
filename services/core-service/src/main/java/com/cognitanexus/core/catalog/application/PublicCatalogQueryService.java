@@ -4,6 +4,7 @@ import com.cognitanexus.core.catalog.application.CatalogRepositories.Achievement
 import com.cognitanexus.core.catalog.application.CatalogRepositories.ContributionRepository;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.ScholarRepository;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.TopicRepository;
+import com.cognitanexus.core.catalog.application.CatalogRepositories.TopicRepository.TopicAssignment;
 import com.cognitanexus.core.catalog.domain.Achievement;
 import com.cognitanexus.core.catalog.domain.Contribution;
 import com.cognitanexus.core.catalog.domain.Scholar;
@@ -104,6 +105,11 @@ public class PublicCatalogQueryService {
               detail.put(
                   "filingDate",
                   patent.filingDate() == null ? null : patent.filingDate().toString());
+              // 公开日必须一并给出：它与申请日是两个不同事实，只给申请日会让详情页
+              // 把「申请」误读成「授权公开」。
+              detail.put(
+                  "publicationDate",
+                  patent.publicationDate() == null ? null : patent.publicationDate().toString());
               view.put("patent", detail);
             });
     achievements
@@ -196,15 +202,21 @@ public class PublicCatalogQueryService {
 
   private List<Map<String, Object>> topicViews(String achievementId) {
     List<Map<String, Object>> views = new ArrayList<>();
-    for (String topicId : topics.listTopicIdsOf(achievementId)) {
+    for (TopicAssignment assignment : topics.listAssignmentsOf(achievementId)) {
       topics
-          .findTopic(topicId)
+          .findTopic(assignment.topicId())
           .ifPresent(
               topic -> {
                 Map<String, Object> view = new LinkedHashMap<>();
                 view.put("id", topic.id());
                 view.put("canonicalName", topic.canonicalName());
                 view.put("sourceCategory", topic.sourceCategory());
+                // 归属来源必须随详情一并给出：公开详情页与检索结果读到的是同一个领域，
+                // 若这里不标是来源分类还是系统推断，界面就只能两处都不标。
+                view.put("assignmentKind", assignment.assignmentKind());
+                if (assignment.confidence() != null) {
+                  view.put("confidence", assignment.confidence().doubleValue());
+                }
                 views.add(view);
               });
     }

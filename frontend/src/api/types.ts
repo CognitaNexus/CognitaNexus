@@ -10,6 +10,31 @@
 export type DataNature = 'REAL' | 'SIMULATED' | 'MIXED' | 'ALL'
 export type AchievementKind = 'PAPER' | 'PATENT' | 'PROJECT' | 'AWARD'
 
+/**
+ * 领域归属的来源。
+ *
+ * SOURCE 是来源元数据给出的分类；INFERRED 是平台按受控词表推断出来的。界面上必须区分这两者：
+ * 领域会进入分面与热点排名，把「系统猜的」显示成和「来源说的」一样，等于让读者把推断当成事实。
+ */
+export type AssignmentKind = 'SOURCE' | 'INFERRED'
+
+/** 一条成果的领域归属。confidence 仅在 INFERRED 时出现（来源分类没有置信度这个概念）。 */
+export interface TopicView {
+  topicId: string
+  canonicalName: string
+  assignmentKind: AssignmentKind
+  confidence?: number | null
+}
+
+/** 领域分面项。sourceProvided 与 systemInferred 之和等于 achievementCount。 */
+export interface TopicFacetItem {
+  topicId: string
+  canonicalName: string
+  achievementCount: number
+  sourceProvided: number
+  systemInferred: number
+}
+
 /** 作用域说明：随每个读接口返回，供界面标注当前口径。 */
 export interface ScopeEnvelope {
   dataNatureScope: DataNature
@@ -34,7 +59,7 @@ export interface SearchItem {
   citationCount: number | null
   citationSource: string | null
   authors: string[]
-  topics: { topicId: string; canonicalName: string }[]
+  topics: TopicView[]
   relevance: number
 }
 
@@ -66,7 +91,7 @@ export interface ScholarPage extends ScopeEnvelope {
 }
 
 export interface Facets {
-  topics: { topicId: string; canonicalName: string; achievementCount: number }[]
+  topics: TopicFacetItem[]
   organizations: { name: string; achievement_count: number }[]
   dataNatureScope: DataNature
   scopeNote: string
@@ -84,6 +109,48 @@ export interface SearchOptions {
 
 /* ------------------------------- 公开：统计 ------------------------------- */
 
+/** 领域榜单项。sourceProvided 与 systemInferred 之和等于 achievements。 */
+export interface TopicRankItem {
+  topicId: string
+  canonicalName: string | null
+  canonicalNameKnown: boolean
+  achievements: number
+  sourceProvided: number
+  systemInferred: number
+}
+
+/** 领域洞察：单个领域在当前公开口径下的完整构成。 */
+export interface TopicInsight {
+  topic: { topicId: string; canonicalName: string | null; canonicalNameKnown: boolean }
+  totals: {
+    achievements: number
+    sourceProvided: number
+    systemInferred: number
+    scholarsWithQualifiedRelation: number
+    achievementsWithUnknownOrganization: number
+  }
+  byYear: { year: number; amount: number }[]
+  achievementsWithUnknownYear: number
+  byType: { key: string; achievements: number }[]
+  topOrganizations: { key: string; achievements: number }[]
+  topScholars: { scholarId: string; name: string | null; nameKnown: boolean; achievements: number }[]
+  topVenues: { key: string; achievements: number }[]
+  representativeAchievements: {
+    achievementId: string
+    title: string
+    publicationYear: number | null
+    publicationYearKnown: boolean
+    citationCount: number | null
+    citationCountKnown: boolean
+    citationSource: string | null
+    citationSourceKnown: boolean
+  }[]
+  scope: { dataNature: string; effectiveStatus: string; visibility: string; topicId: string; note: string }
+  countingRules: Record<string, string>
+  ruleVersion: string
+  publishedRevision: number
+}
+
 export interface AnalyticsOverview {
   totals: {
     achievements: number
@@ -97,7 +164,7 @@ export interface AnalyticsOverview {
   achievementsWithUnknownYear: number
   byNature: { key: DataNature; achievements: number }[]
   topOrganizations: { key: string; achievements: number }[]
-  topTopics: { key: string; achievements: number }[]
+  topTopics: TopicRankItem[]
   topVenues: { key: string; achievements: number }[]
   citationsBySource: { citationSource: string; achievementsWithCitation: number; citationSum: number }[]
   scope: { dataNature: DataNature; effectiveStatus: string; visibility: string; timeWindow: string; note: string }
@@ -229,7 +296,7 @@ export interface PublicAchievementDetail {
     relationState: string
     organizations: string[]
   }[]
-  topics: { topicId: string; canonicalName: string }[]
+  topics: TopicView[]
 }
 
 /**

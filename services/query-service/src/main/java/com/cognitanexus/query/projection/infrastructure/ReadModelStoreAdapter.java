@@ -95,7 +95,13 @@ public class ReadModelStoreAdapter implements ReadModelStore {
             .map(
                 item ->
                     new ReadModelMapper.TopicRow(
-                        achievementId, item.topicId(), item.canonicalName()))
+                        achievementId,
+                        item.topicId(),
+                        item.canonicalName(),
+                        item.assignmentKind(),
+                        item.confidence() == null
+                            ? null
+                            : java.math.BigDecimal.valueOf(item.confidence())))
             .toList());
   }
 

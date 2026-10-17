@@ -16,7 +16,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { queryApi } from '@/api'
 import { ApiError } from '@/api/http'
-import type { Facets, SearchOptions, SearchPage } from '@/api/types'
+import type { Facets, SearchOptions, SearchPage, TopicView } from '@/api/types'
 import { useAsync } from '@/composables/useAsync'
 import { useScopeStore } from '@/stores/scope'
 import AsyncBlock from '@/components/AsyncBlock.vue'
@@ -164,6 +164,19 @@ const activeFilters = computed(() => {
   return items
 })
 
+/**
+ * 结果卡片上的领域标签。
+ *
+ * 推断出来的领域必须在这里就能被认出不是来源给的：卡片是读者第一眼看到的地方，等到点进详情
+ * 才知道「这个领域是系统猜的」，等于让读者先信了一次错的东西。来源分类不加任何修饰，
+ * 加了修饰反而会让读者以为所有标签都不可靠。
+ */
+function topicLabel(topic: TopicView): string {
+  return topic.assignmentKind === 'INFERRED'
+    ? `${topic.canonicalName}（系统推断）`
+    : topic.canonicalName
+}
+
 onMounted(() => {
   facets.run()
   options.run()
@@ -247,7 +260,9 @@ watch(
                   :key="item.topicId"
                   :value="item.topicId"
                 >
-                  {{ item.canonicalName }}（{{ item.achievementCount }}）
+                  {{ item.canonicalName }}（{{ item.achievementCount }}）{{
+                    item.systemInferred ? ` · 其中推断 ${item.systemInferred}` : ''
+                  }}
                 </option>
               </select>
             </div>
@@ -319,7 +334,10 @@ watch(
               <RouterLink :to="`/achievements/${item.id}`">查看详情</RouterLink>
               <span class="faint mono">{{ item.id }}</span>
               <span v-if="item.topics.length" class="faint">
-                {{ item.topics.map((t) => t.canonicalName).join(' · ') }}
+                <template v-for="(t, i) in item.topics" :key="t.topicId">
+                  <RouterLink :to="`/topics/${t.topicId}`">{{ topicLabel(t) }}</RouterLink
+                  ><span v-if="i < item.topics.length - 1"> · </span>
+                </template>
               </span>
             </div>
           </article>

@@ -1,6 +1,7 @@
 package com.cognitanexus.core.catalog.api;
 
 import com.cognitanexus.core.catalog.application.AdminCatalogService;
+import com.cognitanexus.core.catalog.application.ContributionRelationService;
 import com.cognitanexus.core.catalog.application.SourceAdminService;
 import com.cognitanexus.core.platform.audit.AuditQueryService;
 import com.cognitanexus.core.platform.security.ActorContextHolder;
@@ -32,14 +33,17 @@ public class AdminCatalogController {
   private final AdminCatalogService adminCatalog;
   private final SourceAdminService sourceAdmin;
   private final AuditQueryService auditQuery;
+  private final ContributionRelationService relations;
 
   public AdminCatalogController(
       AdminCatalogService adminCatalog,
       SourceAdminService sourceAdmin,
-      AuditQueryService auditQuery) {
+      AuditQueryService auditQuery,
+      ContributionRelationService relations) {
     this.adminCatalog = adminCatalog;
     this.sourceAdmin = sourceAdmin;
     this.auditQuery = auditQuery;
+    this.relations = relations;
   }
 
   @GetMapping("/overview")
@@ -83,6 +87,35 @@ public class AdminCatalogController {
             adminCatalog.withdraw(ActorContextHolder.currentOrNull(), achievementId, body.reason()),
             TraceIdHolder.current()));
   }
+
+  /** 处于争议状态的参与关系：治理端的关系裁决队列。 */
+  @GetMapping("/contributions/disputed")
+  public ResponseEntity<ApiResponse<List<Map<String, Object>>>> disputedContributions(
+      @RequestParam(defaultValue = "50") int limit) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            relations.listDisputed(ActorContextHolder.currentOrNull(), limit),
+            TraceIdHolder.current()));
+  }
+
+  /**
+   * 裁决一条参与关系。
+   *
+   * <p>结论只有三种：EXCLUDE（判定不成立）、CONFIRM（核验后确认）、RESTORE（撤销此前结论回到
+   * 自动关联）。裁决只改关系状态，不删除关系行，来源记录与发生时机机构原样保留。
+   */
+  @PostMapping("/contributions/{contributionId}/resolution")
+  public ResponseEntity<ApiResponse<Map<String, Object>>> resolveContribution(
+      @PathVariable String contributionId, @RequestBody RelationResolutionRequest body) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            relations.resolveByAdmin(
+                ActorContextHolder.currentOrNull(), contributionId, body.decision(), body.reason()),
+            TraceIdHolder.current()));
+  }
+
+  /** 关系裁决请求体。 */
+  public record RelationResolutionRequest(String decision, String reason) {}
 
   @GetMapping("/achievements/{achievementId}/provenance")
   public ResponseEntity<ApiResponse<List<Map<String, Object>>>> provenance(

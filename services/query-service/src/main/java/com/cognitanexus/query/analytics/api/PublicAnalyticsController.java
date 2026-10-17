@@ -6,6 +6,7 @@ import com.cognitanexus.query.platform.web.TraceIdHolder;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,5 +32,20 @@ public class PublicAnalyticsController {
       @RequestParam(required = false, defaultValue = "REAL") String dataNature) {
     return ResponseEntity.ok(
         ApiResponse.ok(analyticsService.overview(dataNature), TraceIdHolder.current()));
+  }
+
+  /**
+   * 领域洞察。
+   *
+   * <p>领域标识放在路径里而不是查询参数：它标识的是「这一页讲的是哪个领域」，属于资源身份；
+   * 数据性质是口径，属于内容筛选。混在查询参数里会让缓存与分享链接难以表达「同一领域的不同口径」。
+   */
+  @GetMapping("/topics/{topicId}")
+  public ResponseEntity<ApiResponse<Map<String, Object>>> topic(
+      @PathVariable String topicId,
+      @RequestParam(required = false, defaultValue = "REAL") String dataNature) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            analyticsService.topicInsight(topicId, dataNature), TraceIdHolder.current()));
   }
 }

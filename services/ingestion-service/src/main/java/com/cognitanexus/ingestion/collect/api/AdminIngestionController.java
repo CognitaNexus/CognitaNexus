@@ -5,6 +5,7 @@ import com.cognitanexus.ingestion.collect.application.CollectExecutionService;
 import com.cognitanexus.ingestion.collect.application.CollectJobService;
 import com.cognitanexus.ingestion.collect.application.CollectProperties;
 import com.cognitanexus.ingestion.collect.application.CollectRepositories;
+import com.cognitanexus.ingestion.collect.application.ImportService;
 import com.cognitanexus.ingestion.collect.application.SourceRunConfigService;
 import com.cognitanexus.ingestion.collect.domain.AdapterKind;
 import com.cognitanexus.ingestion.collect.domain.CollectModels.CollectJob;
@@ -13,10 +14,12 @@ import com.cognitanexus.ingestion.platform.security.ActorContextHolder;
 import com.cognitanexus.ingestion.platform.web.ApiResponse;
 import com.cognitanexus.ingestion.platform.web.TraceIdHolder;
 import com.cognitanexus.sharedkernel.BusinessException;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -45,6 +48,7 @@ public class AdminIngestionController {
   private final SourceAdapterRegistry adapters;
   private final CollectProperties properties;
   private final CollectRepositories.JobRepository jobRepository;
+  private final ImportService imports;
 
   public AdminIngestionController(
       SourceRunConfigService sources,
@@ -52,13 +56,15 @@ public class AdminIngestionController {
       CollectExecutionService execution,
       SourceAdapterRegistry adapters,
       CollectProperties properties,
-      CollectRepositories.JobRepository jobRepository) {
+      CollectRepositories.JobRepository jobRepository,
+      ImportService imports) {
     this.sources = sources;
     this.jobs = jobs;
     this.execution = execution;
     this.adapters = adapters;
     this.properties = properties;
     this.jobRepository = jobRepository;
+    this.imports = imports;
   }
 
   // ---------------------------------------------------------------------------
@@ -286,6 +292,10 @@ public class AdminIngestionController {
    *
    * <p>它与后台执行器走同一把租约：假如后台执行器正在处理该任务，本次会返回租约占用而不会
    * 并发抓取同一批记录。
+   *
+   * <p>手动执行<b>不</b>受抓取失败退避窗口限制：后台执行器取任务时会跳过还在退避窗口内的任务，
+   * 而人点「立即执行」的意图通常正是「上游可能已经恢复，试一次」。本次若仍失败，退避会照常累加，
+   * 结果在 {@code fetchFailed} 与 {@code lastMessage} 里如实回报。
    */
   @PostMapping("/jobs/{jobId}/run")
   public ApiResponse<Map<String, Object>> runJobOnce(
@@ -304,6 +314,7 @@ public class AdminIngestionController {
     view.put("staged", outcome.staged());
     view.put("duplicated", outcome.duplicated());
     view.put("handedOff", outcome.handedOff());
+    view.put("fetchFailed", outcome.fetchFailed());
     view.put("lastMessage", outcome.lastMessage());
     view.put("note", "手动执行与后台执行器共用同一租约；此处立刻返回本轮结果，不等待后台周期");
     return ApiResponse.ok(view, TraceIdHolder.current());
@@ -354,6 +365,10 @@ public class AdminIngestionController {
     view.put("leaseUntil", job.leaseUntil() == null ? null : job.leaseUntil().toString());
     view.put("lastError", job.lastError());
     view.put("createdBy", job.createdBy());
+    // 连续失败次数与下一次尝试时刻：任务列表要能回答「这个任务为什么没在跑」。只给 lastError
+    // 时看不出「它正在退避」，运维会以为调度坏了。
+    view.put("consecutiveFailures", job.consecutiveFailures());
+    view.put("nextAttemptAt", job.nextAttemptAt() == null ? null : job.nextAttemptAt().toString());
     return view;
   }
 
@@ -423,4 +438,49 @@ public class AdminIngestionController {
 
   /** 需要理由的操作。 */
   public record ReasonRequest(String reason) {}
+
+  // ---------------------------------------------------------------------------
+  // 文件导入
+  // ---------------------------------------------------------------------------
+
+  /**
+   * 以文件形态导入来源记录（CSV 或 JSON）。
+   *
+   * <p>依据：AC-IMPL-FR08（API/文件任选）、AC-IMPL-FR16-01。用于专利这类没有免密钥公开 API 的
+   * 类别：由使用者从合法渠道导出后导入，系统只负责校验、去重与治理，不替使用者取得授权。
+   *
+   * <p>{@code dataNature} 必须显式给出；缺省按 SIMULATED 处理，绝不默认成 REAL。导入结果区分
+   * 「接收 / 新建 / 追加到既有成果 / 重复 / 拒绝 / 本地校验不通过」，并给出逐行错误。
+   */
+  @PostMapping(path = "/imports", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public ApiResponse<Map<String, Object>> importFile(
+      @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+      @RequestParam("sourceCode") String sourceCode,
+      @RequestParam(value = "dataNature", required = false) String dataNature) {
+    if (file == null || file.isEmpty()) {
+      throw BusinessException.invalidArgument("导入文件不能为空");
+    }
+    byte[] content;
+    try {
+      content = file.getBytes();
+    } catch (IOException ex) {
+      throw BusinessException.invalidArgument("读取上传文件失败：" + ex.getMessage());
+    }
+    ImportService.ImportOutcome outcome =
+        imports.importFile(sourceCode, dataNature, file.getOriginalFilename(), content);
+
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("filename", file.getOriginalFilename());
+    view.put("sourceCode", sourceCode);
+    view.put("dataNature", dataNature == null ? "SIMULATED" : dataNature.trim().toUpperCase());
+    view.put("received", outcome.received());
+    view.put("accepted", outcome.accepted());
+    view.put("attached", outcome.attached());
+    view.put("duplicate", outcome.duplicate());
+    view.put("rejected", outcome.rejected());
+    view.put("invalid", outcome.invalid());
+    view.put("errors", outcome.errors());
+    view.put("note", "接收不等于已发布：成果是否进入公开目录由治理判定；本次导入只保证记录已进入 core 的清洗与去重流程");
+    return ApiResponse.ok(view, TraceIdHolder.current());
+  }
 }

@@ -28,6 +28,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '学者档案' },
   },
   {
+    path: '/topics/:id',
+    name: 'topic',
+    component: () => import('@/views/TopicInsightView.vue'),
+    meta: { title: '领域洞察' },
+  },
+  {
     path: '/network',
     name: 'network',
     component: () => import('@/views/NetworkView.vue'),
@@ -45,6 +51,18 @@ const routes: RouteRecordRaw[] = [
     name: 'portal',
     component: () => import('@/views/PortalView.vue'),
     meta: { title: '我的门户', requiresAuth: true },
+  },
+  {
+    path: '/portal/contributions',
+    name: 'portal-contributions',
+    component: () => import('@/views/PortalContributionsView.vue'),
+    meta: { title: '我的成果', requiresAuth: true },
+  },
+  {
+    path: '/review/relations',
+    name: 'review-relations',
+    component: () => import('@/views/RelationReviewView.vue'),
+    meta: { title: '关系争议裁决', requiresAuth: true },
   },
   {
     path: '/review',

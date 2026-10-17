@@ -152,6 +152,10 @@ final class EventPayloadReader {
    * <p>优先读带规范名的 topicViews；载荷只给了 id 列表时退回读 topicIds，此时名称为 null。
    * 两条路径都接受，是因为「名称暂时缺失」不应该让整条成果事件被隔离——领域名称只影响展示，
    * 不影响检索与统计口径。
+   *
+   * <p>退回路径的归属来源一律记为 SOURCE。这不是猜：引入规则推断之前，平台上的领域归属全部
+   * 来自来源元数据，因此老载荷里的领域按定义都是来源给出的。把它标成「未知」反而会制造一个
+   * 需要解释的第三态。
    */
   List<ProjectedTopic> topics(Object topicViews, Object topicIds) {
     List<ProjectedTopic> result = new ArrayList<>();
@@ -160,13 +164,18 @@ final class EventPayloadReader {
       for (Map<String, Object> view : views) {
         String topicId = asString(view.get("id"));
         if (topicId != null) {
-          result.add(new ProjectedTopic(topicId, asString(view.get("canonicalName"))));
+          result.add(
+              new ProjectedTopic(
+                  topicId,
+                  asString(view.get("canonicalName")),
+                  firstNonBlank(asString(view.get("assignmentKind")), "SOURCE"),
+                  asDouble(view.get("confidence"))));
         }
       }
       return result;
     }
     for (String topicId : json.readStringList(topicIds)) {
-      result.add(new ProjectedTopic(topicId, null));
+      result.add(new ProjectedTopic(topicId, null, "SOURCE", null));
     }
     return result;
   }
@@ -224,6 +233,20 @@ final class EventPayloadReader {
     if (value instanceof String text && !text.isBlank()) {
       try {
         return Long.valueOf(text.trim());
+      } catch (NumberFormatException ex) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  static Double asDouble(Object value) {
+    if (value instanceof Number number) {
+      return number.doubleValue();
+    }
+    if (value instanceof String text && !text.isBlank()) {
+      try {
+        return Double.valueOf(text.trim());
       } catch (NumberFormatException ex) {
         return null;
       }

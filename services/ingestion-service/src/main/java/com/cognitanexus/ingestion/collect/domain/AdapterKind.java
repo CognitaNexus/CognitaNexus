@@ -11,18 +11,43 @@ import java.util.Locale;
  */
 public enum AdapterKind {
   /** Crossref REST API，面向 DOI 注册的期刊与会议论文元数据。 */
-  CROSSREF("Crossref"),
+  CROSSREF("Crossref", false),
   /** OpenAlex API，面向论文、作者标识与机构归属。 */
-  OPENALEX("OpenAlex");
+  OPENALEX("OpenAlex", false),
+  /** NSF Award Search API，面向国家级科研项目（真实项目数据，免密钥）。 */
+  NSF("NSF", false),
+  /**
+   * Nobel Prize API，面向国际学术奖项（真实获奖数据，免密钥）。
+   *
+   * <p>唯一允许「空查询」的来源：它的翻页语义就是「按获奖人遍历全量名单」（约一千条），
+   * 不存在「一个查询串对应一批结果」的结构。其余来源留空会真的去抓整个库，必须拒绝。
+   */
+  NOBEL("Nobel", true),
+  /**
+   * 文件导入：记录由使用者以 CSV/JSON 文件提供，不经外部抓取。
+   *
+   * <p>它没有对应的 {@code SourceAdapter}：导入走 {@code ImportService} 直接把记录交给 core，
+   * 不适用「按游标翻页抓取」的模型。因此给该来源建采集任务时会被明确拒绝（找不到适配器），
+   * 这比让它「跑起来但一条也抓不到」更不容易误解。
+   */
+  FILE("文件导入", true);
 
   private final String label;
 
-  AdapterKind(String label) {
+  private final boolean fullScan;
+
+  AdapterKind(String label, boolean fullScan) {
     this.label = label;
+    this.fullScan = fullScan;
   }
 
   public String label() {
     return label;
+  }
+
+  /** 该来源是否允许不带查询串的全量采集。 */
+  public boolean supportsFullScan() {
+    return fullScan;
   }
 
   public static AdapterKind of(String raw) {

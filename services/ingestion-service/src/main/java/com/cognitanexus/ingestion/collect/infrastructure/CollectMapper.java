@@ -164,13 +164,15 @@ public interface CollectMapper {
       String leaseOwner,
       Instant leaseUntil,
       String lastError,
-      String createdBy) {}
+      String createdBy,
+      int consecutiveFailures,
+      Instant nextAttemptAt) {}
 
   @Select(
       """
       SELECT id, source_config_id, job_key, status, cursor, checkpoint, total_fetched,
              total_staged, total_handed_off, total_rejected, lease_owner, lease_until,
-             last_error, created_by
+             last_error, created_by, consecutive_failures, next_attempt_at
       FROM ing_collect_job WHERE id = #{id}
       """)
   Optional<JobRow> findJobById(@Param("id") String id);
@@ -179,7 +181,7 @@ public interface CollectMapper {
       """
       SELECT id, source_config_id, job_key, status, cursor, checkpoint, total_fetched,
              total_staged, total_handed_off, total_rejected, lease_owner, lease_until,
-             last_error, created_by
+             last_error, created_by, consecutive_failures, next_attempt_at
       FROM ing_collect_job WHERE source_config_id = #{sourceConfigId} AND job_key = #{jobKey}
       """)
   Optional<JobRow> findJobByKey(
@@ -189,7 +191,7 @@ public interface CollectMapper {
       """
       SELECT id, source_config_id, job_key, status, cursor, checkpoint, total_fetched,
              total_staged, total_handed_off, total_rejected, lease_owner, lease_until,
-             last_error, created_by
+             last_error, created_by, consecutive_failures, next_attempt_at
       FROM ing_collect_job
       ORDER BY created_at DESC
       LIMIT #{limit}
@@ -200,7 +202,7 @@ public interface CollectMapper {
       """
       SELECT id, source_config_id, job_key, status, cursor, checkpoint, total_fetched,
              total_staged, total_handed_off, total_rejected, lease_owner, lease_until,
-             last_error, created_by
+             last_error, created_by, consecutive_failures, next_attempt_at
       FROM ing_collect_job
       WHERE source_config_id = #{sourceConfigId}
       ORDER BY created_at DESC
@@ -328,6 +330,45 @@ public interface CollectMapper {
       WHERE id = #{jobId}
       """)
   int recordJobError(@Param("jobId") String jobId, @Param("lastError") String lastError);
+
+  /**
+   * 记录一次抓取失败并安排下一次尝试时刻。
+   *
+   * <p>{@code consecutive_failures + 1} 与 {@code next_attempt_at} 必须在同一条 UPDATE 里算：
+   * 分两条写会让「失败次数已加、退避时刻没设」成为一个可观察的中间状态，此时取任务的查询会把
+   * 它当成可立刻重试，退避就整个失效了。
+   *
+   * <p>退避时长由调用方按运行参数算好后传入（秒）。不在这里写死公式：公式要读配置，SQL 读不到。
+   */
+  @Update(
+      """
+      UPDATE ing_collect_job
+      SET consecutive_failures = consecutive_failures + 1,
+          next_attempt_at = now() + make_interval(secs => #{backoffSeconds}),
+          last_error = #{lastError},
+          updated_at = now()
+      WHERE id = #{jobId}
+      """)
+  int recordFetchFailure(
+      @Param("jobId") String jobId,
+      @Param("lastError") String lastError,
+      @Param("backoffSeconds") int backoffSeconds);
+
+  /**
+   * 抓取恢复正常：连续失败计数归零、退避窗口取消。
+   *
+   * <p>要与抓取成功在同一次本地事务里完成（调用方走 {@code CollectUnitOfWork}）。只重置计数
+   * 而不清 {@code next_attempt_at} 会让任务带着残留的等待时间，看起来像「成功之后反而被罚停」。
+   */
+  @Update(
+      """
+      UPDATE ing_collect_job
+      SET consecutive_failures = 0,
+          next_attempt_at = NULL,
+          updated_at = now()
+      WHERE id = #{jobId} AND (consecutive_failures <> 0 OR next_attempt_at IS NOT NULL)
+      """)
+  int clearFetchFailures(@Param("jobId") String jobId);
 
   @Select(
       """
@@ -628,6 +669,7 @@ public interface CollectMapper {
       """
       SELECT id FROM ing_collect_job
       WHERE status IN ('PENDING', 'RUNNING')
+        AND (next_attempt_at IS NULL OR next_attempt_at <= now())
       ORDER BY updated_at, id
       LIMIT #{limit}
       """)

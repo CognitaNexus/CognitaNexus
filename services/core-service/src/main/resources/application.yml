@@ -63,6 +63,11 @@ mybatis:
     arg-name-based-constructor-auto-mapping: true
     default-fetch-size: 100
     default-statement-timeout: 10
+  # 自定义类型处理器必须显式声明扫描包，starter 不扫描业务包。
+  # core_patent 的 ipc_codes / applicant_names 是 text[]，行对象字段为 String[]，
+  # 读路径靠这个注册拿到 StringArrayTypeHandler；漏配不会报「缺处理器」，
+  # 而是把 java.sql.Array 当 Object 直接塞进构造参数，表现为 argument type mismatch。
+  type-handlers-package: com.cognitanexus.core.platform.persistence
 
 management:
   endpoints:

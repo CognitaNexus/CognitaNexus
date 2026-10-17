@@ -1,11 +1,13 @@
 package com.cognitanexus.core.catalog.infrastructure;
 
 import com.cognitanexus.core.catalog.application.CatalogRepositories.TopicRepository.Topic;
+import com.cognitanexus.core.catalog.application.CatalogRepositories.TopicRepository.TopicAssignment;
 import com.cognitanexus.core.catalog.domain.Contribution;
 import com.cognitanexus.sharedkernel.RelationState;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -83,6 +85,36 @@ public interface RelationshipMapper {
       """)
   Optional<String> findContributionId(
       @Param("scholarId") String scholarId, @Param("achievementId") String achievementId);
+
+  @Select(
+      """
+      SELECT id AS id, scholar_id AS scholarId, achievement_id AS achievementId, role AS role,
+             author_order AS authorOrder, relation_state AS relationState,
+             source_record_id AS sourceRecordId, version AS version,
+             created_at AS createdAt, updated_at AS updatedAt
+      FROM core_contribution WHERE id = #{contributionId}
+      """)
+  Optional<ContributionRow> findContributionById(@Param("contributionId") String contributionId);
+
+  /**
+   * 处于指定关系状态的参与关系，按更新时间倒序。
+   *
+   * <p>治理排序要用「最近变化」：争议越新越可能还热着，压在列表末尾只会让争议在公开视图里
+   * 长期保持沉默。
+   */
+  @Select(
+      """
+      SELECT id AS id, scholar_id AS scholarId, achievement_id AS achievementId, role AS role,
+             author_order AS authorOrder, relation_state AS relationState,
+             source_record_id AS sourceRecordId, version AS version,
+             created_at AS createdAt, updated_at AS updatedAt
+      FROM core_contribution
+      WHERE relation_state = #{relationState}
+      ORDER BY updated_at DESC, id
+      LIMIT #{limit}
+      """)
+  List<ContributionRow> listByRelationState(
+      @Param("relationState") String relationState, @Param("limit") int limit);
 
   @Select("SELECT count(*) FROM core_contribution")
   long countContributions();
@@ -187,6 +219,31 @@ public interface RelationshipMapper {
       WHERE achievement_id = #{achievementId} ORDER BY topic_id
       """)
   List<String> listTopicIdsOf(@Param("achievementId") String achievementId);
+
+  /**
+   * 带归属来源的领域列表。
+   *
+   * <p>来源分类排在推断之前：来源是权威，展示顺序应当反映这一点，而不是按 kind 的字典序
+   * （那是 INFERRED 在前）。
+   */
+  @Select(
+      """
+      SELECT topic_id AS topicId, assignment_kind AS assignmentKind, confidence AS confidence
+      FROM core_achievement_topic
+      WHERE achievement_id = #{achievementId}
+      ORDER BY (assignment_kind = 'SOURCE') DESC, topic_id
+      """)
+  List<TopicAssignment> listAssignmentsOf(@Param("achievementId") String achievementId);
+
+  @Delete(
+      """
+      DELETE FROM core_achievement_topic
+      WHERE achievement_id = #{achievementId} AND assignment_kind = 'INFERRED'
+      """)
+  int deleteInferredTopicsOfAchievement(@Param("achievementId") String achievementId);
+
+  @Delete("DELETE FROM core_topic_inference WHERE achievement_id = #{achievementId}")
+  int deleteInferenceOfAchievement(@Param("achievementId") String achievementId);
 
   @Select("SELECT count(*) FROM ref_topic")
   long countTopics();

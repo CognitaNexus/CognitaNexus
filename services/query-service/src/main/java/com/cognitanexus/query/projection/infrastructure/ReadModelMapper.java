@@ -56,7 +56,12 @@ public interface ReadModelMapper {
 
   record ContributionOrgRow(String achievementId, String scholarId, String organization) {}
 
-  record TopicRow(String achievementId, String topicId, String canonicalName) {}
+  record TopicRow(
+      String achievementId,
+      String topicId,
+      String canonicalName,
+      String assignmentKind,
+      java.math.BigDecimal confidence) {}
 
   /**
    * 一条无向合作边。
@@ -325,10 +330,12 @@ public interface ReadModelMapper {
   @Insert(
       """
       <script>
-      INSERT INTO qry_achievement_topic (generation, achievement_id, topic_id, canonical_name)
+      INSERT INTO qry_achievement_topic
+          (generation, achievement_id, topic_id, canonical_name, assignment_kind, confidence)
       VALUES
       <foreach collection="rows" item="r" separator=",">
-        (#{generation}, #{r.achievementId}, #{r.topicId}, #{r.canonicalName})
+        (#{generation}, #{r.achievementId}, #{r.topicId}, #{r.canonicalName},
+         #{r.assignmentKind}, #{r.confidence})
       </foreach>
       </script>
       """)

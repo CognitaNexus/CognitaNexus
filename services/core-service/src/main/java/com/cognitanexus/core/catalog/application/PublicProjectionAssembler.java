@@ -1,6 +1,7 @@
 package com.cognitanexus.core.catalog.application;
 
 import com.cognitanexus.core.catalog.application.CatalogRepositories.TopicRepository;
+import com.cognitanexus.core.catalog.application.CatalogRepositories.TopicRepository.TopicAssignment;
 import com.cognitanexus.core.catalog.domain.Contribution;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -63,13 +64,22 @@ class PublicProjectionAssembler {
    *
    * <p>带规范名而不只带 id：查询侧按领域聚合与展示时若只有 id，就必须回头调 core 解析名称，
    * 使读路径依赖权威服务，既放大耦合又让「投影可独立回答查询」这一前提失效。
+   *
+   * <p>带 assignmentKind 同样不是可选项：领域分类会进入检索分面与领域热点排名，若投影把来源
+   * 分类与系统推断抹成同一个样子，读者就无从判断某个排名是元数据事实还是本系统的规则产出。
+   * {@code confidence} 只在推断归属上出现——来源给出的分类没有置信度这个概念，补一个数字
+   * 只会在界面上凭空多出一个看似成立的指标。
    */
   List<Map<String, Object>> topicsOf(String achievementId) {
     List<Map<String, Object>> views = new ArrayList<>();
-    for (String topicId : topics.listTopicIdsOf(achievementId)) {
+    for (TopicAssignment assignment : topics.listAssignmentsOf(achievementId)) {
       Map<String, Object> view = new LinkedHashMap<>();
-      view.put("id", topicId);
-      topics.findTopic(topicId).ifPresent(t -> view.put("canonicalName", t.canonicalName()));
+      view.put("id", assignment.topicId());
+      topics.findTopic(assignment.topicId()).ifPresent(t -> view.put("canonicalName", t.canonicalName()));
+      view.put("assignmentKind", assignment.assignmentKind());
+      if (assignment.confidence() != null) {
+        view.put("confidence", assignment.confidence().doubleValue());
+      }
       views.add(view);
     }
     return views;

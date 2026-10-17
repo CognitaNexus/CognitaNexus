@@ -99,15 +99,18 @@ function buildUrl(service: ServiceKey, path: string, query?: RequestOptions['que
 }
 
 /**
- * 发起一次请求并拆掉信封。
+ * 发起一次请求，返回完整信封。
+ *
+ * <p>需要读 meta 的场景（例如治理工作台要把服务端算出的分档计数与排序白名单直接展示出来）
+ * 用这个；只要数据的场景用下面的 {@link request}。
  *
  * @throws ApiError 任何业务码非 OK 或 HTTP 非 2xx 的情况
  */
-export async function request<T>(
+export async function requestEnvelope<T>(
   service: ServiceKey,
   path: string,
   options: RequestOptions = {},
-): Promise<T> {
+): Promise<Envelope<T>> {
   const method = options.method ?? 'GET'
   const headers: Record<string, string> = { Accept: 'application/json' }
 
@@ -143,7 +146,8 @@ export async function request<T>(
     if (!response.ok) {
       throw new ApiError('HTTP_' + response.status, `下载失败：HTTP ${response.status}`, '', response.status)
     }
-    return (await response.blob()) as unknown as T
+    const blob = (await response.blob()) as unknown as T
+    return { code: 'OK', message: '', data: blob }
   }
 
   let envelope: Envelope<T> | null = null
@@ -174,5 +178,19 @@ export async function request<T>(
       response.status,
     )
   }
+  return envelope
+}
+
+/**
+ * 发起一次请求并拆掉信封。
+ *
+ * @throws ApiError 任何业务码非 OK 或 HTTP 非 2xx 的情况
+ */
+export async function request<T>(
+  service: ServiceKey,
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const envelope = await requestEnvelope<T>(service, path, options)
   return envelope.data
 }

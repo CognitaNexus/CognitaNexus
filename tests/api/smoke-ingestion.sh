@@ -353,11 +353,146 @@ else
   printf '  \033[33mSKIP\033[0m  psql 不可用，跳过交接归属一致性核对\n'
 fi
 
+say '13. 抓取失败的退避（上游持续故障时不得每 2 秒重试一次）'
+# 用指向死端口的来源做确定性失败：不依赖外网、不依赖上游是否正好在故障，且与真实场景同形
+# （端点写错、对端下线）。此前没有退避，同一个任务会被执行器每 2 秒重试一次并重新翻同一页。
+#
+# 来源与任务都用<b>固定</b>标识，不带时间戳：本节的记录是要留下的（每次运行都新建一份只会让
+# 来源清单和任务清单一年后长满自检残留）。重复运行时按标识复用，并对任务先 resume——
+# 上一轮收尾把它暂停了，暂停状态下 runOnce 会直接跳过，断言会测到别的东西上去。
+DEAD_CODE='crossref-dead-probe'
+DEAD_ENDPOINT='http://127.0.0.1:9/works'
+api_csrf
+body_of POST "$CORE/api/v1/admin/core/sources" "$AJAR" \
+  -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $CSRF" \
+  -d "{\"sourceCode\":\"$DEAD_CODE\",\"displayName\":\"退避自检用的不可达来源\",\
+\"licenseScope\":\"仅本地自检使用\",\"baseUrl\":\"$DEAD_ENDPOINT\",\
+\"allowedFields\":[\"kind\",\"title\",\"doi\"],\"enabled\":true,\"licenseReviewed\":true}" > /dev/null
+
+api_csrf
+DEAD_SRC_BODY="$(body_of POST "$ING/api/v1/admin/ingestion/sources" "$AJAR" \
+  -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $CSRF" \
+  -d "{\"sourceCode\":\"$DEAD_CODE\",\"displayName\":\"退避自检执行副本\",\
+\"adapterKind\":\"CROSSREF\",\"baseEndpoint\":\"$DEAD_ENDPOINT\",\
+\"queryExpression\":\"backoff probe\",\"pageSize\":5,\
+\"licenseReviewState\":\"APPROVED\",\"rateLimitPerMinute\":10,\"enabled\":true}")"
+DEAD_SRC_ID="$(json_get "$DEAD_SRC_BODY" data.id)"
+if [ -z "$DEAD_SRC_ID" ]; then
+  # 已存在同名来源（同一次运行内重复执行）时按 sourceCode 取回，不靠序号猜位置。
+  DEAD_SRC_ID="$(body_of GET "$ING/api/v1/admin/ingestion/sources" "$AJAR" | "$PY_BIN" -c '
+import json, sys
+want = sys.argv[1]
+items = (json.load(sys.stdin).get("data") or {}).get("items") or []
+hit = [i for i in items if i.get("sourceCode") == want]
+print(hit[0]["id"] if hit else "")
+' "$DEAD_CODE")"
+fi
+check_true '取得不可达来源的执行配置 id' "$([ -n "$DEAD_SRC_ID" ] && echo true || echo false)"
+
+api_csrf
+body_of POST "$ING/api/v1/admin/ingestion/sources/$DEAD_SRC_ID/sync" "$AJAR" \
+  -H "X-XSRF-TOKEN: $CSRF" > /dev/null
+
+api_csrf
+DEAD_JOB_BODY="$(body_of POST "$ING/api/v1/admin/ingestion/jobs" "$AJAR" \
+  -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $CSRF" \
+  -d "{\"sourceId\":\"$DEAD_SRC_ID\",\"jobKey\":\"dead-probe\",\"reason\":\"退避端到端自检\"}")"
+DEAD_JOB_ID="$(json_get "$DEAD_JOB_BODY" data.job.id)"
+check_true '取得不可达来源的任务 id' "$([ -n "$DEAD_JOB_ID" ] && echo true || echo false)"
+# 恢复：上一轮收尾暂停了这个探针任务，暂停状态下 runOnce 直接跳过，本节就会去测别的东西。
+api_csrf
+body_of POST "$ING/api/v1/admin/ingestion/jobs/$DEAD_JOB_ID/resume" "$AJAR" \
+  -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $CSRF" \
+  -d '{"reason":"退避自检开始前恢复探针任务"}' > /dev/null
+# 游标基线单独读一次任务详情：run 端点的响应是「本轮结果」，不含任务本身。
+CURSOR_BEFORE="$(json_get "$(body_of GET "$ING/api/v1/admin/ingestion/jobs/$DEAD_JOB_ID" "$AJAR")" \
+  data.cursor)"
+
+# 手动执行会绕过退避窗口（人点「立即执行」的意图通常正是「上游可能恢复了」），因此可以连续驱动
+# 到足够大的退避窗口，再观察后台执行器是否真的不再取它。
+#
+# 为什么要连推这么多次：退避是 1、2、4、8… 秒，而本脚本自身每一步都要起 curl 与 python 进程
+# （Windows 上每次约 0.3–1 秒）。只推 5 次得到 16 秒窗口，光是被脚本自己的开销吃掉就只剩几秒，
+# 「窗口内不重试」这条断言会退化成一句无法执行的 SKIP。推到 64 秒以上才留得出可观测的余量。
+dead_run_once() {
+  api_csrf
+  DEAD_RUN_BODY="$(body_of POST "$ING/api/v1/admin/ingestion/jobs/$DEAD_JOB_ID/run" "$AJAR" \
+    -H "X-XSRF-TOKEN: $CSRF")"
+}
+
+dead_read_state() {
+  DEAD_JOB_VIEW="$(body_of GET "$ING/api/v1/admin/ingestion/jobs/$DEAD_JOB_ID" "$AJAR")"
+  FAILS_A="$(json_get "$DEAD_JOB_VIEW" data.consecutiveFailures)"
+  NEXT_AT="$(json_get "$DEAD_JOB_VIEW" data.nextAttemptAt)"
+  REMAIN="$("$PY_BIN" -c "
+import datetime, sys
+raw = sys.argv[1]
+if not raw:
+    print(-1)
+    sys.exit(0)
+try:
+    at = datetime.datetime.fromisoformat(raw.replace('Z', '+00:00'))
+except Exception:
+    print(-1)
+    sys.exit(0)
+now = datetime.datetime.now(datetime.timezone.utc)
+print(int((at - now).total_seconds()))
+" "$NEXT_AT")"
+}
+
+DEAD_RUNS=0
+while [ "$DEAD_RUNS" -lt 5 ]; do
+  dead_run_once
+  DEAD_RUNS=$((DEAD_RUNS + 1))
+  sleep 1
+done
+check_true '抓取失败被回报为 fetchFailed' "$(json_get "$DEAD_RUN_BODY" data.fetchFailed)"
+check '失败不得表现为「暂存 0 条」' '0' "$(json_get "$DEAD_RUN_BODY" data.staged)"
+check '失败时不动游标' "$CURSOR_BEFORE" \
+  "$(json_get "$(body_of GET "$ING/api/v1/admin/ingestion/jobs/$DEAD_JOB_ID" "$AJAR")" data.cursor)"
+case "$(json_get "$DEAD_RUN_BODY" data.lastMessage)" in
+  *退避*) check '失败说明里写明了退避时长' 'true' 'true' ;;
+  *) check '失败说明里写明了退避时长' '含「退避」' "$(json_get "$DEAD_RUN_BODY" data.lastMessage)" ;;
+esac
+
+# 把窗口推到留得出余量为止（最多再推 3 次，每次窗口翻倍）。
+dead_read_state
+EXTRA=0
+while [ "${REMAIN:--1}" -le 8 ] && [ "$EXTRA" -lt 3 ]; do
+  dead_run_once
+  EXTRA=$((EXTRA + 1))
+  sleep 1
+  dead_read_state
+done
+printf '        连续失败 %s 次，下一次允许尝试：%s（剩 %s 秒）\n' \
+  "${FAILS_A:-?}" "${NEXT_AT:-（未写入）}" "${REMAIN:--1}"
+check_true '连续失败次数已累计（>=1）' \
+  "$([ "${FAILS_A:-0}" -ge 1 ] 2>/dev/null && echo true || echo false)"
+check_true '已写入下一次允许尝试的时刻' "$([ -n "$NEXT_AT" ] && echo true || echo false)"
+
+# 真正的验收点：退避窗口内后台执行器不再取这个任务。
+# 若只断言「写了一个时间戳」而不验证它真的抑制了重试，等于验证一个没有任何作用的字段。
+if [ "${REMAIN:--1}" -gt 8 ] 2>/dev/null; then
+  sleep 5
+  FAILS_B="$(json_get "$(body_of GET "$ING/api/v1/admin/ingestion/jobs/$DEAD_JOB_ID" "$AJAR")" \
+    data.consecutiveFailures)"
+  check '退避窗口内后台执行器不再重试该任务' "${FAILS_A:-?}" "${FAILS_B:-?}"
+  printf '        等待 5 秒（期间执行器至少有 2 个调度周期），失败次数 %s → %s\n' \
+    "${FAILS_A:-?}" "${FAILS_B:-?}"
+else
+  printf '  \033[33mSKIP\033[0m  退避窗口不足 8 秒（剩余 %s 秒），本次无法证明执行器被抑制（不记为通过）\n' "${REMAIN:--1}"
+fi
+
+api_csrf
+body_of POST "$ING/api/v1/admin/ingestion/jobs/$DEAD_JOB_ID/pause" "$AJAR" \
+  -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $CSRF" \
+  -d '{"reason":"退避自检收尾"}' > /dev/null
+
 # 收尾：暂停本次自检创建的任务。
 # 为什么必须收：本脚本每次运行都以带时间戳的 jobKey 新建一个任务，若不收，每个 RUNNING 任务
-# 都会被 CollectWorker 按 2 秒一轮持续驱动（抓取失败无退避），任务越积越多、来源被反复空扫，
-# 也让后续运行更难拿到静默窗口——实测一次运行就留下两个 RUNNING 任务在空转。
-# 暂停而非删除：暂停是可恢复的状态变更，且不丢任何已暂存记录。
+# 都会被 CollectWorker 持续驱动，任务越积越多、来源被反复空扫，也让后续运行更难拿到静默窗口。
+# 抓取失败的退避已经实现（见第 13 节），因此空转的频率是有界的，但「不留运行中的任务」仍然是
+# 自检该做的事：它跑完就该把现场还原。
 if [ -n "${JOB_ID:-}" ]; then
   api_csrf
   PAUSE_BODY="$(body_of POST "$ING/api/v1/admin/ingestion/jobs/$JOB_ID/pause" "$AJAR" \

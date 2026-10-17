@@ -142,7 +142,9 @@ onMounted(loadConsistency)
           <template v-if="session.authenticated">
             <span class="nav-sep"></span>
             <RouterLink to="/portal">我的门户</RouterLink>
+            <RouterLink to="/portal/contributions">我的成果</RouterLink>
             <RouterLink to="/review">审核</RouterLink>
+            <RouterLink to="/review/relations">关系争议</RouterLink>
             <RouterLink to="/governance">治理</RouterLink>
             <RouterLink to="/ingestion">采集</RouterLink>
             <RouterLink to="/audit">审计</RouterLink>

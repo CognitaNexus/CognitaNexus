@@ -18,6 +18,15 @@ import AsyncBlock from '@/components/AsyncBlock.vue'
 
 type Row = Record<string, unknown>
 
+function str(value: unknown): string {
+  return value === null || value === undefined ? '' : String(value)
+}
+
+function num(value: unknown, fallback = 0): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
 function section() {
   return reactive({ items: [] as Row[], loading: false, error: '', errorCode: '' })
 }
@@ -242,6 +251,29 @@ function jobStatusBadge(status: unknown) {
   if (value === 'PAUSED' || value === 'PENDING') return 'badge warn'
   if (value === 'FAILED' || value === 'DEAD') return 'badge danger'
   return 'badge neutral'
+}
+
+/**
+ * 退避状态。
+ *
+ * 抓取失败会按连续失败次数退避（1、2、4、8… 秒，上限由运行参数决定），退避窗口内后台执行器
+ * 不会取这个任务。所以「任务为什么没在跑」有两个完全不同的答案——停摆故障，或者正常的退避——
+ * 而只看状态与 lastError 区分不出来：两者都显示 RUNNING 加一条错误。
+ */
+function backoffActive(row: Row): boolean {
+  const next = str(row.nextAttemptAt)
+  if (!next) return false
+  const at = Date.parse(next)
+  return Number.isFinite(at) && at > Date.now()
+}
+
+function backoffLabel(row: Row): string {
+  const failures = num(row.consecutiveFailures)
+  const next = str(row.nextAttemptAt)
+  if (!next) return failures > 0 ? `连续失败 ${failures} 次（已复位）` : '—'
+  if (!backoffActive(row)) return `连续失败 ${failures} 次（窗口已过）`
+  const seconds = Math.max(1, Math.round((Date.parse(next) - Date.now()) / 1000))
+  return `退避中 · 连续失败 ${failures} 次 · 约 ${seconds} 秒后重试`
 }
 
 onMounted(loadAll)
@@ -498,6 +530,7 @@ onMounted(loadAll)
                   <th class="num">被拒</th>
                   <th>游标</th>
                   <th>最近错误</th>
+                  <th>退避</th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -515,6 +548,14 @@ onMounted(loadAll)
                   <td class="num">{{ String(row.totalRejected ?? 0) }}</td>
                   <td class="mono tiny">{{ String(row.cursor ?? '—') }}</td>
                   <td class="tiny">{{ String(row.lastError ?? '—') }}</td>
+                  <td class="tiny">
+                    <!-- 只给 lastError 时看不出「它正在退避」，运维会以为调度坏了。
+                         退避中的任务不会被后台执行器取走，所以必须说明「到什么时候」。 -->
+                    <span v-if="backoffLabel(row) === '—'" class="faint">—</span>
+                    <span v-else :class="backoffActive(row) ? 'badge warn' : 'badge neutral'">
+                      {{ backoffLabel(row) }}
+                    </span>
+                  </td>
                   <td>
                     <div class="btn-row">
                       <button class="btn small" :disabled="busy === `run:${String(row.id)}`" @click="runJob(row, 2)">

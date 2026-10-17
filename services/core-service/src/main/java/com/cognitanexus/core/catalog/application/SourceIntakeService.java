@@ -94,6 +94,7 @@ public class SourceIntakeService {
   private final AuditRecorder audit;
   private final JsonCodec json;
   private final PublicProjectionAssembler projections;
+  private final CatalogChangePublisher catalogChanges;
 
   public SourceIntakeService(
       SourceConfigRepository sourceConfigs,
@@ -109,7 +110,8 @@ public class SourceIntakeService {
       OutboxStore outbox,
       AuditRecorder audit,
       JsonCodec json,
-      PublicProjectionAssembler projections) {
+      PublicProjectionAssembler projections,
+      CatalogChangePublisher catalogChanges) {
     this.sourceConfigs = sourceConfigs;
     this.sourceRecords = sourceRecords;
     this.achievements = achievements;
@@ -124,6 +126,7 @@ public class SourceIntakeService {
     this.audit = audit;
     this.json = json;
     this.projections = projections;
+    this.catalogChanges = catalogChanges;
   }
 
   @Transactional
@@ -520,11 +523,26 @@ public class SourceIntakeService {
 
   private void attachTopics(String achievementId, NormalizedRecord record) {
     String sourceCategory = record.sourceCategory();
+    List<String> names = new ArrayList<>();
     for (String topicName : record.topics()) {
-      if (topicName == null || topicName.isBlank()) {
-        continue;
+      if (topicName != null && !topicName.isBlank()) {
+        names.add(topicName.trim());
       }
-      String topicId = topics.findOrCreate(topicName.trim());
+    }
+    if (names.isEmpty()) {
+      return;
+    }
+    // 来源带来分类时，先清掉此前由规则推断的归属，再落来源分类。
+    //
+    // 顺序不能反：归属表主键是 (成果, 领域)，若先落来源分类而该领域恰好已被推断占用，
+    // ON CONFLICT DO NOTHING 会让来源分类写不进去，那一格继续挂着一张 INFERRED 行——
+    // 来源在场却标着「系统推断」，恰好是最不该出现的一种错。
+    //
+    // 清除的对象只是推断产物，不改动任何来源原值：来源是权威，推断是它缺席时的替代品，
+    // 权威到场后替代品应当退场，而不是与权威并列显示成两个独立来源。
+    topics.clearInferred(achievementId);
+    for (String name : names) {
+      String topicId = topics.findOrCreate(name);
       topics.link(achievementId, topicId, sourceCategory);
     }
   }
@@ -660,14 +678,17 @@ public class SourceIntakeService {
   private void registerSimilarityCandidates(Achievement achievement) {
     for (Achievement exact : achievements.findByExactTitle(achievement.titleNorm(), 5)) {
       if (!exact.id().equals(achievement.id()) && exact.type() == achievement.type()) {
+        // 精确同标题：相似度为 1，这是候选里最需要优先复核的一类
         governance.reportTitleSimilarity(achievement, exact, 1.0d);
       }
     }
-    for (Achievement similar :
+    for (AchievementRepository.SimilarTitle similar :
         achievements.findSimilarByTitle(
             achievement.titleNorm(), TITLE_SIMILARITY_THRESHOLD, SIMILAR_CANDIDATE_LIMIT)) {
-      if (!similar.id().equals(achievement.id()) && similar.type() == achievement.type()) {
-        governance.reportTitleSimilarity(achievement, similar, TITLE_SIMILARITY_THRESHOLD);
+      Achievement candidate = similar.achievement();
+      if (!candidate.id().equals(achievement.id()) && candidate.type() == achievement.type()) {
+        // 写真实相似度而不是阈值：阈值只说明「过线了」，相似度才说明「有多像」
+        governance.reportTitleSimilarity(achievement, candidate, similar.similarity());
       }
     }
   }
@@ -679,19 +700,8 @@ public class SourceIntakeService {
   /**
    * 外发一次目录变更。
    *
-   * <p><b>可见性与生效状态必须取自持久化实体，不得在此推断。</b>这里是曾经出过一个真实缺陷的地方：
-   * 早先本方法把 {@code visibility} 与 {@code effectiveStatus} 写死成 PUBLIC / EFFECTIVE，理由是
-   * 「本方法只在通过自动发布判定之后被调用」。但本方法还有第二个调用点——既有身份收到来源新版本时
-   * 刷新引用量。于是一条仍然处于 RESTRICTED / PENDING_GOVERNANCE 的成果，只要来源刷新了引用量，
-   * 就会外发一条自称 PUBLIC 的事件，查询侧据此把它放进了公开检索。结果是：<b>核心服务的公开详情
-   * 接口对它返回 404，而公开检索却能搜到它</b>——权威侧说不可见，投影侧说可见。
-   *
-   * <p>这个缺陷的教训不是「多加一个判断」，而是：<b>写死一个断言，等于把断言成立的隐含前提
-   * 变成了全局约定</b>；后来任何新增的调用点都会静默地继承这个错误前提。因此这里一律以数据库为
-   * 唯一事实来源。
-   *
-   * <p>取不到实体时**失败关闭**：按受限可见性与待治理状态外发。查不到实体时宣称「已公开」，
-   * 是这类错误里后果最重的一种——公开视图会先于权威表把内容放出去，而事后很难判断哪些是误放的。
+   * <p>装配口径已收敛到 {@link CatalogChangePublisher}：此处只保留这一层薄转发，避免出现第二个
+   * 字段集定义（人工确认发布与自动发布曾经各拼一份，字段集不同，回放时会丢论文指标）。
    */
   private void publishEvent(
       String achievementId,
@@ -699,49 +709,7 @@ public class SourceIntakeService {
       String title,
       DataNature dataNature,
       long aggregateVersion) {
-    Achievement current = achievements.findById(achievementId).orElse(null);
-    Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("changeKind", EventTypes.CHANGE_UPSERT);
-    payload.put("achievementId", achievementId);
-    payload.put("type", type.name());
-    payload.put("title", title);
-    payload.put("dataNature", dataNature.name());
-    if (current == null) {
-      // 失败关闭：宁可让投影把这条按受限保存（读路径会把它过滤掉），也不外发一个无法证实的「已公开」。
-      log.warn(
-          "外发目录变更时未能读到实体，按受限可见性外发 achievementId={} aggregateVersion={}",
-          achievementId,
-          aggregateVersion);
-      payload.put("visibility", Visibility.RESTRICTED.name());
-      payload.put("effectiveStatus", EffectiveStatus.PENDING_GOVERNANCE.name());
-    } else {
-      payload.put("visibility", current.visibility().name());
-      payload.put("effectiveStatus", current.effectiveStatus().name());
-      payload.put("publicationYear", current.publicationYear().year());
-      payload.put("titleNorm", current.titleNorm());
-    }
-    achievements
-        .findPaper(achievementId)
-        .ifPresent(
-            p -> {
-              payload.put("doi", p.doi());
-              payload.put("venue", p.venue());
-              payload.put("citationCount", p.citationCount());
-              payload.put("citationSource", p.citationSource());
-              payload.put(
-                  "publishedDate", p.publishedDate() == null ? null : p.publishedDate().toString());
-              payload.put("abstractText", p.abstractText());
-            });
-
-    payload.put("contributions", projections.contributionsOf(achievementId));
-    payload.put("topics", projections.topicIdsOf(achievementId));
-    payload.put("topicViews", projections.topicsOf(achievementId));
-
-    outbox.append(
-        OutboxEvent.builder(
-                EventTypes.CATALOG_CHANGE_COMMITTED, EventTypes.AGG_ACHIEVEMENT, achievementId)
-            .aggregateVersion(aggregateVersion)
-            .payload(payload));
+    catalogChanges.publish(achievementId, type, title, dataNature, aggregateVersion);
   }
 
   /** 按来源声明的字段白名单过滤 payload；白名单为空表示不限制字段集合。 */

@@ -58,6 +58,16 @@ const paper = computed<PaperView | null>(() => {
 
 const redirectedFrom = computed(() => detail.data.value?.redirectedFrom as string | undefined)
 
+/**
+ * 是否存在系统推断出来的领域。
+ *
+ * 口径说明只在真的出现推断标注时才显示：一条成果的领域全部来自来源时贴上这段解释，
+ * 等于暗示这份数据可能被猜过，反而削弱了来源本身的权威性。
+ */
+const hasInferredTopic = computed(() =>
+  (detail.data.value?.topics ?? []).some((topic) => topic.assignmentKind === 'INFERRED'),
+)
+
 /** 关系状态是不是「可作为确定合作展示」。判据与后端 qualifiedForGraph 一致。 */
 function isQualified(row: ContributorView): boolean {
   return row.qualified === true || row.relationState === 'AUTO' || row.relationState === 'SELF_CONFIRMED'
@@ -328,10 +338,25 @@ onMounted(detail.run)
 
         <div v-if="(detail.data.value.topics ?? []).length" class="panel">
           <div class="panel-head"><h2>领域标注</h2></div>
-          <div class="panel-body btn-row">
-            <span v-for="topic in detail.data.value.topics" :key="topic.topicId" class="badge neutral">
-              {{ topic.canonicalName }}
-            </span>
+          <div class="panel-body">
+            <div class="btn-row">
+              <RouterLink
+                v-for="topic in detail.data.value.topics"
+                :key="topic.topicId"
+                :to="`/topics/${topic.topicId}`"
+                class="badge"
+                :class="topic.assignmentKind === 'INFERRED' ? 'warn' : 'neutral'"
+              >
+                {{ topic.canonicalName
+                }}<template v-if="topic.assignmentKind === 'INFERRED'">
+                  · 系统推断{{ topic.confidence != null ? ` ${(topic.confidence * 100).toFixed(1)}%` : '' }}
+                </template>
+              </RouterLink>
+            </div>
+            <p v-if="hasInferredTopic" class="faint tiny" style="margin: 10px 0 0">
+              带「系统推断」的领域是平台按受控词表从题名、期刊与摘要判定的，来源未提供学科分类。
+              它用于分类检索与领域统计，不代表来源声明，也不参与任何以来源为准的判定。
+            </p>
           </div>
         </div>
 

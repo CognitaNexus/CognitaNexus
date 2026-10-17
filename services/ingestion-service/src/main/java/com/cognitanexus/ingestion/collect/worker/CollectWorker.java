@@ -79,6 +79,11 @@ public class CollectWorker {
               outcome.duplicated(),
               outcome.handedOff(),
               outcome.lastMessage());
+        } else if (outcome.fetchFailed()) {
+          // 抓取失败按 warn 记录：这是「来源坏了」这一件需要人看见的事，而它现在每个退避周期
+          // 只会出现一次，不会淹掉日志。此前每个固定间隔都尝试、每次都只写 debug，
+          // 结果是任务看着一直在动、日志上却什么也没有。
+          log.warn("采集抓取失败并已退避 jobId={} 说明={}", jobId, outcome.lastMessage());
         } else {
           log.debug("采集未产生进展 jobId={} 说明={}", jobId, outcome.lastMessage());
         }

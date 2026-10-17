@@ -34,6 +34,14 @@ import org.apache.ibatis.annotations.Update;
 @Mapper
 public interface AchievementMapper {
 
+  /**
+   * 成果行的查询投影。
+   *
+   * <p>这里刻意不含 similarity：这个行类型被 findById、待审列表、公开导出等多个查询共用，
+   * 而它们的结果集里没有相似度列。构造器自动映射把「列缺失」当作硬失败，不是可选字段，
+   * 给共用行类型加一个只有个别查询才有的列，会让其余查询整体报错。
+   * 相似度只出现在 {@link SimilarTitleRow} 里。
+   */
   record AchievementRow(
       String id,
       String type,
@@ -219,18 +227,25 @@ public interface AchievementMapper {
       @Param("applicationNo") String applicationNo,
       @Param("applicationNoNorm") String applicationNoNorm,
       @Param("publicationNo") String publicationNo,
-      @Param("ipcCodes") List<String> ipcCodes,
-      @Param("applicantNames") List<String> applicantNames,
+      @Param("ipcCodes") String[] ipcCodes,
+      @Param("applicantNames") String[] applicantNames,
       @Param("filingDate") LocalDate filingDate,
       @Param("publicationDate") LocalDate publicationDate);
 
+  /**
+   * 专利行。
+   *
+   * <p>数组列一律用 String[]：StringArrayTypeHandler 的形参类型就是 String[]，把行字段写成
+   * List 会让 MyBatis 找不到处理器、退回 Object 处理并把 java.sql.Array 直接塞进构造参数。
+   * 与 AchievementDetails.Patent 之间的 List/String[] 转换在 {@link #toPatent} 里做。
+   */
   record PatentRow(
       String achievementId,
       String applicationNo,
       String applicationNoNorm,
       String publicationNo,
-      List<String> ipcCodes,
-      List<String> applicantNames,
+      String[] ipcCodes,
+      String[] applicantNames,
       LocalDate filingDate,
       LocalDate publicationDate) {}
 
@@ -413,6 +428,22 @@ public interface AchievementMapper {
   Optional<String> findAnyEntityByNormalizedValue(
       @Param("kind") String kind, @Param("normalizedValue") String normalizedValue);
 
+  /**
+   * 该规范实体是否存在任何已登记的稳定标识。
+   *
+   * <p>判据取自注册表，而不是回头去扩展表读 DOI / 申请号字段：采集时「来源是否提供了稳定标识」
+   * 落成的就是这里的这一行，两处若各写一份判定，早晚会出现「采集说没有、重评估说有」的分歧。
+   */
+  @Select(
+      """
+      SELECT EXISTS(
+        SELECT 1 FROM core_identifier_registry
+        WHERE entity_type = #{entityType} AND entity_id = #{entityId}
+      )
+      """)
+  boolean hasRegisteredIdentifier(
+      @Param("entityType") String entityType, @Param("entityId") String entityId);
+
   // ---------------------------------------------------------------------------
   // 字段溯源
   // ---------------------------------------------------------------------------
@@ -583,7 +614,53 @@ public interface AchievementMapper {
    * 三元组相似度候选。
    *
    * <p>结果只作为治理候选，绝不据此自动合并；判定还须比对年份、参与者与类型（AC-IMPL-FR09-02）。
+   *
+   * <p>必须把 {@code similarity} 一并查出来：它是治理人员判断「这到底是不是同一篇」的首要依据。
+   * 早先这条查询只在 WHERE 里用阈值过滤、SELECT 却没带出相似度，调用方只能把阈值本身写进候选
+   * 证据，于是几千条候选的证据里写着同一个数字——高置信重复与勉强过线的候选无法区分，待办列表
+   * 也就无法按可信度排序处理。
    */
+  /**
+   * 相似标题查询的行：成果字段 + 这一次比较算出的相似度。
+   *
+   * <p>单独一个行类型，而不是给 {@link AchievementRow} 加一列（见那里的说明）。相似度是本次
+   * 查询附带的计算值、不是成果自身的属性，用包装类型而非 double，让「没算过」与「算出来是 0」
+   * 在类型上就分得开。
+   */
+  record SimilarTitleRow(
+      String id,
+      String type,
+      String title,
+      String titleNorm,
+      String dataNature,
+      String visibility,
+      String effectiveStatus,
+      Integer publicationYear,
+      String yearPrecision,
+      String mergedIntoId,
+      long version,
+      Instant createdAt,
+      Instant updatedAt,
+      Double similarity) {}
+
+  default Achievement toDomain(SimilarTitleRow row) {
+    return toDomain(
+        new AchievementRow(
+            row.id(),
+            row.type(),
+            row.title(),
+            row.titleNorm(),
+            row.dataNature(),
+            row.visibility(),
+            row.effectiveStatus(),
+            row.publicationYear(),
+            row.yearPrecision(),
+            row.mergedIntoId(),
+            row.version(),
+            row.createdAt(),
+            row.updatedAt()));
+  }
+
   @Select(
       """
       SELECT id             AS id,
@@ -598,7 +675,8 @@ public interface AchievementMapper {
              merged_into_id AS mergedIntoId,
              version        AS version,
              created_at     AS createdAt,
-             updated_at     AS updatedAt
+             updated_at     AS updatedAt,
+             similarity(title_norm, #{titleNorm}) AS similarity
       FROM core_achievement
       WHERE merged_into_id IS NULL
         AND title_norm % #{titleNorm}
@@ -607,7 +685,7 @@ public interface AchievementMapper {
       ORDER BY similarity(title_norm, #{titleNorm}) DESC, id
       LIMIT #{limit}
       """)
-  List<AchievementRow> findSimilarByTitle(
+  List<SimilarTitleRow> findSimilarByTitle(
       @Param("titleNorm") String titleNorm,
       @Param("threshold") double threshold,
       @Param("limit") int limit);
@@ -686,8 +764,8 @@ public interface AchievementMapper {
         row.applicationNo(),
         row.applicationNoNorm(),
         row.publicationNo(),
-        row.ipcCodes(),
-        row.applicantNames(),
+        row.ipcCodes() == null ? List.of() : List.of(row.ipcCodes()),
+        row.applicantNames() == null ? List.of() : List.of(row.applicantNames()),
         row.filingDate(),
         row.publicationDate());
   }

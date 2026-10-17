@@ -1,12 +1,18 @@
 package com.cognitanexus.core.governance.infrastructure;
 
 import com.cognitanexus.core.governance.application.GovernanceRepositories;
+import com.cognitanexus.core.governance.application.GovernanceRepositories.AchievementStateRepository.AchievementState;
+import com.cognitanexus.core.governance.application.GovernanceRepositories.CandidateBuckets;
+import com.cognitanexus.core.governance.application.GovernanceRepositories.ScoredCandidate;
 import com.cognitanexus.core.governance.domain.DedupCandidate;
 import com.cognitanexus.core.governance.domain.GovernanceAnomaly;
 import com.cognitanexus.core.governance.domain.MergeLedgerEntry;
 import com.cognitanexus.core.platform.persistence.JsonCodec;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -19,6 +25,7 @@ public class GovernanceRepositoryAdapter
     implements GovernanceRepositories.DedupCandidateRepository,
         GovernanceRepositories.MergeLedgerRepository,
         GovernanceRepositories.AnomalyRepository,
+        GovernanceRepositories.AchievementStateRepository,
         GovernanceRepositories.MergeTargetRepository {
 
   private final GovernanceMapper mapper;
@@ -50,8 +57,37 @@ public class GovernanceRepositoryAdapter
   }
 
   @Override
+  public List<ScoredCandidate> listOpenCandidatesScored(
+      Double minSimilarity, String sortBy, int limit, int offset) {
+    return mapper.listCandidatesFiltered("OPEN", minSimilarity, sortBy, limit, offset).stream()
+        .map(
+            row ->
+                new ScoredCandidate(
+                    toCandidate(row.toRow()), row.similarity() == null ? 0d : row.similarity()))
+        .toList();
+  }
+
+  @Override
+  public long countOpenCandidatesByFilter(Double minSimilarity) {
+    return mapper.countCandidatesFiltered("OPEN", minSimilarity);
+  }
+
+  @Override
+  public CandidateBuckets countOpenCandidatesByBucket(double highLow, double midLow) {
+    GovernanceMapper.CandidateBuckets buckets =
+        mapper.countCandidateBuckets("OPEN", highLow, midLow);
+    return new CandidateBuckets(
+        buckets.highCount(), buckets.midCount(), buckets.lowCount(), buckets.total());
+  }
+
+  @Override
   public Optional<DedupCandidate> findById(String id) {
     return mapper.findCandidate(id).map(this::toCandidate);
+  }
+
+  @Override
+  public Optional<DedupCandidate> findBetween(String leftId, String rightId) {
+    return mapper.findCandidateBetween(leftId, rightId).map(this::toCandidate);
   }
 
   @Override
@@ -65,8 +101,24 @@ public class GovernanceRepositoryAdapter
   }
 
   @Override
+  public long countOpenBetween(String leftId, String rightId) {
+    return mapper.countOpenBetween(leftId, rightId);
+  }
+
+  @Override
+  public int resolveOpenBetween(
+      String leftId, String rightId, String status, String resolvedBy, String reason) {
+    return mapper.resolveOpenCandidatesBetween(leftId, rightId, status, resolvedBy, reason);
+  }
+
+  @Override
   public boolean resolve(String id, String status, String resolvedBy, String reason) {
     return mapper.resolveCandidate(id, status, resolvedBy, reason) == 1;
+  }
+
+  @Override
+  public boolean resolveRebased(String id, String resolvedBy, String reason, String rebasedToId) {
+    return mapper.resolveCandidateRebased(id, resolvedBy, reason, rebasedToId) == 1;
   }
 
   // ---------------------------------------------------------------------------
@@ -226,6 +278,70 @@ public class GovernanceRepositoryAdapter
     return mapper.snapshotSources(achievementId);
   }
 
+  @Override
+  public List<PreviewContribution> previewContributions(String achievementId) {
+    return mapper.previewContributions(achievementId).stream()
+        .map(
+            row ->
+                new PreviewContribution(
+                    row.scholarId(), row.scholarName(), row.relationState(), row.role()))
+        .toList();
+  }
+
+  @Override
+  public List<PreviewSource> previewSources(String achievementId) {
+    return mapper.previewSourceLinks(achievementId).stream()
+        .map(row -> new PreviewSource(row.sourceId(), row.sourceRecordId()))
+        .toList();
+  }
+
+  @Override
+  public List<String> previewTopics(String achievementId) {
+    return mapper.previewTopicIds(achievementId);
+  }
+
+  @Override
+  public List<RegisteredIdentifier> previewIdentifiers(String entityType, String entityId) {
+    return mapper.previewIdentifiers(entityType, entityId).stream()
+        .map(
+            row ->
+                new RegisteredIdentifier(row.identifierKind(), row.scope(), row.normalizedValue()))
+        .toList();
+  }
+
+  @Override
+  public int moveIdentifiers(String entityType, String mergedId, String survivorId) {
+    return mapper.moveIdentifiers(entityType, mergedId, survivorId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 候选两端的实时状态
+  // ---------------------------------------------------------------------------
+
+  @Override
+  public List<AchievementState> statesOf(Collection<String> ids) {
+    if (ids == null || ids.isEmpty()) {
+      // 空集合不能直接下传：`= ANY (ARRAY[]::text[])` 恒为假、结果为空，但先返回也省掉一次往返，
+      // 并让「没有候选」与「候选两端都查不到」在调用侧无法混淆。
+      return List.of();
+    }
+    Set<String> distinct = new LinkedHashSet<>(ids);
+    return mapper.findAchievementStates(distinct.toArray(new String[0])).stream()
+        .map(
+            row ->
+                new AchievementState(
+                    row.id(),
+                    row.achievementType(),
+                    row.title(),
+                    row.dataNature(),
+                    row.visibility(),
+                    row.effectiveStatus(),
+                    row.mergedIntoId(),
+                    row.publicationYear(),
+                    row.yearPrecision()))
+        .toList();
+  }
+
   private DedupCandidate toCandidate(GovernanceMapper.CandidateRow row) {
     return new DedupCandidate(
         row.id(),
@@ -237,6 +353,7 @@ public class GovernanceRepositoryAdapter
         row.createdAt(),
         row.resolvedAt(),
         row.resolvedBy(),
-        row.resolutionReason());
+        row.resolutionReason(),
+        row.rebasedToId());
   }
 }

@@ -6,7 +6,7 @@
  * 把错误翻译成文案——文案属于视图，语义属于接口层。
  */
 
-import { request } from './http'
+import { request, requestEnvelope } from './http'
 import type {
   AnalyticsOverview,
   ClaimRequest,
@@ -20,6 +20,7 @@ import type {
   SearchOptions,
   SearchPage,
   SessionView,
+  TopicInsight,
 } from './types'
 
 /* --------------------------- query-service（公开读） --------------------------- */
@@ -59,6 +60,12 @@ export const queryApi = {
 
   analyticsOverview(dataNature?: string) {
     return request<AnalyticsOverview>('query', '/api/v1/public/analytics/overview', {
+      query: { dataNature },
+    })
+  },
+
+  topicInsight(topicId: string, dataNature?: string) {
+    return request<TopicInsight>('query', `/api/v1/public/analytics/topics/${encodeURIComponent(topicId)}`, {
       query: { dataNature },
     })
   },
@@ -192,9 +199,69 @@ export const accountApi = {
   myPortals() {
     return request<Record<string, unknown>[]>('core', '/api/v1/account/portals')
   },
+
+  /** 我的成果：门户授权下的参与关系，含当前状态与可执行动作（由服务端判定）。 */
+  contributions(scholarId: string, limit = 50) {
+    return request<Record<string, unknown>[]>(
+      'core',
+      `/api/v1/account/contributions?scholarId=${encodeURIComponent(scholarId)}&limit=${limit}`,
+    )
+  },
+
+  /**
+   * 本人确认参与关系。
+   *
+   * 这里不预判结果：确认能否成立取决于当前关系状态（待核验、争议、已排除各有不同结论），
+   * 由服务端回答，界面按返回的状态与说明展示。
+   */
+  confirmContribution(contributionId: string) {
+    return request<Record<string, unknown>>(
+      'core',
+      `/api/v1/account/contributions/${encodeURIComponent(contributionId)}/confirm`,
+      { method: 'POST' },
+    )
+  },
+
+  disputeContribution(contributionId: string, reason: string) {
+    return request<Record<string, unknown>>(
+      'core',
+      `/api/v1/account/contributions/${encodeURIComponent(contributionId)}/dispute`,
+      { method: 'POST', body: { reason } },
+    )
+  },
+
+  withdrawDispute(contributionId: string) {
+    return request<Record<string, unknown>>(
+      'core',
+      `/api/v1/account/contributions/${encodeURIComponent(contributionId)}/withdraw-dispute`,
+      { method: 'POST' },
+    )
+  },
 }
 
 export const adminApi = {
+  /** 争议关系裁决队列：只列当前处于 DISPUTED 的参与关系。 */
+  disputedContributions(limit = 50) {
+    return request<Record<string, unknown>[]>(
+      'core',
+      `/api/v1/admin/core/contributions/disputed?limit=${limit}`,
+    )
+  },
+
+  /**
+   * 裁决一条参与关系。
+   *
+   * decision 只有三种：EXCLUDE（判定不成立）、CONFIRM（核验后确认）、RESTORE（撤销此前结论
+   * 回到自动关联）。服务端会按当前状态拒绝不相符的结论，这里不重复推断。
+   */
+  resolveContribution(contributionId: string, decision: string, reason: string) {
+    return request<Record<string, unknown>>(
+      'core',
+      `/api/v1/admin/core/contributions/${encodeURIComponent(contributionId)}/resolution`,
+      { method: 'POST', body: { decision, reason } },
+    )
+  },
+
   overview() {
     return request<Record<string, unknown>>('core', '/api/v1/admin/core/overview')
   },
@@ -290,10 +357,49 @@ export const adminApi = {
     )
   },
 
+  /**
+   * 治理工作台候选列表：按可信度排序，支持相似度下限筛选。
+   *
+   * meta 里带回分档计数与白名单排序键，供页面直接展示，不需要前端再猜一套阈值。
+   */
+  governanceWorkbench(
+    params: { minSimilarity?: number; sort?: string; page?: number; size?: number } = {},
+  ) {
+    // 用信封版本：分档计数与排序白名单由服务端给出，前端不另立一套阈值。
+    return requestEnvelope<Record<string, unknown>[]>(
+      'core',
+      '/api/v1/admin/core/governance/candidates/workbench',
+      { query: params },
+    )
+  },
+
+  /** 批量判定候选为「不同实体」。不提供批量合并，合并必须逐条指定幸存实体。 */
+  batchRejectCandidates(body: { candidateIds: string[]; reason: string }) {
+    return request<Record<string, unknown>>(
+      'core',
+      '/api/v1/admin/core/governance/candidates/batch-reject',
+      { method: 'POST', body },
+    )
+  },
+
   resolveCandidate(candidateId: string, body: { action: string; survivorId?: string; reason: string }) {
     return request<Record<string, unknown>>(
       'core',
       `/api/v1/admin/core/governance/candidates/${candidateId}/resolve`,
+      { method: 'POST', body },
+    )
+  },
+
+  /**
+   * 候选改判：把问题转到两端重定向后的最终实体上。
+   *
+   * 用于「端点已被合并」的候选——它们既不能再合并（重定向不覆盖首次结论），也不该被驳回
+   * （驳回等于宣称两端比较过）。返回里带上承接候选的标识与结果状态。
+   */
+  rebaseCandidate(candidateId: string, body: { reason: string }) {
+    return request<Record<string, unknown>>(
+      'core',
+      `/api/v1/admin/core/governance/candidates/${candidateId}/rebase`,
       { method: 'POST', body },
     )
   },
@@ -309,6 +415,20 @@ export const adminApi = {
       'core',
       `/api/v1/admin/core/governance/anomalies/${anomalyId}/resolve`,
       { method: 'POST' },
+    )
+  },
+
+  /**
+   * 合并影响预览（只读）。
+   *
+   * 与 mergeAchievements 分开成一个方法：预览不产生任何写入，把它塞进合并方法里会让
+   * 「看一眼」变成一次有副作用的调用。界面上先看后果、再决定是否合并，两步各自独立。
+   */
+  mergePreview(params: { survivorId: string; mergedId: string }) {
+    return request<Record<string, unknown>>(
+      'core',
+      '/api/v1/admin/core/governance/achievements/merge-preview',
+      { query: params },
     )
   },
 

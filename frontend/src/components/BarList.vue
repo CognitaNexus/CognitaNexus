@@ -7,9 +7,10 @@
  * 条形图不暗示合计关系。
  */
 import { computed } from 'vue'
+import { RouterLink } from 'vue-router'
 
 const props = defineProps<{
-  items: { label: string; value: number; hint?: string }[]
+  items: { label: string; value: number; hint?: string; to?: string }[]
   emptyText?: string
   max?: number
 }>()
@@ -26,7 +27,8 @@ const ceiling = computed(() => {
     <div v-for="item in items" :key="item.label" style="margin-bottom: 9px">
       <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 13px">
         <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap" :title="item.label">
-          {{ item.label }}
+          <RouterLink v-if="item.to" :to="item.to">{{ item.label }}</RouterLink>
+          <template v-else>{{ item.label }}</template>
         </span>
         <span class="mono nowrap" style="font-variant-numeric: tabular-nums">{{ item.value }}</span>
       </div>

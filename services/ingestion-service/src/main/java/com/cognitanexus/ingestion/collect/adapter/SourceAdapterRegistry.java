@@ -34,6 +34,17 @@ public class SourceAdapterRegistry {
             objectMapper, httpClient, properties.userAgent(), properties.maxResponseBytes()));
     register(
         new OpenAlexAdapter(
+            objectMapper,
+            httpClient,
+            properties.userAgent(),
+            properties.maxResponseBytes(),
+            OpenAlexFieldMapper.loadFromClasspath(objectMapper)));
+    // 项目与获奖各自一家公开来源：论文之外的类别没有通用元数据服务，必须逐类接入
+    register(
+        new NsfAdapter(
+            objectMapper, httpClient, properties.userAgent(), properties.maxResponseBytes()));
+    register(
+        new NobelAdapter(
             objectMapper, httpClient, properties.userAgent(), properties.maxResponseBytes()));
   }
 

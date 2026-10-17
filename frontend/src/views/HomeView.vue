@@ -238,14 +238,17 @@ watch(() => scope.nature, load)
           <div class="panel">
             <div class="panel-head">
               <h2>领域分布</h2>
-              <span class="tiny faint">领域为多对多，合计可超过成果总数</span>
+              <span class="tiny faint">领域为多对多，合计可超过成果总数；点击进入领域洞察</span>
             </div>
             <div class="panel-body">
               <BarList
                 :items="
                   overview.data.value.topTopics.map((row) => ({
-                    label: row.key,
+                    // 名称可能缺失（投影时来源未给），此时退回显示标识而不是 undefined。
+                    label: row.canonicalNameKnown ? (row.canonicalName ?? row.topicId) : row.topicId,
                     value: row.achievements,
+                    hint: row.systemInferred > 0 ? `其中系统推断 ${row.systemInferred} 条` : undefined,
+                    to: `/topics/${row.topicId}`,
                   }))
                 "
                 empty-text="当前口径下没有带领域标注的成果。"

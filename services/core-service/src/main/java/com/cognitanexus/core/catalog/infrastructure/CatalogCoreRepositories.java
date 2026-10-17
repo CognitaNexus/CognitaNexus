@@ -6,6 +6,7 @@ import com.cognitanexus.core.catalog.application.CatalogRepositories.FieldProven
 import com.cognitanexus.core.catalog.application.CatalogRepositories.IdentifierRegistryRepository;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.OrganizationRepository;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.TopicRepository;
+import com.cognitanexus.core.catalog.application.CatalogRepositories.TopicRepository.TopicAssignment;
 import com.cognitanexus.core.catalog.domain.Achievement;
 import com.cognitanexus.core.catalog.domain.AchievementDetails;
 import com.cognitanexus.core.catalog.domain.Contribution;
@@ -14,6 +15,7 @@ import com.cognitanexus.core.catalog.domain.IdentifierKind;
 import com.cognitanexus.core.platform.util.Identifiers;
 import com.cognitanexus.core.platform.util.TextNormalizer;
 import com.cognitanexus.sharedkernel.AchievementType;
+import com.cognitanexus.sharedkernel.RelationState;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -111,10 +113,21 @@ public class CatalogCoreRepositories
         patent.applicationNo(),
         patent.applicationNoNorm(),
         patent.publicationNo(),
-        patent.ipcCodes(),
-        patent.applicantNames(),
+        textArray(patent.ipcCodes()),
+        textArray(patent.applicantNames()),
         patent.filingDate(),
         patent.publicationDate());
+  }
+
+  /**
+   * 领域模型用 List，JDBC 侧必须是 String[]。
+   *
+   * <p>StringArrayTypeHandler 以 String[] 作为形参类型并用 Connection.createArrayOf 构造数组，
+   * 直接把 List 交给它会在类型强转处抛 ClassCastException；此处统一转换，且区分「空数组」与
+   * 「无该字段」——null 保持 null，不让未知信息被写成空数组。
+   */
+  private static String[] textArray(List<String> values) {
+    return values == null ? null : values.toArray(String[]::new);
   }
 
   @Override
@@ -196,9 +209,14 @@ public class CatalogCoreRepositories
   }
 
   @Override
-  public List<Achievement> findSimilarByTitle(String titleNorm, double threshold, int limit) {
+  public List<AchievementRepository.SimilarTitle> findSimilarByTitle(
+      String titleNorm, double threshold, int limit) {
     return achievementMapper.findSimilarByTitle(titleNorm, threshold, limit).stream()
-        .map(achievementMapper::toDomain)
+        .map(
+            row ->
+                new AchievementRepository.SimilarTitle(
+                    achievementMapper.toDomain(row),
+                    row.similarity() == null ? 0d : row.similarity()))
         .toList();
   }
 
@@ -286,6 +304,24 @@ public class CatalogCoreRepositories
   }
 
   @Override
+  public Optional<Contribution> findContributionById(String contributionId) {
+    return relationshipMapper.findContributionById(contributionId).map(relationshipMapper::toDomain);
+  }
+
+  @Override
+  public int transitionRelationState(
+      String contributionId, RelationState from, RelationState to) {
+    return relationshipMapper.transitionRelationState(contributionId, from.name(), to.name());
+  }
+
+  @Override
+  public List<Contribution> listByRelationState(RelationState state, int limit) {
+    return relationshipMapper.listByRelationState(state.name(), limit).stream()
+        .map(relationshipMapper::toDomain)
+        .toList();
+  }
+
+  @Override
   public void linkOrganization(String contributionId, String organizationId) {
     relationshipMapper.linkOrganization(contributionId, organizationId);
   }
@@ -329,6 +365,18 @@ public class CatalogCoreRepositories
   @Override
   public List<String> listTopicIdsOf(String achievementId) {
     return relationshipMapper.listTopicIdsOf(achievementId);
+  }
+
+  @Override
+  public List<TopicAssignment> listAssignmentsOf(String achievementId) {
+    return relationshipMapper.listAssignmentsOf(achievementId);
+  }
+
+  @Override
+  public int clearInferred(String achievementId) {
+    int removed = relationshipMapper.deleteInferredTopicsOfAchievement(achievementId);
+    relationshipMapper.deleteInferenceOfAchievement(achievementId);
+    return removed;
   }
 
   @Override
@@ -380,6 +428,11 @@ public class CatalogCoreRepositories
         achievementMapper.registerIdentifier(
             id, entityType, entityId, kind.name(), scope == null ? "" : scope, normalizedValue);
     return affected == 1;
+  }
+
+  @Override
+  public boolean hasRegistration(String entityType, String entityId) {
+    return achievementMapper.hasRegisteredIdentifier(entityType, entityId);
   }
 
   // ---------------------------------------------------------------------------

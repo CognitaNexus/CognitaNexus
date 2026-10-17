@@ -15,6 +15,8 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * 全局异常到 HTTP 状态的转换。
@@ -77,6 +79,22 @@ public class GlobalExceptionHandler {
   }
 
   /** 唯一约束冲突转为可解释的 409，而不是把数据库错误直接暴露给调用方。 */
+  /**
+   * 路径不存在。
+   *
+   * <p>Spring 6.1 起，未匹配任何处理器的请求抛出 {@link NoResourceFoundException}，而不是 404
+   * 直接返回。若不单独处理，它会被下面的兜底分支折叠成 500：调用方把「路径写错了」读成「服务器
+   * 坏了」，排查方向从一开始就是错的；每次探测还会在日志里留下一条 ERROR 堆栈，把真正的故障淹没。
+   */
+  @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+  public ResponseEntity<ApiResponse<Void>> handleNotFound(Exception ex) {
+    log.debug("路径不存在 message={}", ex.getMessage());
+    return ResponseEntity.status(ErrorCode.NOT_FOUND.httpStatus())
+        .body(
+            ApiResponse.failure(
+                ErrorCode.NOT_FOUND, "请求的路径不存在，请检查接口地址与版本前缀", TraceIdHolder.current()));
+  }
+
   @ExceptionHandler(DuplicateKeyException.class)
   public ResponseEntity<ApiResponse<Void>> handleDuplicate(
       DuplicateKeyException ex, HttpServletRequest request) {

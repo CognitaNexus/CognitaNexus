@@ -32,7 +32,8 @@ public interface GovernanceMapper {
       Instant createdAt,
       Instant resolvedAt,
       String resolvedBy,
-      String resolutionReason) {}
+      String resolutionReason,
+      String rebasedToId) {}
 
   /**
    * 登记候选。
@@ -63,7 +64,7 @@ public interface GovernanceMapper {
              right_achievement_id AS rightAchievementId,
              evidence::text AS evidenceJson, status AS status, created_at AS createdAt,
              resolved_at AS resolvedAt, resolved_by AS resolvedBy,
-             resolution_reason AS resolutionReason
+             resolution_reason AS resolutionReason, rebased_to_id AS rebasedToId
       FROM gov_dedup_candidate
       WHERE status = #{status}
       ORDER BY created_at DESC, id
@@ -78,6 +79,161 @@ public interface GovernanceMapper {
       """)
   long countCandidates(@Param("status") String status);
 
+  // ---------------------------------------------------------------------------
+  // 治理工作台：候选的筛选、排序与分档
+  // ---------------------------------------------------------------------------
+
+  /**
+   * 候选列表（带相似度）。
+   *
+   * <p>相似度作为独立列返回，而不是只留在 evidence 里：待办列表要按它排序、要按它分档，
+   * 让前端去解析 JSON 才能排序，等于把「可信度」这件核心信息变成展示细节。
+   *
+   * <p>排序走 {@code <choose>} 白名单分支而不是拼接字符串：拼接会把排序列变成注入面，
+   * 而白名单分支在取值非法时落到默认排序——这里的默认是「相似度降序」，
+   * 也就是「最可能重复的排在最前」，与治理人员的处理顺序一致。
+   */
+  @Select(
+      """
+      <script>
+      SELECT id AS id, achievement_type AS achievementType,
+             left_achievement_id AS leftAchievementId,
+             right_achievement_id AS rightAchievementId,
+             evidence::text AS evidenceJson, status AS status, created_at AS createdAt,
+             resolved_at AS resolvedAt, resolved_by AS resolvedBy,
+             resolution_reason AS resolutionReason, rebased_to_id AS rebasedToId,
+             coalesce((evidence->>'similarity')::numeric, 0) AS similarity
+      FROM gov_dedup_candidate
+      WHERE status = #{status}
+        <if test="minSimilarity != null">
+          AND coalesce((evidence->>'similarity')::numeric, 0) &gt;= #{minSimilarity}
+        </if>
+      ORDER BY
+        <choose>
+          <when test="sortBy == 'created_asc'">created_at ASC, id</when>
+          <when test="sortBy == 'created_desc'">created_at DESC, id</when>
+          <when test="sortBy == 'type_asc'">achievement_type ASC, coalesce((evidence->>'similarity')::numeric, 0) DESC, id</when>
+          <otherwise>coalesce((evidence->>'similarity')::numeric, 0) DESC, created_at ASC, id</otherwise>
+        </choose>
+      LIMIT #{limit} OFFSET #{offset}
+      </script>
+      """)
+  List<CandidateListRow> listCandidatesFiltered(
+      @Param("status") String status,
+      @Param("minSimilarity") Double minSimilarity,
+      @Param("sortBy") String sortBy,
+      @Param("limit") int limit,
+      @Param("offset") int offset);
+
+  @Select(
+      """
+      <script>
+      SELECT count(*) FROM gov_dedup_candidate
+      WHERE status = #{status}
+        <if test="minSimilarity != null">
+          AND coalesce((evidence->>'similarity')::numeric, 0) &gt;= #{minSimilarity}
+        </if>
+      </script>
+      """)
+  long countCandidatesFiltered(
+      @Param("status") String status, @Param("minSimilarity") Double minSimilarity);
+
+  /**
+   * 按相似度分档计数。
+   *
+   * <p>分档的意义在于「先做什么」：相似度为 1 的候选（同标题不同标识）与刚好过线的候选在
+   * 处理方式上完全不同——前者多为重复收录，后者多为无关论文的关键词巧合。只有一个总数时，
+   * 治理人员只能从第一条开始逐条看，而这正是积压会持续增长的原因。
+   *
+   * @param highLow 高置信下限（含）
+   * @param midLow 中置信下限（含）
+   */
+  @Select(
+      """
+      <script>
+      SELECT
+        count(*) FILTER (WHERE sim >= #{highLow}) AS highCount,
+        count(*) FILTER (WHERE sim >= #{midLow} AND sim &lt; #{highLow}) AS midCount,
+        count(*) FILTER (WHERE sim &lt; #{midLow}) AS lowCount,
+        count(*) AS total
+      FROM (
+        SELECT coalesce((evidence->>'similarity')::numeric, 0) AS sim
+        FROM gov_dedup_candidate WHERE status = #{status}
+      ) t
+      </script>
+      """)
+  CandidateBuckets countCandidateBuckets(
+      @Param("status") String status,
+      @Param("highLow") double highLow,
+      @Param("midLow") double midLow);
+
+  /** 候选列表行：实体字段 + 相似度（相似度单独成列，便于排序与分档）。 */
+  record CandidateListRow(
+      String id,
+      String achievementType,
+      String leftAchievementId,
+      String rightAchievementId,
+      String evidenceJson,
+      String status,
+      Instant createdAt,
+      Instant resolvedAt,
+      String resolvedBy,
+      String resolutionReason,
+      String rebasedToId,
+      Double similarity) {
+
+    /** 剥掉相似度列，回到基础候选行：相似度是查询附带值，不属于候选本身。 */
+    CandidateRow toRow() {
+      return new CandidateRow(
+          id,
+          achievementType,
+          leftAchievementId,
+          rightAchievementId,
+          evidenceJson,
+          status,
+          createdAt,
+          resolvedAt,
+          resolvedBy,
+          resolutionReason,
+          rebasedToId);
+    }
+  }
+
+  /** 相似度分档计数。 */
+  record CandidateBuckets(long highCount, long midCount, long lowCount, long total) {}
+
+  /**
+   * 候选两端成果的实时状态。
+   *
+   * <p>用 {@code = ANY} 一次取一批，且由调用方保证标识数量与一页候选相当（几十条）。不用
+   * {@code IN} 拼接字符串：待办列表的标识来自数据库，但仍然没有理由让取值走进 SQL 文本。
+   *
+   * <p>年份连同精度一起取：{@code year_precision} 为 {@code UNKNOWN} 时年份为 null，
+   * 只有把精度也拿回来才分得清「不知道年份」与「这一行没有年份字段」。
+   */
+  @Select(
+      """
+      SELECT id AS id, type AS achievementType, title AS title, data_nature AS dataNature,
+             visibility AS visibility, effective_status AS effectiveStatus,
+             merged_into_id AS mergedIntoId, publication_year AS publicationYear,
+             year_precision AS yearPrecision
+      FROM core_achievement
+      WHERE id = ANY (#{ids})
+      """)
+  List<AchievementStateRow> findAchievementStates(@Param("ids") String[] ids);
+
+  /** 成果实时状态行。 */
+  record AchievementStateRow(
+      String id,
+      String achievementType,
+      String title,
+      String dataNature,
+      String visibility,
+      String effectiveStatus,
+      String mergedIntoId,
+      Integer publicationYear,
+      String yearPrecision) {}
+
   @Select(
       """
       SELECT id AS id, achievement_type AS achievementType,
@@ -85,10 +241,37 @@ public interface GovernanceMapper {
              right_achievement_id AS rightAchievementId,
              evidence::text AS evidenceJson, status AS status, created_at AS createdAt,
              resolved_at AS resolvedAt, resolved_by AS resolvedBy,
-             resolution_reason AS resolutionReason
+             resolution_reason AS resolutionReason, rebased_to_id AS rebasedToId
       FROM gov_dedup_candidate WHERE id = #{id}
       """)
   Optional<CandidateRow> findCandidate(@Param("id") String id);
+
+  /**
+   * 两条实体之间的候选，不限状态、不分左右顺序。
+   *
+   * <p>改判前必须先问一句「最终实体这一对是不是已经被问过」：候选在 (左,右) 上有唯一约束，
+   * 若已存在一条同样的候选，改判应当把问题指向它而不是新建——否则新建会被唯一约束挡下，
+   * 而改判会失败在「一条已经问过的问题上」。
+   *
+   * <p>取最早登记的一条（created_at, id）：同一对实体在正常路径上只会有一条候选，出现多条只
+   * 可能是历史数据，此时指向最早的那条与「问题最早是什么时候提出的」一致。
+   */
+  @Select(
+      """
+      SELECT id AS id, achievement_type AS achievementType,
+             left_achievement_id AS leftAchievementId,
+             right_achievement_id AS rightAchievementId,
+             evidence::text AS evidenceJson, status AS status, created_at AS createdAt,
+             resolved_at AS resolvedAt, resolved_by AS resolvedBy,
+             resolution_reason AS resolutionReason, rebased_to_id AS rebasedToId
+      FROM gov_dedup_candidate
+      WHERE (left_achievement_id = #{leftId} AND right_achievement_id = #{rightId})
+         OR (left_achievement_id = #{rightId} AND right_achievement_id = #{leftId})
+      ORDER BY created_at, id
+      LIMIT 1
+      """)
+  Optional<CandidateRow> findCandidateBetween(
+      @Param("leftId") String leftId, @Param("rightId") String rightId);
 
   @Select(
       """
@@ -97,6 +280,21 @@ public interface GovernanceMapper {
         AND (left_achievement_id = #{achievementId} OR right_achievement_id = #{achievementId})
       """)
   long countOpenForAchievement(@Param("achievementId") String achievementId);
+
+  /**
+   * 两条实体之间的 OPEN 候选数（不分左右顺序）。
+   *
+   * <p>单独一条查询而不是把候选列表捞回来在内存里筛：待治理候选在最坏情况下是万级，为了回答
+   * 「这两条之间还有几条候选」把全表拉进应用层，会让一次只读预览变成一次全量扫描。
+   */
+  @Select(
+      """
+      SELECT count(*) FROM gov_dedup_candidate
+      WHERE status = 'OPEN'
+        AND ((left_achievement_id = #{leftId} AND right_achievement_id = #{rightId})
+          OR (left_achievement_id = #{rightId} AND right_achievement_id = #{leftId}))
+      """)
+  long countOpenBetween(@Param("leftId") String leftId, @Param("rightId") String rightId);
 
   /** 裁决候选。条件 status='OPEN' 保证重复裁决返回 0 行影响而不是覆盖既有结论。 */
   @Update(
@@ -108,6 +306,52 @@ public interface GovernanceMapper {
       """)
   int resolveCandidate(
       @Param("id") String id,
+      @Param("status") String status,
+      @Param("resolvedBy") String resolvedBy,
+      @Param("reason") String reason);
+
+  /**
+   * 把候选改判到另一条候选。
+   *
+   * <p>状态与承接指针在同一条语句里写入：分开写会留下一个「已标记改判、但看不出改判到哪」的
+   * 中间态，而这条中间态恰好是治理人员最需要查证的信息。条件 status='OPEN' 与单条裁决一致，
+   * 重复改判返回 0 行影响而不是覆盖既有结论。
+   */
+  @Update(
+      """
+      UPDATE gov_dedup_candidate
+      SET status = 'REBASED', resolved_at = now(), resolved_by = #{resolvedBy},
+          resolution_reason = #{reason}, rebased_to_id = #{rebasedToId}
+      WHERE id = #{id} AND status = 'OPEN'
+      """)
+  int resolveCandidateRebased(
+      @Param("id") String id,
+      @Param("resolvedBy") String resolvedBy,
+      @Param("reason") String reason,
+      @Param("rebasedToId") String rebasedToId);
+
+  /**
+   * 随合并一并裁决两条实体之间的 OPEN 候选。
+   *
+   * <p>为什么必须有这一步：候选问的是「这两条是不是同一条」，而合并就是对这个问题的回答。
+   * 合并完成后若候选仍留在 OPEN 里，它就变成一条谁也处理不掉的死条目——再点合并会被
+   * 「已被合并过」拒绝，点驳回又是在回答一个已经被回答过的问题。而工作台按相似度降序，
+   * 这类候选的相似度通常最高，于是它们会一直排在最前面，把真正待判断的候选挤到后面。
+   *
+   * <p>条件 status='OPEN' 与单条裁决一致：已经有人下过结论的候选不被覆盖。
+   */
+  @Update(
+      """
+      UPDATE gov_dedup_candidate
+      SET status = #{status}, resolved_at = now(), resolved_by = #{resolvedBy},
+          resolution_reason = #{reason}
+      WHERE status = 'OPEN'
+        AND ((left_achievement_id = #{leftId} AND right_achievement_id = #{rightId})
+          OR (left_achievement_id = #{rightId} AND right_achievement_id = #{leftId}))
+      """)
+  int resolveOpenCandidatesBetween(
+      @Param("leftId") String leftId,
+      @Param("rightId") String rightId,
       @Param("status") String status,
       @Param("resolvedBy") String resolvedBy,
       @Param("reason") String reason);
@@ -396,4 +640,79 @@ public interface GovernanceMapper {
 
   @Select("SELECT count(*) FROM gov_anomaly WHERE status = 'OPEN'")
   long countOpenAnomalies();
+
+  // ---------------------------------------------------------------------------
+  // 合并影响预览
+  // ---------------------------------------------------------------------------
+  //
+  // 「相似标题不得直接合并」意味着合并在本平台上永远是一次人工决定。人工决定的唯一依据是
+  // 「合并后会发生什么」，而合并的后果大部分是看不见的：被合并实体的元数据被丢弃、同一学者的
+  // 两条参与关系被合并成一条、来源归属因重复而不再挂接。这些都只写在台账快照里，事后才可读。
+  // 下面这组查询把后果提前取出来，使「看清再决定」成为可能，而不是「先合并再看台账」。
+
+  /** 参与关系预览行。带学者姓名，使「谁的哪条关系会迁移」可直接阅读，不必再去建映射。 */
+  record PreviewContributionRow(
+      String scholarId, String scholarName, String relationState, String role) {}
+
+  @Select(
+      """
+      SELECT c.scholar_id AS scholarId, coalesce(s.display_name, '') AS scholarName,
+             c.relation_state AS relationState, c.role AS role
+      FROM core_contribution c
+      LEFT JOIN core_scholar s ON s.id = c.scholar_id
+      WHERE c.achievement_id = #{achievementId}
+      ORDER BY c.scholar_id
+      """)
+  List<PreviewContributionRow> previewContributions(@Param("achievementId") String achievementId);
+
+  record PreviewSourceRow(String sourceId, String sourceRecordId) {}
+
+  @Select(
+      """
+      SELECT cas.source_id AS sourceId, cas.source_record_id AS sourceRecordId
+      FROM core_achievement_source cas
+      WHERE cas.achievement_id = #{achievementId}
+      ORDER BY cas.source_id, cas.source_record_id
+      """)
+  List<PreviewSourceRow> previewSourceLinks(@Param("achievementId") String achievementId);
+
+  @Select(
+      """
+      SELECT t.topic_id FROM core_achievement_topic t
+      WHERE t.achievement_id = #{achievementId}
+      ORDER BY t.topic_id
+      """)
+  List<String> previewTopicIds(@Param("achievementId") String achievementId);
+
+  record PreviewIdentifierRow(String identifierKind, String scope, String normalizedValue) {}
+
+  @Select(
+      """
+      SELECT r.identifier_kind AS identifierKind, r.scope AS scope,
+             r.normalized_value AS normalizedValue
+      FROM core_identifier_registry r
+      WHERE r.entity_type = #{entityType} AND r.entity_id = #{entityId}
+      ORDER BY r.identifier_kind, r.scope, r.normalized_value
+      """)
+  List<PreviewIdentifierRow> previewIdentifiers(
+      @Param("entityType") String entityType, @Param("entityId") String entityId);
+
+  /**
+   * 把被合并实体的稳定标识改指幸存实体。
+   *
+   * <p>唯一约束在 {@code (identifier_kind, scope, normalized_value)} 上、不按实体划分，所以同一条
+   * 标识不可能同时挂在两个实体上，改指不会冲突。
+   *
+   * <p>不转移会留下一个看不见的坑：标识仍指向已撤回实体，于是重复入库时标识查询命中一个
+   * WITHDRAWN 实体，而幸存实体则可能因为「没有稳定标识」永远不满足自动发布条件。
+   */
+  @Update(
+      """
+      UPDATE core_identifier_registry SET entity_id = #{survivorId}
+      WHERE entity_type = #{entityType} AND entity_id = #{mergedId}
+      """)
+  int moveIdentifiers(
+      @Param("entityType") String entityType,
+      @Param("mergedId") String mergedId,
+      @Param("survivorId") String survivorId);
 }

@@ -8,6 +8,7 @@ import com.cognitanexus.core.catalog.domain.IdentifierKind;
 import com.cognitanexus.core.catalog.domain.Scholar;
 import com.cognitanexus.core.catalog.domain.SourceRecord;
 import com.cognitanexus.sharedkernel.AchievementType;
+import com.cognitanexus.sharedkernel.RelationState;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -134,8 +135,16 @@ public interface CatalogRepositories {
         Instant sourceUpdatedAt,
         Instant receivedAt);
 
-    /** 标题相似候选检索，走三元组索引；仅用于生成候选，不用于自动合并。 */
-    List<Achievement> findSimilarByTitle(String titleNorm, double threshold, int limit);
+    /**
+     * 标题相似候选检索，走三元组索引；仅用于生成候选，不用于自动合并。
+     *
+     * <p>返回相似度而不是只返回实体：相似度是治理人员排序待办的唯一依据。把它丢掉之后，
+     * 下游只能拿阈值当相似度写进证据，几千条候选的证据里就会是同一个数字。
+     */
+    List<SimilarTitle> findSimilarByTitle(String titleNorm, double threshold, int limit);
+
+    /** 相似候选：实体与它的真实相似度必须成对传递。 */
+    record SimilarTitle(Achievement achievement, double similarity) {}
 
     /** 精确同标题匹配（归一后完全一致）。 */
     List<Achievement> findByExactTitle(String titleNorm, int limit);
@@ -207,7 +216,20 @@ public interface CatalogRepositories {
     /** 定位某学者在某成果上的关系标识；未建立关系时返回 empty。 */
     Optional<String> findContributionId(String scholarId, String achievementId);
 
+    Optional<Contribution> findContributionById(String contributionId);
+
     List<Contribution> listByScholar(String scholarId);
+
+    /**
+     * 按前置状态迁移关系状态，返回受影响行数。
+     *
+     * <p>用前置条件而不是无条件赋值：并发下「先到者生效、后到者失败」必须表现为可解释的 0 行，
+     * 否则本人的异议会被一个稍后到达的确认动作静默覆盖。
+     */
+    int transitionRelationState(String contributionId, RelationState from, RelationState to);
+
+    /** 指定关系状态的参与关系，用于治理端列出待裁决的争议。 */
+    List<Contribution> listByRelationState(RelationState state, int limit);
 
     void linkOrganization(String contributionId, String organizationId);
 
@@ -227,6 +249,14 @@ public interface CatalogRepositories {
 
     record Topic(String id, String canonicalName, String nameNorm, String sourceCategory) {}
 
+    /**
+     * 一条成果—领域归属，带上「这条归属是怎么来的」。
+     *
+     * @param assignmentKind SOURCE=来源元数据给出的分类，INFERRED=本系统按受控词表推断
+     * @param confidence 推断置信度 0..1；来源分类为 null（来源不提供这个概念）
+     */
+    record TopicAssignment(String topicId, String assignmentKind, java.math.BigDecimal confidence) {}
+
     /** 按规范名查找或创建；返回 topicId。 */
     String findOrCreate(String canonicalName);
 
@@ -235,6 +265,18 @@ public interface CatalogRepositories {
     void link(String achievementId, String topicId, String sourceCategory);
 
     List<String> listTopicIdsOf(String achievementId);
+
+    /** 带归属来源的领域列表。投影必须走这一条：只带 id 的列表会让查询侧无法区分来源与推断。 */
+    List<TopicAssignment> listAssignmentsOf(String achievementId);
+
+    /**
+     * 清除某成果由推断产生的全部领域归属与推断台账，返回被清掉的归属行数。
+     *
+     * <p>来源给出分类时调用。来源是权威，推断只是来源缺席时的替代品；替代品留着会与来源分类
+     * 并列显示，让读者以为该成果有两个独立来源的领域归属。台账一并清除，避免留下「推断为 X」
+     * 而库里实际挂的是来源分类这种前后不一致的痕迹。
+     */
+    int clearInferred(String achievementId);
 
     long countTopics();
   }
@@ -263,6 +305,9 @@ public interface CatalogRepositories {
         IdentifierKind kind,
         String scope,
         String normalizedValue);
+
+    /** 该实体是否有任何已登记的稳定标识。用于裁决后重评估发布时复核「有无稳定标识」这一条件。 */
+    boolean hasRegistration(String entityType, String entityId);
   }
 
   /** 字段级溯源。自动更新只写 SOURCE 级，不得覆盖人工与已审核值。 */

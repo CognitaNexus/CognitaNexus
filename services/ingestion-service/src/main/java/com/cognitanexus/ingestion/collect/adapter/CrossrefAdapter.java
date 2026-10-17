@@ -5,6 +5,7 @@ import com.cognitanexus.ingestion.collect.domain.CollectModels.CollectJob;
 import com.cognitanexus.ingestion.collect.domain.CollectModels.CollectedRecord;
 import com.cognitanexus.ingestion.collect.domain.CollectModels.FetchPage;
 import com.cognitanexus.ingestion.collect.domain.CollectModels.SourceRunConfig;
+import com.cognitanexus.ingestion.platform.util.MarkupText;
 import com.cognitanexus.sharedkernel.BusinessException;
 import com.cognitanexus.sharedkernel.DataNature;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -49,6 +50,10 @@ import java.util.Set;
  *
  * <p>刻意不采集的字段：许可与费用、作者邮箱、审稿信息。它们与「学术成果分享」这一用途无关，
  * 采集它们只会扩大个人信息面。
+ *
+ * <p>文本字段统一经 {@link MarkupText} 解码一层字符引用：Crossref 的 title / container-title /
+ * subject 是 XML 转义形式，不解码会让「Computer Speech &amp; Language」原样入库——页面上显示成
+ * 编码、检索搜不到、统计里同一份期刊算成两个名字。
  */
 public class CrossrefAdapter implements SourceAdapter {
 
@@ -155,7 +160,7 @@ public class CrossrefAdapter implements SourceAdapter {
       // 没有 DOI 的条目缺少稳定标识，无法参与幂等交接，跳过而不是编造一个标识
       return null;
     }
-    String title = firstText(item.path("title"));
+    String title = MarkupText.decodeEntities(firstText(item.path("title")));
     if (title == null) {
       return null;
     }
@@ -164,11 +169,19 @@ public class CrossrefAdapter implements SourceAdapter {
     put(payload, allowed, "kind", "PAPER");
     put(payload, allowed, "title", title);
     put(payload, allowed, "doi", doi);
-    put(payload, allowed, "venue", firstText(item.path("container-title")));
+    put(
+        payload,
+        allowed,
+        "venue",
+        MarkupText.decodeEntities(firstText(item.path("container-title"))));
     put(payload, allowed, "publicationYear", year(item.path("issued")));
     put(payload, allowed, "publishedDate", publishedDate(item.path("issued")));
-    put(payload, allowed, "abstractText", stripMarkup(text(item, "abstract")));
-    put(payload, allowed, "sourceCategory", firstText(item.path("subject")));
+    put(payload, allowed, "abstractText", cleanAbstract(text(item, "abstract")));
+    put(
+        payload,
+        allowed,
+        "sourceCategory",
+        MarkupText.decodeEntities(firstText(item.path("subject"))));
     put(payload, allowed, "topics", textList(item.path("subject")));
     put(payload, allowed, "authors", authors(item.path("author")));
     // 引用量与来源必须成对出现：只有数字而没有来源，前端无法说明「这是谁统计的」，
@@ -193,10 +206,9 @@ public class CrossrefAdapter implements SourceAdapter {
     for (JsonNode node : authorArray) {
       String family = text(node, "family");
       String given = text(node, "given");
-      String name = join(family, given);
+      String name = MarkupText.decodeEntities(join(family, given));
       if (name == null) {
-        String literal = text(node, "name");
-        name = literal;
+        name = MarkupText.decodeEntities(text(node, "name"));
       }
       if (name == null) {
         continue;
@@ -212,7 +224,7 @@ public class CrossrefAdapter implements SourceAdapter {
       }
       List<String> organizations = new ArrayList<>();
       for (JsonNode affiliation : node.path("affiliation")) {
-        String orgName = text(affiliation, "name");
+        String orgName = MarkupText.decodeEntities(text(affiliation, "name"));
         if (orgName != null) {
           organizations.add(orgName);
         }
@@ -266,12 +278,17 @@ public class CrossrefAdapter implements SourceAdapter {
     }
   }
 
-  /** 剥离 JATS/HTML 标签：Crossref 摘要带标签，原样入库会让摘要字段混入标记语言。 */
-  private static String stripMarkup(String raw) {
+  /**
+   * 清洗摘要：先剥 JATS/HTML 标签，再解码字符引用，最后折叠空白并截断。
+   *
+   * <p>顺序不能颠倒。若先解码，「&amp;lt;p&amp;gt;」会先变成「&lt;p&gt;」再被当成标签剥掉，
+   * 而那本来是一段要保留的正文。
+   */
+  private static String cleanAbstract(String raw) {
     if (raw == null) {
       return null;
     }
-    String text = raw.replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim();
+    String text = MarkupText.plain(raw).replaceAll("\\s+", " ").trim();
     if (text.isEmpty()) {
       return null;
     }
@@ -292,7 +309,7 @@ public class CrossrefAdapter implements SourceAdapter {
       for (JsonNode node : arrayNode) {
         String value = node.asText(null);
         if (value != null && !value.isBlank()) {
-          values.add(value.trim());
+          values.add(MarkupText.decodeEntities(value.trim()));
         }
       }
     }

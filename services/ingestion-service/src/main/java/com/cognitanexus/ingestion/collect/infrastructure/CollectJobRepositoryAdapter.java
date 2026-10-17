@@ -86,6 +86,16 @@ public class CollectJobRepositoryAdapter implements CollectRepositories.JobRepos
   }
 
   @Override
+  public int recordFetchFailure(String jobId, String lastError, int backoffSeconds) {
+    return mapper.recordFetchFailure(jobId, lastError, backoffSeconds);
+  }
+
+  @Override
+  public int clearFetchFailures(String jobId) {
+    return mapper.clearFetchFailures(jobId);
+  }
+
+  @Override
   public long countOpenJobs() {
     return mapper.countOpenJobs();
   }

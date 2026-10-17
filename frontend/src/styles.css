@@ -837,6 +837,88 @@ table.data td.num {
   word-break: break-word;
 }
 
+/* ------------------------------- 合并影响预览 ------------------------------- */
+
+/*
+ * 预览是一次「停下来看清楚」的动作，所以把它做成一个带细边线的独立区块，而不是又一块面板：
+ * 面板会和周围的卡片混在一起，读者会以为它只是另一段说明文字。区块内的两侧对照用等宽数字，
+ * 「幸存侧 / 被合并侧 / 结果」三列对齐后，读者可以不读文字只看数字判断这次合并值不值得做。
+ */
+.preview {
+  border: 1px solid var(--rule-strong);
+  border-left-width: 3px;
+  border-left-color: var(--accent);
+  border-radius: var(--radius);
+  background: var(--panel-alt);
+  padding: 13px 15px;
+  margin-top: 10px;
+}
+
+.preview-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.preview-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  padding: 10px 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  margin: 10px 0;
+}
+
+.preview-side {
+  min-width: 0;
+}
+
+.preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.preview-table th {
+  text-align: left;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  padding: 4px 8px 6px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.preview-table td {
+  padding: 7px 8px 7px 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+.preview-table td.mono {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.preview-details {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.preview-details summary {
+  cursor: pointer;
+  color: var(--text-dim);
+}
+
+.preview-details > div {
+  padding: 3px 0 3px 14px;
+  border-left: 2px solid var(--rule);
+  margin-top: 4px;
+  color: var(--text-dim);
+}
+
 /* ------------------------------- 首页 ------------------------------- */
 
 /*
@@ -1120,6 +1202,15 @@ main.page:focus {
 
   .metric-value {
     font-size: 24px;
+  }
+
+  /*
+   * 两侧对照折成上下两段。保持左右并列会把每条标题挤成竖排单列文字，
+   * 而「哪一条是幸存方」正是这一屏最需要看清的信息。
+   */
+  .preview-sides {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 
   .hero-modes {

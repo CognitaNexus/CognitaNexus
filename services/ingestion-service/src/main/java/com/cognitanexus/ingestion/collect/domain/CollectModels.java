@@ -69,7 +69,9 @@ public final class CollectModels {
       String leaseOwner,
       Instant leaseUntil,
       String lastError,
-      String createdBy) {}
+      String createdBy,
+      int consecutiveFailures,
+      Instant nextAttemptAt) {}
 
   /** 交接暂存记录。 */
   public record StagedRecord(

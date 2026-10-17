@@ -3,6 +3,7 @@ package com.cognitanexus.core.catalog.application;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.AchievementRepository;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.ContributionRepository;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.FieldProvenanceRepository;
+import com.cognitanexus.core.catalog.application.CatalogRepositories.IdentifierRegistryRepository;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.ScholarRepository;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.SourceRecordRepository;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.TopicRepository;
@@ -23,10 +24,14 @@ import com.cognitanexus.sharedkernel.BusinessException;
 import com.cognitanexus.sharedkernel.DataNature;
 import com.cognitanexus.sharedkernel.Visibility;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +45,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AdminCatalogService {
 
+  private static final Logger log = LoggerFactory.getLogger(AdminCatalogService.class);
+
   private final AchievementRepository achievements;
   private final ScholarRepository scholars;
   private final ContributionRepository contributions;
@@ -47,11 +54,13 @@ public class AdminCatalogService {
   private final CatalogRepositories.SourceConfigRepository sourceConfigs;
   private final TopicRepository topics;
   private final FieldProvenanceRepository provenance;
+  private final IdentifierRegistryRepository identifiers;
   private final GovernanceService governance;
   private final PublicCatalogQueryService publicCatalog;
   private final OutboxStore outbox;
   private final AuditRecorder audit;
   private final PublicProjectionAssembler projections;
+  private final CatalogChangePublisher catalogChanges;
 
   public AdminCatalogService(
       AchievementRepository achievements,
@@ -61,11 +70,13 @@ public class AdminCatalogService {
       CatalogRepositories.SourceConfigRepository sourceConfigs,
       TopicRepository topics,
       FieldProvenanceRepository provenance,
+      IdentifierRegistryRepository identifiers,
       GovernanceService governance,
       PublicCatalogQueryService publicCatalog,
       OutboxStore outbox,
       AuditRecorder audit,
-      PublicProjectionAssembler projections) {
+      PublicProjectionAssembler projections,
+      CatalogChangePublisher catalogChanges) {
     this.achievements = achievements;
     this.scholars = scholars;
     this.contributions = contributions;
@@ -73,11 +84,13 @@ public class AdminCatalogService {
     this.sourceConfigs = sourceConfigs;
     this.topics = topics;
     this.provenance = provenance;
+    this.identifiers = identifiers;
     this.governance = governance;
     this.publicCatalog = publicCatalog;
     this.outbox = outbox;
     this.audit = audit;
     this.projections = projections;
+    this.catalogChanges = catalogChanges;
   }
 
   /** 运行概览：权威计数 + 事件积压 + 治理待办。 */
@@ -164,7 +177,10 @@ public class AdminCatalogService {
     if (achievement.merged()) {
       throw BusinessException.businessRule("该成果已被合并，请对幸存实体操作");
     }
-    if (!achievement.effectiveStatus().publiclyEligible()) {
+    // 这里要判的是「当前是否处于待治理状态」，不是 publiclyEligible()。后者表达的是「已经是
+    // EFFECTIVE」，用它取反会把待治理成果全部挡在门外——人工确认发布对唯一该走这条路的实体
+    // 永远返回 409，而错误文案还写着「只有待治理状态的成果可以确认发布」，正好相反。
+    if (achievement.effectiveStatus() != EffectiveStatus.PENDING_GOVERNANCE) {
       throw BusinessException.versionConflict("只有待治理状态的成果可以确认发布");
     }
     if (!achievement.dataNature().eligibleForRealityView()) {
@@ -207,27 +223,98 @@ public class AdminCatalogService {
     // 同一个断言写在两处，早晚会有一处被新调用点继承而另一处被改掉（SourceIntakeService
     // 就出过这个问题：事件自称 PUBLIC、实体仍是 RESTRICTED，于是检索能搜到、权威侧却是 404）。
     Achievement refreshed = achievements.findById(achievementId).orElseThrow();
-
-    Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("changeKind", EventTypes.CHANGE_UPSERT);
-    payload.put("achievementId", achievementId);
-    payload.put("type", refreshed.type().name());
-    payload.put("title", refreshed.title());
-    payload.put("titleNorm", refreshed.titleNorm());
-    payload.put("dataNature", refreshed.dataNature().name());
-    payload.put("visibility", refreshed.visibility().name());
-    payload.put("effectiveStatus", refreshed.effectiveStatus().name());
-    payload.put("publicationYear", refreshed.publicationYear().year());
-    payload.put("contributions", projections.contributionsOf(achievementId));
-    payload.put("topics", projections.topicIdsOf(achievementId));
-    payload.put("topicViews", projections.topicsOf(achievementId));
-    outbox.append(
-        OutboxEvent.builder(
-                EventTypes.CATALOG_CHANGE_COMMITTED, EventTypes.AGG_ACHIEVEMENT, achievementId)
-            .aggregateVersion(achievement.version() + 1)
-            .payload(payload));
+    publishCatalogChange(refreshed, achievement.version() + 1);
 
     return briefView(refreshed);
+  }
+
+  /**
+   * 外发一次目录成果变更事件。
+   *
+   * <p>装配口径收敛在 {@link CatalogChangePublisher}：人工确认发布与来源自动发布必须发出字段集
+   * 完全相同的事件，否则查询侧重建出来的投影会取决于「这条成果当年是怎么进公开目录的」。
+   */
+  private void publishCatalogChange(Achievement achievement, long aggregateVersion) {
+    catalogChanges.publish(achievement, aggregateVersion);
+  }
+
+  /**
+   * 裁决后重评估发布。
+   *
+   * <p>为什么需要它：成果停在待治理状态的原因之一是「存在未裁决的相似候选」。人把候选裁决完，
+   * 这个原因就消失了，但成果不会自己回到公开目录——除非有人再逐条点一遍「确认发布」。
+   * 于是积压的成因与解除条件对不上：工作台把候选清空，成果仍原地不动。
+   *
+   * <p>重评估只重跑既定的自动发布条件，一条都不放宽：仍有未裁决候选、没有稳定标识、数据性质
+   * 不是真实、类型扩展不唯一，任一不满足就继续留在待治理。它也不冒充人工审核——审计事件的动作
+   * 是 {@code ACHIEVEMENT_RELEASE_RECHECKED}，与人工「确认发布」分得开，事后能看出是谁放行的。
+   *
+   * @return 本次实际进入公开目录的成果标识
+   */
+  @Transactional
+  public List<String> recheckReleaseAfterResolution(
+      Collection<String> achievementIds, ActorContext actor, String reason) {
+    if (achievementIds == null || achievementIds.isEmpty()) {
+      return List.of();
+    }
+    String note = reason == null || reason.isBlank() ? "候选裁决后重评估发布" : reason;
+    List<String> released = new ArrayList<>();
+    for (String achievementId : new LinkedHashSet<>(achievementIds)) {
+      if (achievementId == null || achievementId.isBlank()) {
+        continue;
+      }
+      Optional<Achievement> found = achievements.findById(achievementId);
+      if (found.isEmpty()) {
+        continue;
+      }
+      Achievement achievement = found.get();
+      // 只对「待治理」的成果重评估：已生效的不必再评，已撤回与已合并的都不该由一次裁决重新公开。
+      if (achievement.merged()
+          || achievement.effectiveStatus() != EffectiveStatus.PENDING_GOVERNANCE) {
+        continue;
+      }
+      if (!achievement.dataNature().eligibleForRealityView()) {
+        continue;
+      }
+      if (governance.countOpenCandidatesFor(achievementId) > 0) {
+        continue;
+      }
+      if (!identifiers.hasRegistration("ACHIEVEMENT", achievementId)) {
+        continue;
+      }
+      if (countExtensions(achievementId, achievement) != 1) {
+        continue;
+      }
+      int affected =
+          achievements.updatePublicationState(
+              achievementId,
+              EffectiveStatus.EFFECTIVE.name(),
+              Visibility.PUBLIC.name(),
+              achievement.version());
+      if (affected != 1) {
+        continue;
+      }
+      audit.record(
+          AuditRecorder.AuditEntry.of(
+              actor,
+              "ACHIEVEMENT_RELEASE_RECHECKED",
+              "ACHIEVEMENT",
+              achievementId,
+              Map.of(
+                  "effectiveStatus", achievement.effectiveStatus().name(),
+                  "version", achievement.version()),
+              Map.of(
+                  "effectiveStatus", EffectiveStatus.EFFECTIVE.name(),
+                  "visibility", Visibility.PUBLIC.name()),
+              note));
+      Achievement refreshed = achievements.findById(achievementId).orElseThrow();
+      publishCatalogChange(refreshed, achievement.version() + 1);
+      released.add(achievementId);
+    }
+    if (!released.isEmpty()) {
+      log.info("裁决后重评估发布 released={} 条", released.size());
+    }
+    return released;
   }
 
   /**

@@ -83,9 +83,26 @@ public interface CollectRepositories {
 
     int recordError(String jobId, String lastError);
 
+    /**
+     * 记录一次抓取失败并把下一次尝试推到 {@code backoffSeconds} 秒之后。
+     *
+     * <p>抓取失败的退避此前是缺失的：任务由固定间隔的调度驱动，上游持续失败时每 2 秒重试一次、
+     * 每次都从同一游标重新翻页。失败计数与退避时刻必须一次写成，否则中间状态会被取任务的查询
+     * 当成「可以立刻重试」。
+     */
+    int recordFetchFailure(String jobId, String lastError, int backoffSeconds);
+
+    /** 抓取成功：连续失败计数归零、退避窗口取消。已经归零时不产生写入。 */
+    int clearFetchFailures(String jobId);
+
     long countOpenJobs();
 
-    /** 可执行的任务标识，供后台执行器轮询；不含已暂停与已结束的任务。 */
+    /**
+     * 可执行的任务标识，供后台执行器轮询；不含已暂停、已结束以及仍在退避窗口内的任务。
+     *
+     * <p>退避在取任务时过滤，而不是让执行器自己去判断该不该跳过：把「哪些任务现在能做」收在一处，
+     * 后台执行器就只是「拿到就做」，不会出现两处各有一套判据。
+     */
     List<String> listRunnableJobIds(int limit);
   }
 

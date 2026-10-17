@@ -196,6 +196,29 @@ public class CollectUnitOfWork {
     jobs.recordError(jobId, truncate(error, 400));
   }
 
+  /**
+   * 记录一次抓取失败并把下一次尝试排到 {@code backoffSeconds} 秒之后。
+   *
+   * <p>与 {@link #recordJobError} 分开而不是加个参数：两者的语义不同。前者只写一行错误信息
+   * （用于留痕），后者改变任务的<b>可执行性</b>——接下来一段时间内调度根本不会取它。把它们合成
+   * 一个方法，调用方很容易在只想记错误的地方顺手引入一次退避。
+   */
+  @Transactional
+  public void recordFetchFailure(String jobId, String error, int backoffSeconds) {
+    jobs.recordFetchFailure(jobId, truncate(error, 400), backoffSeconds);
+  }
+
+  /**
+   * 抓取恢复正常：连续失败计数归零、退避窗口取消。
+   *
+   * <p>不写运行日志：这是一次状态复位，不是一次事件；把它也记一条日志会让「失败—成功」交替时
+   * 的日志量翻倍，而这两条的信息（失败次数归零）在执行日志的成功行里已经能读出来。
+   */
+  @Transactional
+  public void clearFetchFailures(String jobId) {
+    jobs.clearFetchFailures(jobId);
+  }
+
   /** 运行日志单独提交：它是观测数据，不应把业务事务拖长，也不应因日志写失败而回滚业务。 */
   @Transactional
   public void appendLog(

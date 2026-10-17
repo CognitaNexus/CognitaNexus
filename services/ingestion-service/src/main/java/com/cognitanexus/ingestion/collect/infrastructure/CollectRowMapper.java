@@ -57,7 +57,9 @@ final class CollectRowMapper {
         row.leaseOwner(),
         row.leaseUntil(),
         row.lastError(),
-        row.createdBy());
+        row.createdBy(),
+        row.consecutiveFailures(),
+        row.nextAttemptAt());
   }
 
   static StagedRecord toStaged(CollectMapper.StagedRow row) {

@@ -39,12 +39,23 @@ public interface SearchMapper {
 
   record NameRow(String achievementId, String name) {}
 
-  record TopicRow(String achievementId, String topicId, String canonicalName) {}
+  record TopicRow(
+      String achievementId,
+      String topicId,
+      String canonicalName,
+      String assignmentKind,
+      Double confidence) {}
 
   record ScholarHit(
       String scholarId, String scholarName, long achievementCount, Integer firstYear) {}
 
-  record TopicFacet(String topicId, String canonicalName, long achievementCount) {}
+  /** 领域分面。sourceCount / inferredCount 把来源分类与系统推断分开计数，两者之和即总数。 */
+  record TopicFacet(
+      String topicId,
+      String canonicalName,
+      long achievementCount,
+      long sourceCount,
+      long inferredCount) {}
 
   /**
    * 计数。
@@ -172,12 +183,13 @@ public interface SearchMapper {
   @Select(
       """
       <script>
-      SELECT t.achievement_id, t.topic_id, t.canonical_name
+      SELECT t.achievement_id, t.topic_id, t.canonical_name,
+             t.assignment_kind, t.confidence
       FROM qry_achievement_topic t
       WHERE t.generation = #{generation}
         AND t.achievement_id IN
         <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
-      ORDER BY t.achievement_id, t.topic_id
+      ORDER BY t.achievement_id, (t.assignment_kind = 'SOURCE') DESC, t.topic_id
       </script>
       """)
   List<TopicRow> listTopics(@Param("generation") String generation, @Param("ids") List<String> ids);
@@ -250,7 +262,11 @@ public interface SearchMapper {
       <script>
       SELECT t.topic_id,
              max(t.canonical_name) AS canonical_name,
-             count(DISTINCT t.achievement_id) AS achievement_count
+             count(DISTINCT t.achievement_id) AS achievement_count,
+             count(DISTINCT t.achievement_id) FILTER (WHERE t.assignment_kind = 'SOURCE')
+               AS source_count,
+             count(DISTINCT t.achievement_id) FILTER (WHERE t.assignment_kind = 'INFERRED')
+               AS inferred_count
       FROM qry_achievement_topic t
       JOIN qry_achievement a
         ON a.generation = t.generation AND a.achievement_id = t.achievement_id

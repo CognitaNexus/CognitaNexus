@@ -82,7 +82,8 @@ public class SourceRunConfigService {
     if (command.adapterKind() == null) {
       throw BusinessException.invalidArgument("必须指定适配器种类");
     }
-    if (command.queryExpression() == null || command.queryExpression().isBlank()) {
+    if ((command.queryExpression() == null || command.queryExpression().isBlank())
+        && !command.adapterKind().supportsFullScan()) {
       throw BusinessException.invalidArgument("必须指定查询表达式；空查询会抓取整个来源");
     }
     String licenseState =
@@ -107,7 +108,7 @@ public class SourceRunConfigService {
                 : command.displayName().trim(),
             command.adapterKind(),
             command.baseEndpoint(),
-            command.queryExpression().trim(),
+            command.queryExpression() == null ? "" : command.queryExpression().trim(),
             command.pageSize() <= 0 ? 100 : command.pageSize(),
             List.of(),
             "0",
@@ -240,6 +241,10 @@ public class SourceRunConfigService {
         command.pageSize(),
         command.licenseReviewState(),
         command.licenseNote());
+    // 审计的 after 取<b>实际生效后</b>的值，不回显请求参数：本接口是部分更新，未传的字段
+    // 在请求里是 null，既会让 Map.of 直接抛空指针（表现为 500），又会在审计里留下一片
+    // 「字段被清空」的假象——而它们其实原样保留。
+    SourceRunConfig updated = configs.findById(sourceId).orElseThrow();
     audit.record(
         actor,
         "INGESTION_SOURCE_PARAMETERS_UPDATED",
@@ -247,11 +252,11 @@ public class SourceRunConfigService {
         sourceId,
         before,
         Map.of(
-            "queryExpression", command.queryExpression(),
-            "pageSize", command.pageSize(),
-            "licenseReviewState", command.licenseReviewState()),
+            "queryExpression", updated.queryExpression(),
+            "pageSize", updated.pageSize(),
+            "licenseReviewState", updated.licenseReviewState()),
         command.reason() == null ? "更新采集执行参数" : command.reason());
-    return configs.findById(sourceId).orElseThrow();
+    return updated;
   }
 
   /** 供执行器判断能否运行：需要本地开关、许可批准、且本地副本版本与 core 一致。 */

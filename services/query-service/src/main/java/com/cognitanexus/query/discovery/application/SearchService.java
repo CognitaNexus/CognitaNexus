@@ -164,6 +164,10 @@ public class SearchService {
       view.put("topicId", facet.topicId());
       view.put("canonicalName", facet.canonicalName());
       view.put("achievementCount", facet.achievementCount());
+      // 来源与推断分开计数：合计是总量，但读者要能看出这份量里有多少是元数据事实、
+      // 有多少是本系统按词表推出来的。只给总数会让分面看起来比实际更有把握。
+      view.put("sourceProvided", facet.sourceCount());
+      view.put("systemInferred", facet.inferredCount());
       topicViews.add(view);
     }
     data.put("topics", topicViews);
@@ -235,6 +239,12 @@ public class SearchService {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("topicId", row.topicId());
     view.put("canonicalName", row.canonicalName());
+    // 检索结果卡片与详情页读的是同一套领域，标注必须一起给：结果列表里不标，用户就要点进去
+    // 才知道这个领域是来源给的还是系统推断的——而列表恰恰是他最先看到的地方。
+    view.put("assignmentKind", row.assignmentKind());
+    if (row.confidence() != null) {
+      view.put("confidence", row.confidence());
+    }
     return view;
   }
 }

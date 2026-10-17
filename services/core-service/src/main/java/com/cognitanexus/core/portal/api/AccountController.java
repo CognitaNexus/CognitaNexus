@@ -1,5 +1,6 @@
 package com.cognitanexus.core.portal.api;
 
+import com.cognitanexus.core.catalog.application.ContributionRelationService;
 import com.cognitanexus.core.identity.domain.PortalAuthority;
 import com.cognitanexus.core.platform.security.ActorContextHolder;
 import com.cognitanexus.core.platform.web.ApiResponse;
@@ -39,9 +40,11 @@ public class AccountController {
   private static final long MAX_EVIDENCE_BYTES = 10L * 1024 * 1024;
 
   private final PortalService portal;
+  private final ContributionRelationService relations;
 
-  public AccountController(PortalService portal) {
+  public AccountController(PortalService portal, ContributionRelationService relations) {
     this.portal = portal;
+    this.relations = relations;
   }
 
   @PostMapping("/claims")
@@ -160,6 +163,48 @@ public class AccountController {
     return ResponseEntity.ok(ApiResponse.ok(items, TraceIdHolder.current()));
   }
 
+  /** 我的成果：当前账号所管理门户上的参与关系，含当前状态与可执行动作。 */
+  @GetMapping("/contributions")
+  public ResponseEntity<ApiResponse<List<Map<String, Object>>>> myContributions(
+      @RequestParam String scholarId, @RequestParam(defaultValue = "50") int limit) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            relations.listOwnedContributions(
+                ActorContextHolder.currentOrNull(), scholarId, limit),
+            TraceIdHolder.current()));
+  }
+
+  /** 本人确认参与关系。确认只改状态，不删除关系、不覆盖来源事实。 */
+  @PostMapping("/contributions/{contributionId}/confirm")
+  public ResponseEntity<ApiResponse<Map<String, Object>>> confirmContribution(
+      @PathVariable String contributionId) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            relations.confirmByOwner(ActorContextHolder.currentOrNull(), contributionId),
+            TraceIdHolder.current()));
+  }
+
+  /** 本人对参与关系提出异议：须写理由，裁决前不计入确定合作。 */
+  @PostMapping("/contributions/{contributionId}/dispute")
+  public ResponseEntity<ApiResponse<Map<String, Object>>> disputeContribution(
+      @PathVariable String contributionId, @RequestBody DisputeRequest body) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            relations.disputeByOwner(
+                ActorContextHolder.currentOrNull(), contributionId, body.reason()),
+            TraceIdHolder.current()));
+  }
+
+  /** 本人撤回异议：关系回到自动关联，而不是直接变成已确认。 */
+  @PostMapping("/contributions/{contributionId}/withdraw-dispute")
+  public ResponseEntity<ApiResponse<Map<String, Object>>> withdrawDispute(
+      @PathVariable String contributionId) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            relations.withdrawDisputeByOwner(ActorContextHolder.currentOrNull(), contributionId),
+            TraceIdHolder.current()));
+  }
+
   static Map<String, Object> claimView(ClaimRequest claim) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", claim.id());
@@ -196,4 +241,7 @@ public class AccountController {
 
   /** 提交变更请求体。 */
   public record SubmitChangeRequest(String scholarId, String fieldName, String proposedValue) {}
+
+  /** 关系异议请求体。 */
+  public record DisputeRequest(String reason) {}
 }

@@ -26,9 +26,45 @@ public interface AnalyticsMapper {
 
   record CountRow(String bucket, long amount) {}
 
+  /**
+   * 领域计数，按归属来源拆开。
+   *
+   * <p>两者之和恒等于 amount：归属表主键是 (成果, 领域)，同一成果在同一领域上只可能有一条归属，
+   * 因此不存在被同时计入两侧的行。
+   *
+   * <p>名称与标识一起返回：榜单只给 id 时读者看到的是一串无意义的标识符，而领域名称就在
+   * 归属表上，取 max 即可得到（同一领域在同一代内的名称一致）。
+   */
+  record TopicCountRow(
+      String bucket,
+      String canonicalName,
+      long amount,
+      long sourceAmount,
+      long inferredAmount) {}
+
   record YearRow(Integer year, long amount) {}
 
   record CitationRow(String citationSource, long achievementCount, long citationSum) {}
+
+  /** 领域概览表头。canonicalName 可能为空（投影时来源未给名称），由调用方决定如何展示。 */
+  record TopicHeaderRow(
+      String canonicalName, long achievements, long sourceAmount, long inferredAmount) {}
+
+  /** 领域内的学者排名行。name 允许为空，缺失时由调用方退回显示标识。 */
+  record ScholarRow(String scholarId, String name, long achievements) {}
+
+  /**
+   * 领域代表成果行。
+   *
+   * <p>引用量与来源一起返回，因为不同来源的引用量口径不同、不可相互比较；调用方排序时只能把
+   * 引用量当作同来源内的次序，不能把它当成跨来源可比的绝对指标。
+   */
+  record TopicAchievementRow(
+      String achievementId,
+      String title,
+      Integer publicationYear,
+      Long citationCount,
+      String citationSource) {}
 
   @Select(
       """
@@ -158,7 +194,13 @@ public interface AnalyticsMapper {
   @Select(
       """
       <script>
-      SELECT t.topic_id AS bucket, count(DISTINCT t.achievement_id) AS amount
+      SELECT t.topic_id AS bucket,
+             max(t.canonical_name) AS canonicalName,
+             count(DISTINCT t.achievement_id) AS amount,
+             count(DISTINCT t.achievement_id) FILTER (WHERE t.assignment_kind = 'SOURCE')
+               AS sourceAmount,
+             count(DISTINCT t.achievement_id) FILTER (WHERE t.assignment_kind = 'INFERRED')
+               AS inferredAmount
       FROM qry_achievement_topic t
       JOIN qry_achievement a
         ON a.generation = t.generation AND a.achievement_id = t.achievement_id
@@ -170,7 +212,7 @@ public interface AnalyticsMapper {
       LIMIT #{limit}
       </script>
       """)
-  List<CountRow> topTopics(
+  List<TopicCountRow> topTopics(
       @Param("generation") String generation,
       @Param("dataNature") String dataNature,
       @Param("limit") int limit);
@@ -232,4 +274,228 @@ public interface AnalyticsMapper {
       """)
   List<CitationRow> citationsBySource(
       @Param("generation") String generation, @Param("dataNature") String dataNature);
+
+  // ---------------------------------------------------------------------------------------
+  // 领域洞察：单个领域在当前公开口径下的构成。所有查询共用同一组过滤条件，避免各类计数
+  // 因为各自漏掉一条过滤而在同一个页面上互相矛盾。
+  // ---------------------------------------------------------------------------------------
+
+  @Select(
+      """
+      <script>
+      SELECT max(t.canonical_name) AS canonicalName,
+             count(DISTINCT t.achievement_id) AS achievements,
+             count(DISTINCT t.achievement_id) FILTER (WHERE t.assignment_kind = 'SOURCE')
+               AS sourceAmount,
+             count(DISTINCT t.achievement_id) FILTER (WHERE t.assignment_kind = 'INFERRED')
+               AS inferredAmount
+      FROM qry_achievement_topic t
+      JOIN qry_achievement a
+        ON a.generation = t.generation AND a.achievement_id = t.achievement_id
+      WHERE t.generation = #{generation} AND t.topic_id = #{topicId}
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+      </script>
+      """)
+  TopicHeaderRow topicHeader(
+      @Param("generation") String generation,
+      @Param("topicId") String topicId,
+      @Param("dataNature") String dataNature);
+
+  @Select(
+      """
+      <script>
+      SELECT a.publication_year AS year, count(DISTINCT t.achievement_id) AS amount
+      FROM qry_achievement_topic t
+      JOIN qry_achievement a
+        ON a.generation = t.generation AND a.achievement_id = t.achievement_id
+      WHERE t.generation = #{generation} AND t.topic_id = #{topicId}
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+      GROUP BY a.publication_year
+      ORDER BY a.publication_year NULLS FIRST
+      </script>
+      """)
+  List<YearRow> topicByYear(
+      @Param("generation") String generation,
+      @Param("topicId") String topicId,
+      @Param("dataNature") String dataNature);
+
+  @Select(
+      """
+      <script>
+      SELECT a.type AS bucket, count(DISTINCT t.achievement_id) AS amount
+      FROM qry_achievement_topic t
+      JOIN qry_achievement a
+        ON a.generation = t.generation AND a.achievement_id = t.achievement_id
+      WHERE t.generation = #{generation} AND t.topic_id = #{topicId}
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+      GROUP BY a.type
+      ORDER BY amount DESC, a.type
+      </script>
+      """)
+  List<CountRow> topicByType(
+      @Param("generation") String generation,
+      @Param("topicId") String topicId,
+      @Param("dataNature") String dataNature);
+
+  @Select(
+      """
+      <script>
+      SELECT o.organization AS bucket, count(DISTINCT o.achievement_id) AS amount
+      FROM qry_achievement_topic t
+      JOIN qry_contribution_org o
+        ON o.generation = t.generation AND o.achievement_id = t.achievement_id
+      JOIN qry_achievement a
+        ON a.generation = t.generation AND a.achievement_id = t.achievement_id
+      WHERE t.generation = #{generation} AND t.topic_id = #{topicId}
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        AND o.organization IS NOT NULL AND btrim(o.organization) &lt;&gt; ''
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+      GROUP BY o.organization
+      ORDER BY amount DESC, o.organization
+      LIMIT #{limit}
+      </script>
+      """)
+  List<CountRow> topicOrganizations(
+      @Param("generation") String generation,
+      @Param("topicId") String topicId,
+      @Param("dataNature") String dataNature,
+      @Param("limit") int limit);
+
+  /** 领域内机构未知的成果数。与总量单列口径一致：未知不并入任何机构。 */
+  @Select(
+      """
+      <script>
+      SELECT count(DISTINCT t.achievement_id)
+      FROM qry_achievement_topic t
+      JOIN qry_achievement a
+        ON a.generation = t.generation AND a.achievement_id = t.achievement_id
+      WHERE t.generation = #{generation} AND t.topic_id = #{topicId}
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+        AND NOT EXISTS (
+          SELECT 1 FROM qry_contribution_org o
+          WHERE o.generation = t.generation AND o.achievement_id = t.achievement_id
+            AND o.organization IS NOT NULL AND btrim(o.organization) &lt;&gt; '')
+      </script>
+      """)
+  long topicUnknownOrganization(
+      @Param("generation") String generation,
+      @Param("topicId") String topicId,
+      @Param("dataNature") String dataNature);
+
+  /**
+   * 领域内学者排名。
+   *
+   * <p>只计 AUTO 与 SELF_CONFIRMED：待核验/争议/已排除的关系不能因为「出现过名字」就进入排名，
+   * 那等于把一条未确认的归属当成既成事实展示给读者。
+   */
+  @Select(
+      """
+      <script>
+      SELECT c.scholar_id AS scholarId,
+             max(c.scholar_name) AS name,
+             count(DISTINCT c.achievement_id) AS achievements
+      FROM qry_achievement_topic t
+      JOIN qry_contribution c
+        ON c.generation = t.generation AND c.achievement_id = t.achievement_id
+      JOIN qry_achievement a
+        ON a.generation = t.generation AND a.achievement_id = t.achievement_id
+      WHERE t.generation = #{generation} AND t.topic_id = #{topicId}
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        AND c.relation_state IN ('AUTO', 'SELF_CONFIRMED')
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+      GROUP BY c.scholar_id
+      ORDER BY achievements DESC, c.scholar_id
+      LIMIT #{limit}
+      </script>
+      """)
+  List<ScholarRow> topicScholars(
+      @Param("generation") String generation,
+      @Param("topicId") String topicId,
+      @Param("dataNature") String dataNature,
+      @Param("limit") int limit);
+
+  /**
+   * 领域内学者总数。
+   *
+   * <p>榜单是截断的，总量必须单独数：用榜单行数当总量，会让「共 12 位学者」随着上限从 10 调到
+   * 20 而变成 20，读者看不出这个数字其实是页面上限而不是事实。
+   */
+  @Select(
+      """
+      <script>
+      SELECT count(DISTINCT c.scholar_id)
+      FROM qry_achievement_topic t
+      JOIN qry_contribution c
+        ON c.generation = t.generation AND c.achievement_id = t.achievement_id
+      JOIN qry_achievement a
+        ON a.generation = t.generation AND a.achievement_id = t.achievement_id
+      WHERE t.generation = #{generation} AND t.topic_id = #{topicId}
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        AND c.relation_state IN ('AUTO', 'SELF_CONFIRMED')
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+      </script>
+      """)
+  long topicScholarCount(
+      @Param("generation") String generation,
+      @Param("topicId") String topicId,
+      @Param("dataNature") String dataNature);
+
+  @Select(
+      """
+      <script>
+      SELECT a.venue AS bucket, count(DISTINCT t.achievement_id) AS amount
+      FROM qry_achievement_topic t
+      JOIN qry_achievement a
+        ON a.generation = t.generation AND a.achievement_id = t.achievement_id
+      WHERE t.generation = #{generation} AND t.topic_id = #{topicId}
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        AND a.venue IS NOT NULL AND btrim(a.venue) &lt;&gt; ''
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+      GROUP BY a.venue
+      ORDER BY amount DESC, a.venue
+      LIMIT #{limit}
+      </script>
+      """)
+  List<CountRow> topicVenues(
+      @Param("generation") String generation,
+      @Param("topicId") String topicId,
+      @Param("dataNature") String dataNature,
+      @Param("limit") int limit);
+
+  /**
+   * 领域代表成果。
+   *
+   * <p>排序键是「发表年份降序，同年再按引用量降序」而不是「按引用量降序」：引用量来自不同来源
+   * 时口径不同，跨来源比较没有意义；当年份相同时读者比较的通常是同一来源的同一批记录，这时
+   * 引用量才有次序含义。这也是本查询把 citation_source 一并返回的原因。
+   */
+  @Select(
+      """
+      <script>
+      SELECT a.achievement_id AS achievementId,
+             a.title AS title,
+             a.publication_year AS publicationYear,
+             a.citation_count AS citationCount,
+             a.citation_source AS citationSource
+      FROM qry_achievement_topic t
+      JOIN qry_achievement a
+        ON a.generation = t.generation AND a.achievement_id = t.achievement_id
+      WHERE t.generation = #{generation} AND t.topic_id = #{topicId}
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+      ORDER BY a.publication_year DESC NULLS LAST,
+               a.citation_count DESC NULLS LAST,
+               a.achievement_id
+      LIMIT #{limit}
+      </script>
+      """)
+  List<TopicAchievementRow> topicRepresentative(
+      @Param("generation") String generation,
+      @Param("topicId") String topicId,
+      @Param("dataNature") String dataNature,
+      @Param("limit") int limit);
 }
