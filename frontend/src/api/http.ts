@@ -77,6 +77,49 @@ function readCookie(name: string): string {
   return ''
 }
 
+/**
+ * 取一枚新的 CSRF 令牌。
+ *
+ * <p><b>为什么每次写请求都要重取。</b>core 的 CSRF 校验在通过之后会清掉 XSRF-TOKEN Cookie
+ * （响应头带上 `Max-Age=0`），也就是说令牌是<b>一次性</b>的。浏览器里连续做两次写操作时，
+ * 第二次手里已经没有令牌：表现不是「权限不足」，而是看起来像偶发的 403——同一段代码有时成功
+ * 有时失败，会把人引向错误的方向。此前的实现只从 Cookie 读值、从不再取，于是任何页面上的
+ * 第二次写入都必然失败。
+ *
+ * <p>取令牌的请求本身是 GET，不会消耗令牌；同时并发发起的多次写入共用同一次取令牌，避免
+ * 互相把对方的令牌顶掉。
+ */
+let csrfRefresh: Promise<void> | null = null
+
+function refreshCsrf(): Promise<void> {
+  if (!csrfRefresh) {
+    csrfRefresh = fetch('/core/api/v1/auth/csrf', {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    })
+      .then(() => undefined)
+      .finally(() => {
+        csrfRefresh = null
+      })
+  }
+  return csrfRefresh
+}
+
+/**
+ * 写请求串行队列。
+ *
+ * <p>一次性令牌决定了两个写请求不能同时带着同一枚令牌出发：先到的那枚会把它用掉，后到的必然
+ * 403。串行化的代价是写操作排队（人的操作本来就是一次一次点的），换来的是「点了就成」。
+ */
+let writeChain: Promise<unknown> = Promise.resolve()
+
+function serializeWrite<T>(task: () => Promise<T>): Promise<T> {
+  const run = writeChain.then(task, task)
+  // 队列本身不能被上一次的失败污染：失败要继续放行后续请求，由各自的调用方处理错误。
+  writeChain = run.catch(() => undefined)
+  return run
+}
+
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
   query?: Record<string, string | number | boolean | undefined | null>
@@ -112,11 +155,38 @@ export async function requestEnvelope<T>(
   options: RequestOptions = {},
 ): Promise<Envelope<T>> {
   const method = options.method ?? 'GET'
-  const headers: Record<string, string> = { Accept: 'application/json' }
-
   const needsCsrf = options.csrf !== false && method !== 'GET'
-  if (needsCsrf) {
-    headers['X-XSRF-TOKEN'] = readCookie('XSRF-TOKEN')
+  if (!needsCsrf) {
+    return send<T>(service, path, options, '')
+  }
+  return serializeWrite(async () => {
+    await refreshCsrf()
+    try {
+      return await send<T>(service, path, options, readCookie('XSRF-TOKEN'))
+    } catch (cause) {
+      // 令牌可能在别处已被用掉（同一会话另开一个标签页、或上一条请求刚好消费掉它）。
+      // 只在这种情况下重取一枚再试一次；真正的越权请求重试后仍然会被拒绝，错误照原样上抛，
+      // 不会被这次重试掩盖成「重试也没用」的模糊结论。
+      if (cause instanceof ApiError && cause.httpStatus === 403) {
+        await refreshCsrf()
+        return send<T>(service, path, options, readCookie('XSRF-TOKEN'))
+      }
+      throw cause
+    }
+  })
+}
+
+/** 实际发出一次请求。CSRF 令牌由调用方决定（写请求每次重取，读请求为空）。 */
+async function send<T>(
+  service: ServiceKey,
+  path: string,
+  options: RequestOptions,
+  csrfToken: string,
+): Promise<Envelope<T>> {
+  const method = options.method ?? 'GET'
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (csrfToken) {
+    headers['X-XSRF-TOKEN'] = csrfToken
   }
   if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json'

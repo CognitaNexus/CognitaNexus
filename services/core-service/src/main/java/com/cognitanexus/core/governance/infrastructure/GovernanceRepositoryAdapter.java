@@ -26,6 +26,7 @@ public class GovernanceRepositoryAdapter
         GovernanceRepositories.MergeLedgerRepository,
         GovernanceRepositories.AnomalyRepository,
         GovernanceRepositories.AchievementStateRepository,
+        GovernanceRepositories.DataQualityRepository,
         GovernanceRepositories.MergeTargetRepository {
 
   private final GovernanceMapper mapper;
@@ -195,6 +196,129 @@ public class GovernanceRepositoryAdapter
   @Override
   public boolean resolve(String id) {
     return mapper.resolveAnomaly(id) == 1;
+  }
+
+  @Override
+  public Optional<String> findOpenIdByDedupeKey(String kind, String dedupeKey) {
+    return Optional.ofNullable(mapper.findOpenAnomalyId(kind, dedupeKey));
+  }
+
+  @Override
+  public boolean refreshDetail(String id, java.util.Map<String, Object> detail) {
+    return mapper.refreshAnomalyDetail(id, json.write(detail)) == 1;
+  }
+
+  @Override
+  public List<OpenAnomalyKey> listOpenOfKind(String kind, int limit) {
+    return mapper.openAnomaliesOfKind(kind, limit).stream()
+        .map(row -> new OpenAnomalyKey(row.id(), row.entityId()))
+        .toList();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 数据质量探测（只读）
+  // ---------------------------------------------------------------------------
+
+  @Override
+  public List<String> yearOutOfRangeIds(int limit) {
+    return mapper.yearOutOfRangeIds(limit);
+  }
+
+  @Override
+  public List<Sample> yearOutOfRangeSamples(int limit) {
+    return mapper.yearOutOfRangeSamples(limit).stream().map(GovernanceRepositoryAdapter::toSample).toList();
+  }
+
+  @Override
+  public List<String> topicKindConflictIds(int limit) {
+    return mapper.topicKindConflictIds(limit);
+  }
+
+  @Override
+  public List<Sample> topicKindConflictSamples(int limit) {
+    return mapper.topicKindConflictSamples(limit).stream()
+        .map(GovernanceRepositoryAdapter::toSample)
+        .toList();
+  }
+
+  @Override
+  public List<Bucket> effectiveWithoutTopicByType() {
+    return mapper.effectiveWithoutTopicByType().stream()
+        .map(row -> new Bucket(row.bucket(), row.total()))
+        .toList();
+  }
+
+  @Override
+  public List<Sample> effectiveWithoutTopicSamples(int limit) {
+    return mapper.effectiveWithoutTopicSamples(limit).stream()
+        .map(GovernanceRepositoryAdapter::toSample)
+        .toList();
+  }
+
+  @Override
+  public List<Bucket> effectiveWithoutContributorByType() {
+    return mapper.effectiveWithoutContributorByType().stream()
+        .map(row -> new Bucket(row.bucket(), row.total()))
+        .toList();
+  }
+
+  @Override
+  public List<Sample> effectiveWithoutContributorSamples(int limit) {
+    return mapper.effectiveWithoutContributorSamples(limit).stream()
+        .map(GovernanceRepositoryAdapter::toSample)
+        .toList();
+  }
+
+  @Override
+  public List<Bucket> papersWithoutIdentifierByType() {
+    return mapper.papersWithoutIdentifierByType().stream()
+        .map(row -> new Bucket(row.bucket(), row.total()))
+        .toList();
+  }
+
+  @Override
+  public List<Sample> papersWithoutIdentifierSamples(int limit) {
+    return mapper.papersWithoutIdentifierSamples(limit).stream()
+        .map(GovernanceRepositoryAdapter::toSample)
+        .toList();
+  }
+
+  @Override
+  public List<NameGroup> duplicateScholarNames(int minCount, int limit) {
+    return mapper.duplicateScholarNames(minCount, limit).stream()
+        .map(row -> new NameGroup(row.nameNorm(), row.total()))
+        .toList();
+  }
+
+  @Override
+  public List<ScholarSample> scholarsByNameNorm(String nameNorm, int limit) {
+    return mapper.scholarsByNameNorm(nameNorm, limit).stream()
+        .map(
+            row ->
+                new ScholarSample(
+                    row.id(), row.displayName(), row.organizationName(), row.claimedStatus()))
+        .toList();
+  }
+
+  @Override
+  public List<AmbiguousScholar> ambiguousScholars(int minCount, int limit) {
+    return mapper.ambiguousScholars(minCount, limit).stream()
+        .map(row -> new AmbiguousScholar(row.scholarId(), row.displayName(), row.pending()))
+        .toList();
+  }
+
+  @Override
+  public long countAmbiguousScholars(int minCount) {
+    return mapper.countAmbiguousScholars(minCount);
+  }
+
+  @Override
+  public long countPendingRelationsOfAmbiguous(int minCount) {
+    return mapper.countPendingRelationsOfAmbiguous(minCount);
+  }
+
+  private static Sample toSample(GovernanceMapper.AnomalySampleRow row) {
+    return new Sample(row.id(), row.title(), row.type(), row.publicationYear());
   }
 
   // ---------------------------------------------------------------------------

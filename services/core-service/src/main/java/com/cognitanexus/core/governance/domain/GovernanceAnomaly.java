@@ -26,4 +26,63 @@ public record GovernanceAnomaly(
   public static final String KIND_MISSING_REQUIRED_FIELD = "MISSING_REQUIRED_FIELD";
   public static final String KIND_SOURCE_DISABLED = "SOURCE_DISABLED";
   public static final String KIND_UNMAPPED_CATEGORY = "UNMAPPED_CATEGORY";
+
+  // 以下由数据质量巡检（DataQualityScanService）产出。前两类逐条登记（每条都要单独处置），
+  // 其余四类按「一类一条」聚合登记：它们是同一口径下的批量缺陷，逐条登记只会把待办列表淹掉，
+  // 而处置动作本身也是批量的。
+
+  /** 年份越界：年份落在合理区间之外（数据源把非年份写进了年份字段）。逐条登记。 */
+  public static final String KIND_YEAR_OUT_OF_RANGE = "YEAR_OUT_OF_RANGE";
+
+  /** 领域归属冲突：同一成果同一领域同时存在来源给定与推断两种归属。逐条登记。 */
+  public static final String KIND_TOPIC_KIND_CONFLICT = "TOPIC_KIND_CONFLICT";
+
+  /** 已生效成果没有任何领域归属（分面与领域统计会漏计）。聚合登记。 */
+  public static final String KIND_MISSING_TOPIC = "MISSING_TOPIC";
+
+  /** 已生效成果没有任何参与关系（公开详情会显示为空作者列表）。聚合登记。 */
+  public static final String KIND_NO_CONTRIBUTOR = "NO_CONTRIBUTOR";
+
+  /** 已生效论文没有登记任何稳定标识。聚合登记。 */
+  public static final String KIND_PAPER_WITHOUT_IDENTIFIER = "PAPER_WITHOUT_IDENTIFIER";
+
+  /** 同名学者聚集：同名但未被合并的学者达到阈值。聚合登记，<b>不代表同人</b>。 */
+  public static final String KIND_DUPLICATE_SCHOLAR_NAME = "DUPLICATE_SCHOLAR_NAME";
+
+  /**
+   * 同名归并待核验聚集：一条学者记录上挂着多条待核验关系。
+   *
+   * <p>这是本平台真实的同名风险所在：姓名相同但并不确定是同一人时，接入路径不会新建学者、
+   * 也不会直接确认为同一人，而是复用该学者并把关系标为待核验。于是一个人名记录下可能同时挂着
+   * 好几位不同学者的成果，且这些关系都不会进入共著网络。聚合登记。
+   */
+  public static final String KIND_AMBIGUOUS_SCHOLAR_NAME = "AMBIGUOUS_SCHOLAR_NAME";
+
+  private static final Map<String, String> LABELS =
+      Map.ofEntries(
+          Map.entry(KIND_STRUCTURE_INVALID, "结构不合法"),
+          Map.entry(KIND_IDENTIFIER_CONFLICT, "稳定标识冲突"),
+          Map.entry(KIND_MISSING_REQUIRED_FIELD, "缺少必填字段"),
+          Map.entry(KIND_SOURCE_DISABLED, "来源已停用"),
+          Map.entry(KIND_UNMAPPED_CATEGORY, "来源分类无法映射"),
+          Map.entry(KIND_YEAR_OUT_OF_RANGE, "年份越界"),
+          Map.entry(KIND_TOPIC_KIND_CONFLICT, "领域归属冲突"),
+          Map.entry(KIND_MISSING_TOPIC, "缺少领域归属"),
+          Map.entry(KIND_NO_CONTRIBUTOR, "缺少参与关系"),
+          Map.entry(KIND_PAPER_WITHOUT_IDENTIFIER, "论文缺少稳定标识"),
+          Map.entry(KIND_DUPLICATE_SCHOLAR_NAME, "同名学者聚集"),
+          Map.entry(KIND_AMBIGUOUS_SCHOLAR_NAME, "同名待核验聚集"));
+
+  /**
+   * 异常种类的中文标签。
+   *
+   * <p>只用于展示。未知种类原样返回代码而不是「其它」：把不认识的种类折进一个笼统分类，
+   * 会让新引入的检测项在界面上彻底消失。
+   */
+  public static String label(String kind) {
+    if (kind == null) {
+      return "";
+    }
+    return LABELS.getOrDefault(kind, kind);
+  }
 }

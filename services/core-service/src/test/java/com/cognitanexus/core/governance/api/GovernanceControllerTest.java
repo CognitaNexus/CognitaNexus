@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.cognitanexus.core.governance.application.GovernanceRepositories;
 import com.cognitanexus.core.governance.application.GovernanceRepositories.ScoredCandidate;
+import com.cognitanexus.core.governance.application.DataQualityScanService;
 import com.cognitanexus.core.governance.application.GovernanceResolutionWorkflow;
 import com.cognitanexus.core.governance.application.GovernanceService;
 import com.cognitanexus.core.governance.domain.DedupCandidate;
@@ -49,6 +50,7 @@ class GovernanceControllerTest {
 
   @Mock GovernanceService governance;
   @Mock GovernanceResolutionWorkflow workflow;
+  @Mock DataQualityScanService scans;
 
   private GovernanceController controller;
 
@@ -56,7 +58,7 @@ class GovernanceControllerTest {
 
   @BeforeEach
   void setUp() {
-    controller = new GovernanceController(governance, workflow);
+    controller = new GovernanceController(governance, workflow, scans);
     ActorContextHolder.set(
         new ActorContext(
             new AccountId("acc_reviewer"), "reviewer", "审核员", Set.of(RoleNames.REVIEWER), 1L));

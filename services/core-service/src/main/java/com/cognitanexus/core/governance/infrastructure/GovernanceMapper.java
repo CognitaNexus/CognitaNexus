@@ -451,6 +451,259 @@ public interface GovernanceMapper {
   int resolveAnomaly(@Param("id") String id);
 
   // ---------------------------------------------------------------------------
+  // 数据质量巡检（只读探测 + 异常去重写入）
+  // ---------------------------------------------------------------------------
+  //
+  // 探测查询一律显式给出 LIMIT：巡检跑在业务库上，没有上限的「扫全表」会在数据量涨上来之后
+  // 变成一次事故。上限触发时报告里会写明「已截断」，不把截断后的数字当成全量结论。
+
+  /** 年份越界：合法区间 [1800, 今年+1]。明年允许出现（跨年预发布），更远的一律视为字段污染。 */
+  @Select(
+      """
+      SELECT id FROM core_achievement
+      WHERE publication_year IS NOT NULL
+        AND (publication_year < 1800 OR publication_year > extract(year from now()) + 1)
+      ORDER BY id
+      LIMIT #{limit}
+      """)
+  List<String> yearOutOfRangeIds(@Param("limit") int limit);
+
+  @Select(
+      """
+      SELECT id, title, type, publication_year AS publicationYear
+      FROM core_achievement
+      WHERE publication_year IS NOT NULL
+        AND (publication_year < 1800 OR publication_year > extract(year from now()) + 1)
+      ORDER BY id
+      LIMIT #{limit}
+      """)
+  List<AnomalySampleRow> yearOutOfRangeSamples(@Param("limit") int limit);
+
+  /**
+   * 领域归属冲突：同一成果同一领域既有来源给定、又有推断归属。
+   *
+   * <p>来源分类在场时推断归属必须已经被撤销，这是既定的覆盖规则。仍然并存说明出现过「先推断、
+   * 后补来源」而撤销那一步没跑到的路径，需要人工核查——不能由巡检自行删除：那会掩盖一条真实发生
+   * 过的漏撤销。
+   */
+  @Select(
+      """
+      SELECT DISTINCT t.achievement_id
+      FROM core_achievement_topic t
+      WHERE t.assignment_kind = 'INFERRED'
+        AND EXISTS (
+          SELECT 1 FROM core_achievement_topic s
+          WHERE s.achievement_id = t.achievement_id AND s.topic_id = t.topic_id
+            AND s.assignment_kind = 'SOURCE')
+      ORDER BY t.achievement_id
+      LIMIT #{limit}
+      """)
+  List<String> topicKindConflictIds(@Param("limit") int limit);
+
+  @Select(
+      """
+      SELECT DISTINCT a.id, a.title, a.type, a.publication_year AS publicationYear
+      FROM core_achievement a
+      JOIN core_achievement_topic t ON t.achievement_id = a.id AND t.assignment_kind = 'INFERRED'
+      WHERE EXISTS (
+          SELECT 1 FROM core_achievement_topic s
+          WHERE s.achievement_id = t.achievement_id AND s.topic_id = t.topic_id
+            AND s.assignment_kind = 'SOURCE')
+      ORDER BY a.id
+      LIMIT #{limit}
+      """)
+  List<AnomalySampleRow> topicKindConflictSamples(@Param("limit") int limit);
+
+  /** 已生效成果按类型统计「没有任何领域归属」的条数。 */
+  @Select(
+      """
+      SELECT a.type AS bucket, count(*) AS total
+      FROM core_achievement a
+      WHERE a.effective_status = 'EFFECTIVE' AND a.merged_into_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM core_achievement_topic t WHERE t.achievement_id = a.id)
+      GROUP BY a.type
+      ORDER BY count(*) DESC
+      """)
+  List<AnomalyBucketRow> effectiveWithoutTopicByType();
+
+  @Select(
+      """
+      SELECT a.id, a.title, a.type, a.publication_year AS publicationYear
+      FROM core_achievement a
+      WHERE a.effective_status = 'EFFECTIVE' AND a.merged_into_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM core_achievement_topic t WHERE t.achievement_id = a.id)
+      ORDER BY a.id
+      LIMIT #{limit}
+      """)
+  List<AnomalySampleRow> effectiveWithoutTopicSamples(@Param("limit") int limit);
+
+  @Select(
+      """
+      SELECT a.type AS bucket, count(*) AS total
+      FROM core_achievement a
+      WHERE a.effective_status = 'EFFECTIVE' AND a.merged_into_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM core_contribution c WHERE c.achievement_id = a.id)
+      GROUP BY a.type
+      ORDER BY count(*) DESC
+      """)
+  List<AnomalyBucketRow> effectiveWithoutContributorByType();
+
+  @Select(
+      """
+      SELECT a.id, a.title, a.type, a.publication_year AS publicationYear
+      FROM core_achievement a
+      WHERE a.effective_status = 'EFFECTIVE' AND a.merged_into_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM core_contribution c WHERE c.achievement_id = a.id)
+      ORDER BY a.id
+      LIMIT #{limit}
+      """)
+  List<AnomalySampleRow> effectiveWithoutContributorSamples(@Param("limit") int limit);
+
+  /**
+   * 已生效论文没有登记任何稳定标识。
+   *
+   * <p>只查论文：获奖与项目本来就没有 DOI 这类标识，把它们算进来会让「缺少标识」变成一个
+   * 永远清不掉的数字。
+   */
+  @Select(
+      """
+      SELECT a.type AS bucket, count(*) AS total
+      FROM core_achievement a
+      WHERE a.type = 'PAPER' AND a.effective_status = 'EFFECTIVE' AND a.merged_into_id IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM core_identifier_registry r
+          WHERE r.entity_type = 'ACHIEVEMENT' AND r.entity_id = a.id)
+      GROUP BY a.type
+      """)
+  List<AnomalyBucketRow> papersWithoutIdentifierByType();
+
+  @Select(
+      """
+      SELECT a.id, a.title, a.type, a.publication_year AS publicationYear
+      FROM core_achievement a
+      WHERE a.type = 'PAPER' AND a.effective_status = 'EFFECTIVE' AND a.merged_into_id IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM core_identifier_registry r
+          WHERE r.entity_type = 'ACHIEVEMENT' AND r.entity_id = a.id)
+      ORDER BY a.id
+      LIMIT #{limit}
+      """)
+  List<AnomalySampleRow> papersWithoutIdentifierSamples(@Param("limit") int limit);
+
+  /** 同名学者分组：同名人数达到阈值的姓名。 */
+  @Select(
+      """
+      SELECT name_norm AS nameNorm, count(*) AS total
+      FROM core_scholar
+      WHERE merged_into_id IS NULL AND name_norm IS NOT NULL AND name_norm <> ''
+      GROUP BY name_norm
+      HAVING count(*) >= #{minCount}
+      ORDER BY count(*) DESC, name_norm
+      LIMIT #{limit}
+      """)
+  List<AnomalyNameGroupRow> duplicateScholarNames(
+      @Param("minCount") int minCount, @Param("limit") int limit);
+
+  @Select(
+      """
+      SELECT id, display_name AS displayName, organization_name AS organizationName,
+             claimed_status AS claimedStatus
+      FROM core_scholar
+      WHERE merged_into_id IS NULL AND name_norm = #{nameNorm}
+      ORDER BY id
+      LIMIT #{limit}
+      """)
+  List<AnomalyScholarRow> scholarsByNameNorm(
+      @Param("nameNorm") String nameNorm, @Param("limit") int limit);
+
+  /**
+   * 待核验关系聚集的学者：一条学者记录上挂着的待核验关系达到阈值。
+   *
+   * <p>这些是「姓名相同但不确定是同一人」的真实落点：关系确实存在、也确实指向这条学者记录，
+   * 却不参与确定合作边，也不构成任何可公开的合作结论。
+   */
+  @Select(
+      """
+      SELECT c.scholar_id AS scholarId, s.display_name AS displayName, count(*) AS pending
+      FROM core_contribution c
+      JOIN core_scholar s ON s.id = c.scholar_id
+      WHERE c.relation_state = 'PENDING_VERIFY' AND s.merged_into_id IS NULL
+      GROUP BY c.scholar_id, s.display_name
+      HAVING count(*) >= #{minCount}
+      ORDER BY count(*) DESC, c.scholar_id
+      LIMIT #{limit}
+      """)
+  List<AmbiguousScholarRow> ambiguousScholars(
+      @Param("minCount") int minCount, @Param("limit") int limit);
+
+  @Select(
+      """
+      SELECT count(*) FROM (
+        SELECT c.scholar_id
+        FROM core_contribution c
+        JOIN core_scholar s ON s.id = c.scholar_id
+        WHERE c.relation_state = 'PENDING_VERIFY' AND s.merged_into_id IS NULL
+        GROUP BY c.scholar_id
+        HAVING count(*) >= #{minCount}) x
+      """)
+  long countAmbiguousScholars(@Param("minCount") int minCount);
+
+  @Select(
+      """
+      SELECT count(*)
+      FROM core_contribution c
+      JOIN core_scholar s ON s.id = c.scholar_id
+      WHERE c.relation_state = 'PENDING_VERIFY' AND s.merged_into_id IS NULL
+        AND c.scholar_id IN (
+          SELECT c2.scholar_id
+          FROM core_contribution c2
+          WHERE c2.relation_state = 'PENDING_VERIFY'
+          GROUP BY c2.scholar_id
+          HAVING count(*) >= #{minCount})
+      """)
+  long countPendingRelationsOfAmbiguous(@Param("minCount") int minCount);
+
+  /** 按去重键找同类未处理异常：让同一个问题在多次巡检之间只占一条待办。 */
+  @Select(
+      """
+      SELECT id FROM gov_anomaly
+      WHERE kind = #{kind} AND status = 'OPEN' AND detail->>'dedupeKey' = #{dedupeKey}
+      ORDER BY created_at DESC
+      LIMIT 1
+      """)
+  String findOpenAnomalyId(@Param("kind") String kind, @Param("dedupeKey") String dedupeKey);
+
+  /** 复核既有异常：把 detail 换成本次巡检的事实，不新增待办。 */
+  @Update(
+      """
+      UPDATE gov_anomaly SET detail = #{detailJson}::jsonb
+      WHERE id = #{id} AND status = 'OPEN'
+      """)
+  int refreshAnomalyDetail(@Param("id") String id, @Param("detailJson") String detailJson);
+
+  @Select(
+      """
+      SELECT id, entity_id AS entityId FROM gov_anomaly
+      WHERE kind = #{kind} AND status = 'OPEN'
+      ORDER BY created_at
+      LIMIT #{limit}
+      """)
+  List<AnomalyKeyRow> openAnomaliesOfKind(@Param("kind") String kind, @Param("limit") int limit);
+
+  record AnomalySampleRow(String id, String title, String type, Integer publicationYear) {}
+
+  record AnomalyBucketRow(String bucket, long total) {}
+
+  record AnomalyNameGroupRow(String nameNorm, long total) {}
+
+  record AnomalyScholarRow(
+      String id, String displayName, String organizationName, String claimedStatus) {}
+
+  record AnomalyKeyRow(String id, String entityId) {}
+
+  record AmbiguousScholarRow(String scholarId, String displayName, long pending) {}
+
+  // ---------------------------------------------------------------------------
   // 合并所需的实体操作
   // ---------------------------------------------------------------------------
 

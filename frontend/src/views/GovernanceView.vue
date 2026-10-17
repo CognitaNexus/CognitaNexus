@@ -373,6 +373,48 @@ function loadAnomalies() {
   return loadSection(anomalies, () => adminApi.anomalies({ page: 1, size: 50 }))
 }
 
+/**
+ * 最近一次巡检报告。
+ *
+ * 保留它而不是「跑完就丢」：巡检的结论是「本次命中了多少」，与「现在还有多少待办」是两个数字。
+ * 待办列表被人工关掉几条之后，只有报告还能说清这次扫描到底看到了什么。
+ */
+const scanReport = ref<Row | null>(null)
+
+function scanFindings(): Row[] {
+  const list = scanReport.value?.findings
+  return Array.isArray(list) ? (list as Row[]) : []
+}
+
+/**
+ * 巡检结果的一句话总结。
+ *
+ * 逐类列出命中条数而不是只说「巡检完成」：治理人员要知道这次到底扫到了什么，否则跑一次巡检
+ * 与不跑没有区别。被上限截断的检测项单独点出来——截断后的数字不能当全量读。
+ */
+function scanNote(result: unknown): string {
+  if (!result || typeof result !== 'object') return '巡检完成。'
+  const view = result as Row
+  scanReport.value = view
+  const findings = Array.isArray(view.findings) ? (view.findings as Row[]) : []
+  const hit = findings.filter((f) => num(f.detected) > 0)
+  if (hit.length === 0) {
+    return '本次巡检未发现新的数据质量问题；已有待办未受影响。'
+  }
+  const parts = hit.map((f) => {
+    const truncated = f.truncated === true ? '，已截断' : ''
+    return `${String(f.label ?? f.kind ?? '')} ${num(f.detected)} 条${truncated}`
+  })
+  return (
+    `本次命中 ${hit.length} 类问题：${parts.join('；')}。` +
+    `新建待办 ${num(view.created)} 条、刷新 ${num(view.refreshed)} 条、自动关闭 ${num(view.autoClosed)} 条（问题已不再命中）。`
+  )
+}
+
+function runScan() {
+  return run('scan', () => adminApi.scanAnomalies(), scanNote, loadAnomalies)
+}
+
 function loadAll() {
   return Promise.all([loadCandidates(), loadAnomalies()])
 }
@@ -912,7 +954,49 @@ onMounted(loadAll)
     <div class="panel">
       <div class="panel-head">
         <h2>治理异常</h2>
-        <span class="tiny faint">例如公开但缺少类型扩展、字段冲突等</span>
+        <span class="tiny faint"
+          >例如公开但缺少领域归属、论文无稳定标识、同名学者聚集等；巡检只登记待办，不自动修改成果</span
+        >
+      </div>
+      <div class="panel-body" style="padding-bottom: 0">
+        <div class="btn-row" style="align-items: center">
+          <button class="btn small" :disabled="busy === 'scan'" @click="runScan()">
+            {{ busy === 'scan' ? '巡检中…' : '运行数据质量巡检' }}
+          </button>
+          <span class="tiny faint">可重复运行：同一问题在未处理期间只占一条待办，计数随巡检刷新</span>
+        </div>
+        <div v-if="scanReport" class="tiny" style="margin-top: 8px">
+          <div class="faint">
+            规则版本 {{ String(scanReport.ruleVersion ?? '') }} · 扫描于
+            {{ String(scanReport.scannedAt ?? '') }} · 年份口径
+            {{ String((scanReport.yearBounds as Row | undefined)?.minYear ?? '') }}–{{
+              String((scanReport.yearBounds as Row | undefined)?.maxYear ?? '')
+            }}
+          </div>
+          <table class="data" style="margin-top: 8px">
+            <thead>
+              <tr>
+                <th>检测项</th>
+                <th>本次命中</th>
+                <th>新建</th>
+                <th>刷新</th>
+                <th>自动关闭</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="f in scanFindings()" :key="String(f.kind)">
+                <td>
+                  {{ String(f.label ?? '') }}
+                  <span v-if="f.truncated === true" class="badge warn">已截断</span>
+                </td>
+                <td class="mono">{{ num(f.detected) }}</td>
+                <td class="mono">{{ num(f.created) }}</td>
+                <td class="mono">{{ num(f.refreshed) }}</td>
+                <td class="mono">{{ num(f.autoClosed) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
       <div class="panel-body tight">
         <AsyncBlock
@@ -925,9 +1009,9 @@ onMounted(loadAll)
           <table class="data">
             <thead>
               <tr>
-                <th>类型</th>
+                <th>检测项</th>
                 <th>相关实体</th>
-                <th>详情</th>
+                <th>说明</th>
                 <th>状态</th>
                 <th>发现时间</th>
                 <th></th>
@@ -935,9 +1019,19 @@ onMounted(loadAll)
             </thead>
             <tbody>
               <tr v-for="row in anomalies.items" :key="String(row.id)">
-                <td><span class="badge warn">{{ String(row.kind ?? '') }}</span></td>
-                <td class="mono tiny">{{ String(row.entityId ?? row.sourceRecordId ?? '—') }}</td>
-                <td class="tiny">{{ String(row.detail ?? '') }}</td>
+                <td>
+                  <span class="badge warn">{{ String(row.kindLabel ?? row.kind ?? '') }}</span>
+                  <div class="mono tiny faint">{{ String(row.kind ?? '') }}</div>
+                </td>
+                <td class="mono tiny">
+                  <RouterLink
+                    v-if="String(row.entityId ?? '').startsWith('ach_')"
+                    :to="`/achievements/${String(row.entityId)}`"
+                    >{{ String(row.entityId) }}</RouterLink
+                  >
+                  <template v-else>{{ String(row.entityId ?? row.sourceRecordId ?? '—') }}</template>
+                </td>
+                <td class="tiny">{{ String(row.summary ?? '') }}</td>
                 <td class="tiny">{{ String(row.status ?? '') }}</td>
                 <td class="mono tiny">{{ String(row.createdAt ?? '') }}</td>
                 <td>

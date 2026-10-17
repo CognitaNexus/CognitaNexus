@@ -1,5 +1,6 @@
 package com.cognitanexus.core.governance.api;
 
+import com.cognitanexus.core.governance.application.DataQualityScanService;
 import com.cognitanexus.core.governance.application.GovernanceRepositories;
 import com.cognitanexus.core.governance.application.GovernanceResolutionWorkflow;
 import com.cognitanexus.core.governance.application.GovernanceService;
@@ -36,10 +37,15 @@ public class GovernanceController {
 
   private final GovernanceService governance;
   private final GovernanceResolutionWorkflow workflow;
+  private final DataQualityScanService scans;
 
-  public GovernanceController(GovernanceService governance, GovernanceResolutionWorkflow workflow) {
+  public GovernanceController(
+      GovernanceService governance,
+      GovernanceResolutionWorkflow workflow,
+      DataQualityScanService scans) {
     this.governance = governance;
     this.workflow = workflow;
+    this.scans = scans;
   }
 
   @GetMapping("/candidates")
@@ -200,6 +206,44 @@ public class GovernanceController {
             TraceIdHolder.current()));
   }
 
+  /**
+   * 运行一次数据质量巡检。
+   *
+   * <p>只读业务数据、只登记与复核异常，不修改任何成果、关系或归属。可重复运行：同一问题在未处理
+   * 期间只占一条待办，重复运行刷新计数；已经消失的问题会被自动关闭并写明原因。
+   *
+   * <p>返回每一类检测项本次命中的条数、新建/复核/自动关闭的条数。检测项被上限截断时
+   * {@code truncated=true}，此时不得把该条数当作全量结论。
+   */
+  @PostMapping("/anomalies/scan")
+  public ResponseEntity<ApiResponse<Map<String, Object>>> scanAnomalies() {
+    DataQualityScanService.Report report = scans.scan(ActorContextHolder.currentOrNull());
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("ruleVersion", report.ruleVersion());
+    view.put("scannedAt", report.scannedAt());
+    view.put("timeZone", report.timeZone());
+    view.put("yearBounds", report.yearBounds());
+    view.put("openAnomalies", report.openAnomalies());
+    view.put("created", report.created());
+    view.put("refreshed", report.refreshed());
+    view.put("autoClosed", report.autoClosed());
+    List<Map<String, Object>> findings = new ArrayList<>();
+    for (DataQualityScanService.Finding finding : report.findings()) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("kind", finding.kind());
+      row.put("label", finding.label());
+      row.put("granularity", finding.granularity().name());
+      row.put("detected", finding.detected());
+      row.put("created", finding.created());
+      row.put("refreshed", finding.refreshed());
+      row.put("autoClosed", finding.autoClosed());
+      row.put("truncated", finding.truncated());
+      findings.add(row);
+    }
+    view.put("findings", findings);
+    return ResponseEntity.ok(ApiResponse.ok(view, TraceIdHolder.current()));
+  }
+
   @PostMapping("/anomalies/{anomalyId}/resolve")
   public ResponseEntity<ApiResponse<Map<String, Object>>> resolveAnomaly(
       @PathVariable String anomalyId) {
@@ -333,16 +377,41 @@ public class GovernanceController {
     return view;
   }
 
+  /**
+   * 异常视图。
+   *
+   * <p>除了原始的 {@code detail} 结构，另给一个永不为空的 {@code summary}：detail 是巡检与接入
+   * 路径写入的结构化证据，字段随种类变化，界面直接渲染 Map 只会显示成 "[object Object]"。
+   * 由服务端把「这一条在说什么」压成一句话，读的人不必知道每类异常的字段名。
+   */
   private static Map<String, Object> anomalyView(GovernanceAnomaly anomaly) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", anomaly.id());
     view.put("kind", anomaly.kind());
+    view.put("kindLabel", GovernanceAnomaly.label(anomaly.kind()));
+    view.put("summary", summaryOf(anomaly));
     view.put("sourceRecordId", anomaly.sourceRecordId());
     view.put("entityId", anomaly.entityId());
     view.put("detail", anomaly.detail());
     view.put("status", anomaly.status());
     view.put("createdAt", anomaly.createdAt());
     return view;
+  }
+
+  /** 异常的一句话说明：优先用写入方给的 summary，其次拼出可读的通用描述。 */
+  private static String summaryOf(GovernanceAnomaly anomaly) {
+    Map<String, Object> detail = anomaly.detail();
+    if (detail != null) {
+      Object summary = detail.get("summary");
+      if (summary instanceof String text && !text.isBlank()) {
+        return text;
+      }
+    }
+    String label = GovernanceAnomaly.label(anomaly.kind());
+    if (anomaly.entityId() == null || anomaly.entityId().isBlank()) {
+      return label + "（未关联具体实体，详情见 raw detail）";
+    }
+    return label + "：" + anomaly.entityId();
   }
 
   private static Map<String, Object> ledgerView(MergeLedgerEntry entry) {

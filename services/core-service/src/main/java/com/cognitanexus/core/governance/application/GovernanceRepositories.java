@@ -135,6 +135,80 @@ public interface GovernanceRepositories {
     long countOpenAnomalies();
 
     boolean resolve(String id);
+
+    /**
+     * 按去重键查找同类未处理异常。
+     *
+     * <p>巡检可以反复运行，同一个问题不能每次运行都多出一条待办——否则列表的长度只反映「跑过
+     * 几次巡检」，而不反映「还有多少问题」。
+     */
+    java.util.Optional<String> findOpenIdByDedupeKey(String kind, String dedupeKey);
+
+    /** 复核既有异常：把 detail 换成本次巡检读到的事实，保持 OPEN 与创建时间不变。 */
+    boolean refreshDetail(String id, java.util.Map<String, Object> detail);
+
+    /** 某一类未处理异常（标识 + 关联实体），用于复核「问题是否已消失」。 */
+    List<OpenAnomalyKey> listOpenOfKind(String kind, int limit);
+
+    /** 未处理异常的键。 */
+    record OpenAnomalyKey(String id, String entityId) {}
+  }
+
+  /**
+   * 数据质量巡检的只读探测端口。
+   *
+   * <p>全部方法都必须接受上限：巡检跑在业务库上，无上限的全表扫描在数据量涨上来之后会变成事故。
+   * 探测结果只用于「发现问题并登记待办」，不参与任何公开读路径。
+   */
+  interface DataQualityRepository {
+
+    List<String> yearOutOfRangeIds(int limit);
+
+    List<Sample> yearOutOfRangeSamples(int limit);
+
+    List<String> topicKindConflictIds(int limit);
+
+    List<Sample> topicKindConflictSamples(int limit);
+
+    List<Bucket> effectiveWithoutTopicByType();
+
+    List<Sample> effectiveWithoutTopicSamples(int limit);
+
+    List<Bucket> effectiveWithoutContributorByType();
+
+    List<Sample> effectiveWithoutContributorSamples(int limit);
+
+    List<Bucket> papersWithoutIdentifierByType();
+
+    List<Sample> papersWithoutIdentifierSamples(int limit);
+
+    List<NameGroup> duplicateScholarNames(int minCount, int limit);
+
+    List<ScholarSample> scholarsByNameNorm(String nameNorm, int limit);
+
+    /** 待核验关系数达到阈值的学者（按待核验条数降序）。 */
+    List<AmbiguousScholar> ambiguousScholars(int minCount, int limit);
+
+    long countAmbiguousScholars(int minCount);
+
+    /** 上述学者名下待核验关系的总条数。 */
+    long countPendingRelationsOfAmbiguous(int minCount);
+
+    /** 探测到的成果样例。 */
+    record Sample(String id, String title, String type, Integer publicationYear) {}
+
+    /** 按类型分组的计数。 */
+    record Bucket(String bucket, long total) {}
+
+    /** 同名分组。 */
+    record NameGroup(String nameNorm, long total) {}
+
+    /** 同名学者的样例。 */
+    record ScholarSample(
+        String id, String displayName, String organizationName, String claimedStatus) {}
+
+    /** 挂有多条待核验关系的学者。 */
+    record AmbiguousScholar(String scholarId, String displayName, long pending) {}
   }
 
   /** 合并所需的实体操作。 */

@@ -419,6 +419,20 @@ export const adminApi = {
   },
 
   /**
+   * 运行一次数据质量巡检。
+   *
+   * 只读业务数据、只登记与复核异常，不改任何成果。可重复运行：同一问题在未处理期间只占一条
+   * 待办，重复运行刷新计数；已经消失的问题会被服务端自动关闭。返回每一类检测项本次命中的条数。
+   */
+  scanAnomalies() {
+    return request<Record<string, unknown>>(
+      'core',
+      '/api/v1/admin/core/governance/anomalies/scan',
+      { method: 'POST' },
+    )
+  },
+
+  /**
    * 合并影响预览（只读）。
    *
    * 与 mergeAchievements 分开成一个方法：预览不产生任何写入，把它塞进合并方法里会让
