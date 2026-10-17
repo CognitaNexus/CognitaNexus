@@ -223,13 +223,14 @@ public interface CollectMapper {
       String lastError,
       String createdBy,
       int consecutiveFailures,
-      Instant nextAttemptAt) {}
+      Instant nextAttemptAt,
+      int retryCount) {}
 
   @Select(
       """
       SELECT id, source_config_id, job_key, status, cursor, checkpoint, total_fetched,
              total_staged, total_handed_off, total_rejected, lease_owner, lease_until,
-             last_error, created_by, consecutive_failures, next_attempt_at
+             last_error, created_by, consecutive_failures, next_attempt_at, retry_count
       FROM ing_collect_job WHERE id = #{id}
       """)
   Optional<JobRow> findJobById(@Param("id") String id);
@@ -238,7 +239,7 @@ public interface CollectMapper {
       """
       SELECT id, source_config_id, job_key, status, cursor, checkpoint, total_fetched,
              total_staged, total_handed_off, total_rejected, lease_owner, lease_until,
-             last_error, created_by, consecutive_failures, next_attempt_at
+             last_error, created_by, consecutive_failures, next_attempt_at, retry_count
       FROM ing_collect_job WHERE source_config_id = #{sourceConfigId} AND job_key = #{jobKey}
       """)
   Optional<JobRow> findJobByKey(
@@ -248,7 +249,7 @@ public interface CollectMapper {
       """
       SELECT id, source_config_id, job_key, status, cursor, checkpoint, total_fetched,
              total_staged, total_handed_off, total_rejected, lease_owner, lease_until,
-             last_error, created_by, consecutive_failures, next_attempt_at
+             last_error, created_by, consecutive_failures, next_attempt_at, retry_count
       FROM ing_collect_job
       ORDER BY created_at DESC
       LIMIT #{limit}
@@ -259,7 +260,7 @@ public interface CollectMapper {
       """
       SELECT id, source_config_id, job_key, status, cursor, checkpoint, total_fetched,
              total_staged, total_handed_off, total_rejected, lease_owner, lease_until,
-             last_error, created_by, consecutive_failures, next_attempt_at
+             last_error, created_by, consecutive_failures, next_attempt_at, retry_count
       FROM ing_collect_job
       WHERE source_config_id = #{sourceConfigId}
       ORDER BY created_at DESC
@@ -371,7 +372,8 @@ public interface CollectMapper {
       UPDATE ing_collect_job
       SET status = #{status},
           last_error = #{lastError},
-          finished_at = CASE WHEN #{status} IN ('SUCCEEDED', 'FAILED') THEN now() ELSE finished_at END,
+          finished_at = CASE WHEN #{status} IN ('SUCCEEDED', 'FAILED', 'STOPPED')
+                              THEN now() ELSE finished_at END,
           updated_at = now()
       WHERE id = #{jobId}
       """)
@@ -379,6 +381,36 @@ public interface CollectMapper {
       @Param("jobId") String jobId,
       @Param("status") String status,
       @Param("lastError") String lastError);
+
+  /**
+   * 把失败的任务放回队列（人工重试）。
+   *
+   * <p>只改「能不能再被领取」这件事，<b>不动游标、不动检查点、不动任何 total_* 计数</b>：
+   * 检查点记录的是「已确认交接的位置」，重试从那里继续，因此已经交接过的那批记录不会被重复
+   * 交付（core 侧还有幂等键兜底，但正确性不该依赖下游兜底）。AC-IMPL-FR08-02 要求的
+   * 「历史成功记录保留、不新增重复实体、能定位失败点」三条都由这一点支撑。
+   *
+   * <p>为什么同时清空 {@code lease_owner}/{@code lease_until}：失败时租约可能还没到期，
+   * 不清空的话重试会等到租约自然过期才被领取，人看到的是「点了重试但没反应」。
+   * 为什么清空 {@code next_attempt_at}：见 V9 迁移注释——重试是有意的重来，不该被上一轮退避挡住。
+   *
+   * <p>{@code retry_count + 1} 与状态变更在同一条 UPDATE 里：分开写会在两次写入之间留下
+   * 「已重新排队但次数没加」的窗口，统计与审计就对不上。
+   */
+  @Update(
+      """
+      UPDATE ing_collect_job
+      SET status = 'PENDING',
+          last_error = NULL,
+          next_attempt_at = NULL,
+          lease_owner = NULL,
+          lease_until = NULL,
+          finished_at = NULL,
+          retry_count = retry_count + 1,
+          updated_at = now()
+      WHERE id = #{jobId} AND status = 'FAILED'
+      """)
+  int requeueFailedJob(@Param("jobId") String jobId);
 
   @Update(
       """

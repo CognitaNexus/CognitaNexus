@@ -95,6 +95,14 @@ public interface CollectRepositories {
 
     int updateStatus(String jobId, JobStatus status, String lastError);
 
+    /**
+     * 把 FAILED 任务放回队列（人工重试），返回受影响行数。
+     *
+     * <p>返回 0 表示任务不在 FAILED（可能已被别人重试、或状态已变），调用方据此给出版本冲突，
+     * 而不是假装成功。
+     */
+    int requeueFailed(String jobId);
+
     int recordError(String jobId, String lastError);
 
     /**

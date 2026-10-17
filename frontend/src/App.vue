@@ -137,12 +137,14 @@ onMounted(loadConsistency)
         <nav class="nav">
           <RouterLink to="/">总览</RouterLink>
           <RouterLink to="/search">成果检索</RouterLink>
+          <RouterLink to="/hotspots">关键词热点</RouterLink>
           <RouterLink to="/network">合作网络</RouterLink>
           <RouterLink to="/ops">一致性与投递</RouterLink>
           <template v-if="session.authenticated">
             <span class="nav-sep"></span>
             <RouterLink to="/portal">我的门户</RouterLink>
             <RouterLink to="/portal/contributions">我的成果</RouterLink>
+            <RouterLink to="/todos">待办</RouterLink>
             <RouterLink to="/review">审核</RouterLink>
             <RouterLink to="/review/relations">关系争议</RouterLink>
             <RouterLink to="/governance">治理</RouterLink>

@@ -119,7 +119,8 @@ class CollectExecutionServiceTest {
         null,
         "acc_admin",
         consecutiveFailures,
-        nextAttemptAt);
+        nextAttemptAt,
+        0);
   }
 
   private void givenRunnable(CollectJob job) {
@@ -359,7 +360,8 @@ class CollectExecutionServiceTest {
             null,
             "acc_admin",
             3,
-            NOW.plusSeconds(60));
+            NOW.plusSeconds(60),
+            0);
     when(jobs.findById("job_1")).thenReturn(Optional.of(paused));
 
     CollectExecutionService.RunOutcome outcome = service.runOnce("job_1", "worker-1");

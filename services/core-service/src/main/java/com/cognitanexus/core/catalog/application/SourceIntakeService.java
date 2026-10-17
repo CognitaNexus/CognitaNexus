@@ -390,7 +390,8 @@ public class SourceIntakeService {
                 stable.isPresent(),
                 false,
                 hasOpenCandidateFor(achievementId),
-                input.dataNature().name()));
+                input.dataNature().name(),
+                config.displayLicenseGranted()));
 
     List<String> notes = new ArrayList<>(attachment.notes());
     if (decision.publishable()) {

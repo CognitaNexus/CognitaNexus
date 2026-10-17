@@ -157,7 +157,44 @@ public class PublicCatalogQueryService {
 
     view.put("topics", topicViews(achievementId));
     view.put("contributors", contributorViews(achievementId));
+    List<Map<String, Object>> sources = sourceViews(achievementId);
+    view.put("sources", sources);
+    view.put("sourceCount", sources.size());
     return view;
+  }
+
+  /**
+   * 可公开的来源清单（FR02）。
+   *
+   * <p>只列许可仍为 {@code GRANTED} 的来源：撤权之后那条来源不再构成「可公开依据」，
+   * 把它继续列在公开详情里会让人以为该成果仍由它背书。撤权的历史留在治理台账与审计里，
+   * 不属于公开视图。
+   *
+   * <p>同时给出 {@code sourceCount}：前端要能说「本条元数据由 N 处来源交叉确认」，
+   * 而不是只凭列表长度自己数——列表可能因为过滤而变短，数字应当说明它数的是什么。
+   */
+  private List<Map<String, Object>> sourceViews(String achievementId) {
+    List<Map<String, Object>> views = new ArrayList<>();
+    for (AchievementRepository.SourceRef source : achievements.sourcesOf(achievementId)) {
+      if (!"GRANTED".equals(source.displayLicenseStatus())) {
+        continue;
+      }
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("sourceCode", source.sourceCode());
+      view.put("displayName", source.displayName());
+      view.put("sourceRecordId", source.sourceRecordId());
+      // 外链可能为空——来源没给地址时前端显示「来源未提供可跳转地址」，
+      // 不许用 base_url 拼一个看起来能点、实际 404 的链接（FR02 只承诺跳原站）。
+      view.put("externalUrl", source.externalUrl());
+      view.put("licenseScope", source.licenseScope());
+      view.put("dataNature", source.dataNature());
+      view.put(
+          "sourceUpdatedAt",
+          source.sourceUpdatedAt() == null ? null : source.sourceUpdatedAt().toString());
+      view.put("receivedAt", source.receivedAt() == null ? null : source.receivedAt().toString());
+      views.add(view);
+    }
+    return views;
   }
 
   /** 学者门户详情。未被认领的档案同样可读（AC-IMPL-FR03-01）。 */

@@ -32,6 +32,7 @@
 | L-06 | 2026-10-17 12:01（`675d46b`） | fix-defect；运行时异常栈 | 文件导入专利链路修复：`AchievementMapper.insertPatent` 与 `PatentRow` 改用 `String[]`（`List` 触发 ClassCastException），`application.yml` 注册 `type-handlers-package`，专利详情补 `publicationDate` | 人工确认了红线行为：SIMULATED 专利即使人工确认也被拒（`BUSINESS_RULE_VIOLATION`）——这是正确行为，不允许为「演示方便」放开 |
 | L-07 | 2026-10-17 12:26（`b6638e1`） | implement-feature；数据质量需求项、既有异常台账 | `DataQualityScanService`（DQ_SCAN_V1）7 类检测项，只读探测、只登记/复核异常 | 人工检查点设在幂等：同一问题按 `dedupeKey` 只占一条 OPEN 待办，二轮跑 `created=0 refreshed=3`。判定为可接受 |
 | L-08 | 2026-10-17 15:18（`0aad3b0`） | implement-feature；契约目录、既有自检脚本 | 新增 6 套自检（contract 12 / perf 17 / projection-consistency 15 / merge-aftermath 8 / redlines 24 / portal 27），扩展 3 套 | 人工检查点设在「测试能不能红」：每套脚本至少一条故意构造的失败路径（越权、受限实体、非法参数），并在性能脚本文件头写明「本结果不得用于宣称验收达标」 |
+| L-27 | 2026-10-18（12 项补齐批次） | implement-feature；SRS V1.1 差距盘点、ADR-001 方案 A、既有自检脚本 | 按设计书补齐 12 项：详情页四类成果字段与来源清单（FR02）、采集任务停止/重试与 `STOPPED` 终态（FR08）、统一待办入口（FR14）、角色撤销与认证版本提升（FR04）、关键词热点接口与页面（FR13）、材料访问控制收敛（A08）、部署与备份恢复脚本及手册、`smoke-fr-additions.py` 27 项 | 人工检查点：每项改动都能指到 FR/AC-IMPL 编号；方案 A 的实现记录只写实测过的内容，未堵住的路径（禁用登记 → 直接启用采集）如实写「能绕过」；热点页「18 个领域」这类数字与真实库核对后才写进报告 |
 
 **关于规模。** 当前仓库统计：Java 主代码 241 个文件、33562 行；测试代码 41 个文件、8803 行；前端 24 个 `.vue`；Flyway 迁移 40 个（`find services -name 'V*__*.sql' | wc -l`）。这是截至 2026-10-17 的存量，不是单次生成量，也不用于证明质量。
 
@@ -57,6 +58,7 @@
 | --- | --- | --- | --- | --- |
 | L-15 | 2026-10-16 至 2026-10-17（`f72972a`…`0aad3b0`） | write-unit-tests；核心模块与治理裁决逻辑 | 41 个测试类；`0aad3b0` 时点的用例数记录为 473（shared 9 / core 291 / ingestion 82 / query 91）。用例以行为命名，`@DisplayName` 写「这条用例守住的是什么」 | 人工要求反例必须真的会红：写完把实现改坏再跑一次。门禁反证脚本是同一思路 |
 | L-16 | 2026-10-17（`0aad3b0` 之后、本轮补齐） | write-unit-tests；`GovernanceRepositoryAdapter` 的质量探测与异常去重出口 | `GovernanceDataQualityAdapterTest` 13 项：逐条钉住「哪个出口走哪个 SQL」、上限原样下传、聚合计数保持 long、查不到返回 empty、探测异常不被吞成空集合。加完后共 42 个测试类、487 项（core 305） | 本次检查点：先 `mvn verify` 发现 `governance.infrastructure` 行覆盖率 73.20% 低于 80%，判定为真实缺口（新增巡检适配器只有接口自检、没有单测），补测后升到 99.48%，门禁恢复通过 |
+| L-28 | 2026-10-18（12 项补齐批次） | write-unit-tests；权限、待办、热点、材料访问四处新代码 | 6 个测试类 41 项：`AccountAdminServiceTest` 14（角色变更必须提升认证版本）、`AdminCatalogTodosTest` 4（`null` 与 0 的区别）、`PortalEvidenceAccessTest` 8（404/403 不得泄露存在性）、`KeywordHotspotTest` 11（口径随数据返回）、`PublicAnalyticsControllerTest` +2、`CollectJobServiceTest` 4。总计 559 项 | 门禁再次起作用：加完 `GET /keywords` 后 `mvn verify` 在 `analytics.api` 覆盖率 66% 上失败（控制器无用例），补 2 项后恢复 100% |
 
 ### 2.5 调试自愈（缺陷修复）
 
@@ -69,6 +71,10 @@
 | L-21 | 2026-10-17 15:18（`0aad3b0`） | fix-defect；`smoke-contract.py` 错误码矩阵 | query 与 ingestion 补 `MethodArgumentTypeMismatchException`（C-06）；`SearchView.vue` 判空同时挡 `undefined`（C-07） | 人工判定前端崩溃的根因是「值未知」与「字段不存在」在报文上无法区分，因此两处都要改 |
 | L-22 | 2026-10-17 15:18（`0aad3b0`） | fix-defect；`smoke-portal.py` 撤销后恢复路径 | `confirmPublication` 放行 `WITHDRAWN` 重新确认（C-08） | 人工判定撤销不是终态：治理端需要能纠正自己的误操作 |
 | L-23 | 2026-10-17 12:26（`b6638e1`） | fix-defect；浏览器连点两次巡检一成一败 | 前端 `http.ts` 每次写请求前重取 CSRF 令牌 + 写请求串行 + 403 重取重试一次 | 人工判定这是「令牌是一次性的」与「前端只读 Cookie 旧值」之间的契约错配，不是偶发网络问题 |
+| L-29 | 2026-10-18 | fix-defect；材料下载的 404/403 差别 | `PortalService.downloadEvidence` 把「不存在」与「无权」收敛成同码同文案（原实现先查材料再判权限，未授权者可凭状态码差别反推材料存在性）；拒绝发生在读文件之前 | 人工判定运维排查少一条区分信息是可接受代价，这类纠纷应走审计而不是对外错误码 |
+| L-30 | 2026-10-18 | fix-defect；`CoreSchemaInvariantsIT` 集成测试失败 | 期望迁移清单从写死的 `V1..V10` 改为现读 `classpath:db/migration` 的文件清单——写死清单在新增 V11 后必红，且与用例原意（防跳号/防手工改库）不符 | 人工判定「补一个 11」是治标：下一次加 V12 还会红 |
+| L-31 | 2026-10-18 | fix-defect；`smoke-fr-additions.py` 热点页数字 | `topicsWithKeywords` 原来取返回行数，`limit=2` 时会把「18 个领域有标注」说成「只有 2 个」；改为单独 count 查询并新增 `returnedTopics`，前端分开显示 | 人工判定这类「数字在默认参数下恰好正确」的错误最值得用接口自检钉住 |
+| L-32 | 2026-10-18 | fix-defect；逐页截图 390px 溢出 | 治理台宽表格在手机宽度下把页面撑出 149px 横向溢出；窄屏媒体查询里让 `.panel-body` 横向滚动，复测 0 溢出 | 人工判定压缩列宽会破坏「两端标题」的可读性，滚动是正确取舍 |
 
 ### 2.6 代码审查与文档
 
@@ -77,6 +83,7 @@
 | L-24 | 2026-10-17 15:18（`0aad3b0`） | review-diff；`git diff` 全量 | 提交前自审：格式、判空、注释与代码一致性、断言是否会红 | 审查结论见 [审查记录-AI审查与人工审查对比](审查记录-AI审查与人工审查对比.md)；其中 C-01 与 C-07 是 AI 审查漏报、由测试与人工补上的 |
 | L-25 | 2026-10-17 15:22（未提交时点） | 交接包；本轮全部状态 | `docs/ai/handover-prompt.md`：一份自包含的接手提示词 | 人工要求「当前状态」一节每次交接前更新，并把已修缺陷作为案例素材而不是「成绩清单」 |
 | L-26 | 2026-10-17 15:50 前后 | 本组文档；任务书第三节六条要求 | 补齐 `docs/ai/` 五份证据文件（AI 使用日志、修正案例、测试与覆盖率报告、审查记录、提示词资产清单） | 人工要求 README 里每个链接都指到真实存在的文件；不写「已完成」而无对应文件 |
+| L-33 | 2026-10-18（12 项补齐批次收尾） | 本轮全部状态；ADR-001、SPEC 对应表、测试报告 | ADR-001 状态改为 Accepted 并新增 §8 实现记录（含探针原样输出与 5 条未解决项）；SPEC 对应表新增 §7–§11（来源许可、待办与账户安全、停止重试、热点、来源清单）；测试报告升 V1.1（559 单元 + 29 集成 + 六套自检 + 探针 + 逐页截图）；新增 `docs/ops/部署与运维手册.md`、`ops/backup/pg-backup.sh`、`ops/restore/pg-restore.sh`、`ops/verify/compose-smoke.sh` | 人工检查点：文档里每个数字都附获取命令；探针输出原样粘贴不删改；「已解决/未解决/未执行」分开写，不把上一轮的旧结论搬来当本轮的 |
 
 ## 3 人工检查点都在哪里
 

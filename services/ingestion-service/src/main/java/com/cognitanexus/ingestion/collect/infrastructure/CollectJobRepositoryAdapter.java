@@ -81,6 +81,11 @@ public class CollectJobRepositoryAdapter implements CollectRepositories.JobRepos
   }
 
   @Override
+  public int requeueFailed(String jobId) {
+    return mapper.requeueFailedJob(jobId);
+  }
+
+  @Override
   public int recordError(String jobId, String lastError) {
     return mapper.recordJobError(jobId, lastError);
   }

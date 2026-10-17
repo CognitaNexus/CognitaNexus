@@ -108,6 +108,10 @@ public final class CollectModels {
    *
    * <p>不含「单轮最多抓几页」：那是运行参数（{@code cn.collect.max-pages-per-run}），属于服务
    * 实例的配置，不是任务自身的状态。放进任务是上一版遗留的字段，从未被写入也未被读取。
+   *
+   * <p>{@code retryCount} 与 {@code consecutiveFailures} 是两个不同的数：后者是抓取失败的退避
+   * 计数（成功一次就清零），前者是「人工让这个失败任务重来过几次」，只增不减。把它们合成一个
+   * 数字，会让「正在退避」与「已经重来三次仍然失败」这两件事看起来一样。
    */
   public record CollectJob(
       String id,
@@ -125,7 +129,8 @@ public final class CollectModels {
       String lastError,
       String createdBy,
       int consecutiveFailures,
-      Instant nextAttemptAt) {}
+      Instant nextAttemptAt,
+      int retryCount) {}
 
   /** 交接暂存记录。 */
   public record StagedRecord(

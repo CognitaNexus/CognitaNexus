@@ -34,6 +34,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '领域洞察' },
   },
   {
+    path: '/hotspots',
+    name: 'hotspots',
+    component: () => import('@/views/HotspotView.vue'),
+    meta: { title: '关键词热点' },
+  },
+  {
     path: '/network',
     name: 'network',
     component: () => import('@/views/NetworkView.vue'),
@@ -63,6 +69,12 @@ const routes: RouteRecordRaw[] = [
     name: 'review-relations',
     component: () => import('@/views/RelationReviewView.vue'),
     meta: { title: '关系争议裁决', requiresAuth: true },
+  },
+  {
+    path: '/todos',
+    name: 'todos',
+    component: () => import('@/views/TodosView.vue'),
+    meta: { title: '待办', requiresAuth: true },
   },
   {
     path: '/review',

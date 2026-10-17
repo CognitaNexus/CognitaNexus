@@ -33,6 +33,12 @@ public interface IdentityRepositories {
 
     void grantRole(String accountId, String role);
 
+    /** 撤销角色；返回受影响行数（0 表示该账号本来就没有这个角色）。 */
+    int revokeRole(String accountId, String role);
+
+    /** 提升认证版本，使既有会话失效。角色变更后必须调用，否则旧会话仍带着旧角色。 */
+    int bumpAuthVersion(String accountId);
+
     /**
      * 统计处于 ACTIVE 状态且持有指定角色的账号数。
      *

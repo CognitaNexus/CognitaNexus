@@ -64,6 +64,22 @@ export const queryApi = {
     })
   },
 
+  /**
+   * 关键词热点（FR13）。
+   *
+   * 年份窗用可空整数表达「不限」：传 undefined 就是不限，不传 "all" 这类哨兵值。
+   */
+  keywordHotspots(params: {
+    dataNature?: string
+    yearFrom?: number | null
+    yearTo?: number | null
+    limit?: number
+  }) {
+    return request<Record<string, unknown>>('query', '/api/v1/public/analytics/keywords', {
+      query: { ...params },
+    })
+  },
+
   topicInsight(topicId: string, dataNature?: string) {
     return request<TopicInsight>('query', `/api/v1/public/analytics/topics/${encodeURIComponent(topicId)}`, {
       query: { dataNature },
@@ -275,6 +291,17 @@ export const adminApi = {
     return request<Record<string, unknown>>('core', '/api/v1/admin/core/overview')
   },
 
+  /**
+   * 统一待办。
+   *
+   * 与 overview 分开而不是复用：overview 是「库里有什麼」的计数，todos 是「今天该做什么」的
+   * 待办。两者会包含相同的数字，但语义不同——把它们合成一个接口，前端就得自己决定哪个数字
+   * 该出现在哪张卡上，而这件事应该由服务端按能力裁剪后给出。
+   */
+  todos() {
+    return request<Record<string, unknown>>('core', '/api/v1/admin/core/todos')
+  },
+
   accounts() {
     return request<Record<string, unknown>[]>('core', '/api/v1/admin/core/accounts')
   },
@@ -292,6 +319,20 @@ export const adminApi = {
       'core',
       `/api/v1/admin/core/accounts/${accountId}/roles`,
       { method: 'POST', body: { role } },
+    )
+  },
+
+  /**
+   * 撤销角色。
+   *
+   * 理由走 query：DELETE 带正文在部分代理上会被丢掉，而服务端要求理由非空——
+   * 丢掉正文会变成「403/400 说不清原因」，而不是一条被拒绝的合法请求。
+   */
+  revokeRole(accountId: string, role: string, reason: string) {
+    return request<Record<string, unknown>>(
+      'core',
+      `/api/v1/admin/core/accounts/${accountId}/roles/${role}`,
+      { method: 'DELETE', query: { reason } },
     )
   },
 
@@ -603,6 +644,24 @@ export const ingestionApi = {
     return request<Record<string, unknown>>(
       'ingest',
       `/api/v1/admin/ingestion/jobs/${jobId}/resume`,
+      { method: 'POST', body: { reason } },
+    )
+  },
+
+  /** 停止任务：与暂停不同，停止是终态，没有恢复入口。 */
+  stopJob(jobId: string, reason: string) {
+    return request<Record<string, unknown>>(
+      'ingest',
+      `/api/v1/admin/ingestion/jobs/${jobId}/stop`,
+      { method: 'POST', body: { reason } },
+    )
+  },
+
+  /** 失败重试：把 FAILED 任务从检查点放回队列，已交接过的那批不会重复交付。 */
+  retryJob(jobId: string, reason: string) {
+    return request<Record<string, unknown>>(
+      'ingest',
+      `/api/v1/admin/ingestion/jobs/${jobId}/retry`,
       { method: 'POST', body: { reason } },
     )
   },

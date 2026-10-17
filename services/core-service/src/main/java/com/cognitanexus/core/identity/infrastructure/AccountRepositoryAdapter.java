@@ -65,6 +65,16 @@ public class AccountRepositoryAdapter implements AccountRepository {
   }
 
   @Override
+  public int revokeRole(String accountId, String role) {
+    return mapper.deleteRole(accountId, role);
+  }
+
+  @Override
+  public int bumpAuthVersion(String accountId) {
+    return mapper.bumpAuthVersion(accountId);
+  }
+
+  @Override
   public long countActiveByRole(String role) {
     return mapper.countActiveByRole(role);
   }

@@ -72,6 +72,11 @@ public class CatalogSourceRepositories implements SourceConfigRepository, Source
   }
 
   @Override
+  public int setDisplayLicense(String sourceId, String status, String note) {
+    return mapper.setDisplayLicense(sourceId, status, note);
+  }
+
+  @Override
   public boolean insertIfAbsent(SourceRecord record) {
     int affected =
         mapper.insertIfAbsent(
@@ -116,6 +121,9 @@ public class CatalogSourceRepositories implements SourceConfigRepository, Source
         row.licenseScope(),
         row.baseUrl(),
         row.configVersion(),
-        allowed);
+        allowed,
+        row.displayLicenseStatus(),
+        row.displayLicenseChangedAt(),
+        row.displayLicenseNote());
   }
 }

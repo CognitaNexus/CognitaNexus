@@ -63,7 +63,8 @@ final class CollectRowMapper {
         row.lastError(),
         row.createdBy(),
         row.consecutiveFailures(),
-        row.nextAttemptAt());
+        row.nextAttemptAt(),
+        row.retryCount());
   }
 
   static StagedRecord toStaged(CollectMapper.StagedRow row) {

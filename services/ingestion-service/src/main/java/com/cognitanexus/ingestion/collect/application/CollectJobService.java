@@ -164,6 +164,85 @@ public class CollectJobService {
   }
 
   /**
+   * 停止任务。
+   *
+   * <p>与暂停的区别必须一眼可辨：暂停是「先停一下，之后从同一检查点接着跑」；停止是
+   * 「这个任务到此为止」。因此停止是终态、没有恢复入口，已交接的记录与未交接的暂存记录都保留，
+   * 但不再有东西会把它们从这条任务上继续推进。要接着抓应当新建任务——那会重新走一遍幂等键与
+   * 游标，而不是复用一条已经被人宣布「不要了」的任务。
+   *
+   * <p>之所以不提供 STOPPED → RUNNING：允许恢复就等于把「停止」做成第二个「暂停」，运维会
+   * 永远分不清两者，而「明确终止」这个动作本身就没有了。
+   */
+  @Transactional
+  public CollectJob stop(ActorContext actor, String jobId, String reason) {
+    CollectJob job = require(jobId);
+    if (job.status().terminal()) {
+      throw BusinessException.businessRule("任务已结束，无需停止（当前状态：" + job.status() + "）");
+    }
+    jobs.updateStatus(jobId, JobStatus.STOPPED, job.lastError());
+    audit.record(
+        actor,
+        "INGESTION_JOB_STOPPED",
+        "COLLECT_JOB",
+        jobId,
+        Map.of("status", job.status().name()),
+        Map.of(
+            "status", JobStatus.STOPPED.name(),
+            "checkpoint", String.valueOf(job.checkpoint()),
+            "totalHandedOff", job.totalHandedOff()),
+        reason == null || reason.isBlank() ? "停止采集任务" : reason);
+    log.info(
+        "采集任务已停止 jobId={} 原状态={} 检查点={} 已交接={}",
+        jobId,
+        job.status(),
+        job.checkpoint(),
+        job.totalHandedOff());
+    return jobs.findById(jobId).orElseThrow();
+  }
+
+  /**
+   * 失败重试。
+   *
+   * <p>只允许从 FAILED 出发。SUCCEEDED 没有重试的意义（再跑一遍只会得到幂等重复），STOPPED 是
+   * 人主动结束的、不该被一条重试指令复活，PAUSED 有它自己的恢复入口。把这三个状态都拒掉，
+   * 是为了让「重试」这个动作只有一个含义：把一次非预期失败接着做完。
+   *
+   * <p>重试不动检查点与任何 total_* 计数（见 {@code requeueFailed} 的说明）。因此重试后的任务
+   * 统计是「累计值」，不是「本次执行值」——这一点在任务明细里必须让读者看得出来，否则
+   * 「重试后抓到 0 条」会被误读成「重试没生效」。
+   */
+  @Transactional
+  public CollectJob retry(ActorContext actor, String jobId, String reason) {
+    CollectJob job = require(jobId);
+    if (job.status() != JobStatus.FAILED) {
+      throw BusinessException.businessRule("只有失败的任务可以重试，当前状态：" + job.status() + "（暂停的任务请用恢复）");
+    }
+    int affected = jobs.requeueFailed(jobId);
+    if (affected != 1) {
+      throw BusinessException.versionConflict("任务状态已被其他操作改变，请刷新后重试");
+    }
+    audit.record(
+        actor,
+        "INGESTION_JOB_RETRIED",
+        "COLLECT_JOB",
+        jobId,
+        Map.of("status", JobStatus.FAILED.name(), "retryCount", job.retryCount()),
+        Map.of(
+            "status", JobStatus.PENDING.name(),
+            "checkpoint", String.valueOf(job.checkpoint()),
+            "retryCount", job.retryCount() + 1),
+        reason == null || reason.isBlank() ? "失败重试" : reason);
+    log.info(
+        "采集任务已重新排队 jobId={} 检查点={} 历史已交接={} 第 {} 次重试",
+        jobId,
+        job.checkpoint(),
+        job.totalHandedOff(),
+        job.retryCount() + 1);
+    return jobs.findById(jobId).orElseThrow();
+  }
+
+  /**
    * 任务运行统计。
    *
    * <p>依据架构 §6.2 第 6 条，管理后台必须<b>分别</b>展示已抓取、已持久交接、已发布、待核验与失败数。

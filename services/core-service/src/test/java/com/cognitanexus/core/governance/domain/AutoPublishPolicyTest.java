@@ -19,7 +19,17 @@ class AutoPublishPolicyTest {
 
   private static AutoPublishPolicy.Inputs inputs(
       boolean hasIdentifier, boolean conflicted, boolean similarCandidate, String nature) {
-    return new AutoPublishPolicy.Inputs(hasIdentifier, conflicted, similarCandidate, nature);
+    return new AutoPublishPolicy.Inputs(hasIdentifier, conflicted, similarCandidate, nature, true);
+  }
+
+  private static AutoPublishPolicy.Inputs withLicense(
+      boolean hasIdentifier,
+      boolean conflicted,
+      boolean similarCandidate,
+      String nature,
+      boolean licenseGranted) {
+    return new AutoPublishPolicy.Inputs(
+        hasIdentifier, conflicted, similarCandidate, nature, licenseGranted);
   }
 
   /** 全部条件都满足的基线输入，各用例只改动一个维度。 */
@@ -114,6 +124,25 @@ class AutoPublishPolicyTest {
   void nullReasonsNormalized() {
     AutoPublishPolicy.Decision decision = new AutoPublishPolicy.Decision(true, null);
     assertThat(decision.reasons()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("来源展示许可已撤销时不得自动公开：否则下次采集就把撤权踩回来了")
+  void revokedDisplayLicenseBlocksPublish() {
+    AutoPublishPolicy.Decision decision =
+        AutoPublishPolicy.evaluate(withLicense(true, false, false, "REAL", false));
+
+    assertThat(decision.publishable()).isFalse();
+    assertThat(decision.reasons()).anySatisfy(reason -> assertThat(reason).contains("展示许可已撤销"));
+  }
+
+  @Test
+  @DisplayName("许可仍有效不会额外增加理由：不能把正常情形写成「有条件通过」")
+  void grantedLicenseAddsNoReason() {
+    AutoPublishPolicy.Decision decision =
+        AutoPublishPolicy.evaluate(withLicense(true, false, false, "REAL", true));
+
+    assertThat(decision).isEqualTo(AutoPublishPolicy.Decision.allow());
   }
 
   @Test

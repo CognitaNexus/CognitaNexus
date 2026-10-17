@@ -390,16 +390,27 @@ public class PortalService {
     return claims.countOpenClaims();
   }
 
-  /** 材料下载：仅申请人与具备审核能力者可读，且必须经过核心服务鉴权代理（A08）。 */
+  /**
+   * 材料下载：仅申请人与具备审核能力者可读，且必须经过核心服务鉴权代理（A08）。
+   *
+   * <p>「材料不存在」与「材料存在但无权读」返回<b>同一个</b>错误码与文案。此前的实现先查材料、
+   * 再判权限，于是未授权者可以从 404 与 403 的差别里反推这份材料是否存在——枚举一遍 id 就能
+   * 摸清别人提交了什么材料、有几份。这类差异在日志里看不出来，只有把两种失败对齐才能消除。
+   *
+   * <p>代价是运维排查时会少一条区分信息；这类纠纷应走审计（谁在什么时候请求过哪个 id），
+   * 而不是靠对外错误码。
+   */
   @Transactional(readOnly = true)
   public EvidenceDownload downloadEvidence(ActorContext actor, String evidenceId) {
-    ClaimEvidence evidence =
-        claims.findEvidence(evidenceId).orElseThrow(() -> BusinessException.notFound("材料不存在"));
+    if (actor == null) {
+      throw new BusinessException(ErrorCode.AUTH_REQUIRED, "请先登录");
+    }
+    ClaimEvidence evidence = claims.findEvidence(evidenceId).orElse(null);
     ClaimRequest claim =
-        claims
-            .findClaimById(evidence.claimRequestId())
-            .orElseThrow(() -> BusinessException.notFound("材料所属申请不存在"));
-    requireApplicantOrAdmin(actor, claim);
+        evidence == null ? null : claims.findClaimById(evidence.claimRequestId()).orElse(null);
+    if (evidence == null || claim == null || !mayReadClaim(actor, claim)) {
+      throw BusinessException.notFound("材料不存在或不可访问");
+    }
     byte[] content = evidenceStorage.read(evidence.fileRef());
     return new EvidenceDownload(evidence, content);
   }
@@ -413,9 +424,14 @@ public class PortalService {
    */
   @Transactional(readOnly = true)
   public List<ClaimEvidence> listEvidenceForClaim(ActorContext actor, String claimId) {
-    ClaimRequest claim =
-        claims.findClaimById(claimId).orElseThrow(() -> BusinessException.notFound("申请不存在"));
-    requireApplicantOrAdmin(actor, claim);
+    if (actor == null) {
+      throw new BusinessException(ErrorCode.AUTH_REQUIRED, "请先登录");
+    }
+    ClaimRequest claim = claims.findClaimById(claimId).orElse(null);
+    // 与下载路径同一条规则、同一种失败方式：不区分「申请不存在」与「申请存在但不是你的」。
+    if (claim == null || !mayReadClaim(actor, claim)) {
+      throw BusinessException.notFound("申请不存在或不可访问");
+    }
     return claims.listEvidence(claimId);
   }
 
@@ -664,6 +680,16 @@ public class PortalService {
       throw BusinessException.versionConflict("该申请已有结论，不能再追加材料");
     }
     return claim;
+  }
+
+  /** 当前账号是否可以读这条申请及其材料：申请本人，或具备审核能力者。 */
+  private boolean mayReadClaim(ActorContext actor, ClaimRequest claim) {
+    if (actor == null) {
+      return false;
+    }
+    boolean applicant = claim.accountId().equals(actor.accountIdValue());
+    boolean reviewer = Capabilities.has(actor, RoleNames.CAP_CLAIM_REVIEW);
+    return applicant || reviewer;
   }
 
   private void requireApplicantOrAdmin(ActorContext actor, ClaimRequest claim) {

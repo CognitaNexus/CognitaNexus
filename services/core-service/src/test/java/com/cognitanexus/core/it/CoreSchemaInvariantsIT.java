@@ -2,12 +2,16 @@ package com.cognitanexus.core.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -39,8 +43,8 @@ class CoreSchemaInvariantsIT {
   }
 
   @Test
-  @DisplayName("空库可完整执行全部迁移，且历史记录全部成功")
-  void migrationsApplyToEmptyDatabase() throws SQLException {
+  @DisplayName("空库可完整执行全部迁移，且历史记录全部成功、与磁盘上的迁移文件一一对应")
+  void migrationsApplyToEmptyDatabase() throws Exception {
     try (Connection conn = db.superuser();
         Statement st = conn.createStatement();
         ResultSet rs =
@@ -52,8 +56,23 @@ class CoreSchemaInvariantsIT {
         assertThat(rs.getBoolean("success")).as("迁移 %s 是否成功", rs.getString("version")).isTrue();
         versions.add(rs.getString("version"));
       }
-      // V1..V10：版本号跳号说明有迁移没被执行；多出说明有人手工改库。
-      assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+      // 期望值取自磁盘上的迁移文件，而不是写死一份清单：写死过一次，新增 V11 后这条用例红了整轮
+      // 集成测试，而它本来要守的是「跳号说明有迁移没被执行；多出说明有人手工改库」。
+      assertThat(versions).containsExactlyElementsOf(migrationVersionsOnDisk());
+    }
+  }
+
+  /** 迁移目录里的版本号，按数值升序。读不到目录时直接失败，不静默跳过。 */
+  private static List<String> migrationVersionsOnDisk() throws Exception {
+    URL dir = CoreSchemaInvariantsIT.class.getClassLoader().getResource("db/migration");
+    assertThat(dir).as("classpath:db/migration 必须可读（测试从 target/classes 运行）").isNotNull();
+    try (var files = Files.list(Path.of(dir.toURI()))) {
+      return files
+          .map(p -> p.getFileName().toString())
+          .map(name -> name.replaceFirst("^V(\\d+)__.*$", "$1"))
+          .filter(v -> v.matches("\\d+"))
+          .sorted(Comparator.comparingInt(Integer::parseInt))
+          .toList();
     }
   }
 

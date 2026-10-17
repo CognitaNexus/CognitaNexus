@@ -11,6 +11,17 @@ public final class EventTypes {
   // 事件类型
   public static final String CATALOG_CHANGE_COMMITTED = "CatalogChangeCommitted";
   public static final String PUBLIC_VISIBILITY_TIGHTENED = "PublicVisibilityTightened";
+
+  /**
+   * 公开资格放开（ADR-001 方案 A）。
+   *
+   * <p>刻意与 {@link #PUBLIC_VISIBILITY_TIGHTENED} 分成两个类型，而不是在同一个类型里用 payload
+   * 的 {@code change} 区分方向：两者对消费方的后果相反——一个要求立刻停止展示，一个要求重新拉取；
+   * 合成一个类型后，任何一处「只处理了收紧、忘了放开」都会表现为「恢复许可了但页面还是空的」，
+   * 而那种缺陷很难在日志里看出来。
+   */
+  public static final String PUBLIC_VISIBILITY_RESTORED = "PublicVisibilityRestored";
+
   public static final String PORTAL_AUTHORITY_GRANTED = "PortalAuthorityGranted";
   public static final String PORTAL_AUTHORITY_REVOKED = "PortalAuthorityRevoked";
   public static final String CLAIM_DECIDED = "ClaimDecided";

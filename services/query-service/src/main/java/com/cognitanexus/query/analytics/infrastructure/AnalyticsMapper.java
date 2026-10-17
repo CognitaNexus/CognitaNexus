@@ -38,6 +38,22 @@ public interface AnalyticsMapper {
   record TopicCountRow(
       String bucket, String canonicalName, long amount, long sourceAmount, long inferredAmount) {}
 
+  /**
+   * 关键词热点行（FR13）。
+   *
+   * <p>与 {@link TopicCountRow} 分开而不是复用：热点统计的口径是「某个年份窗内的论文」，
+   * 多出首末年份与样本基数，而且只算论文（专利/项目/获奖不参与）。复用同一个行类型会让调用方
+   * 以为两者可以互相替代——它们的分母不同，放在一起比较就是错的。
+   */
+  record HotspotRow(
+      String topicId,
+      String canonicalName,
+      long achievements,
+      long sourceAmount,
+      long inferredAmount,
+      Integer firstYear,
+      Integer lastYear) {}
+
   record YearRow(Integer year, long amount) {}
 
   record CitationRow(String citationSource, long achievementCount, long citationSum) {}
@@ -220,6 +236,110 @@ public interface AnalyticsMapper {
       @Param("generation") String generation,
       @Param("dataNature") String dataNature,
       @Param("limit") int limit);
+
+  /**
+   * 关键词热点：年份窗内的公开生效论文，按领域（已登记主题）计数。
+   *
+   * <p>三条实现约束直接来自 FR13：
+   *
+   * <ul>
+   *   <li><b>只算论文</b>：{@code a.type = 'PAPER'}。专利的分类号、项目的学科代码是另一套体系，
+   *       混在一起排序得到的是「哪个词在四类成果里都常见」，不是学术热点；
+   *   <li><b>只算有年份的</b>：年份未知的成果无法参与时间窗统计，把它们并进任何一个窗口都是编造。
+   *       调用方从 sampleSize 能看出被排除掉多少（见热点服务里的 note）；
+   *   <li><b>破并列用规范词升序</b>，不是 topic_id。按 id 排会让读者看到一串随机顺序，
+   *       而「同计数时按名称排」是读者唯一能自己复核的规则。
+   * </ul>
+   *
+   * <p>同义词归并不在 SQL 里做：别名在入库时已经映射到同一个 topic_id，计数天然合并。
+   * 而「有凭证才合并」由 {@code ref_topic_alias.evidence} 的非空约束保证（core 侧）。
+   */
+  @Select(
+      """
+      <script>
+      SELECT t.topic_id AS topicId,
+             max(t.canonical_name) AS canonicalName,
+             count(DISTINCT a.achievement_id) AS achievements,
+             count(DISTINCT a.achievement_id) FILTER (WHERE t.assignment_kind = 'SOURCE')
+               AS sourceAmount,
+             count(DISTINCT a.achievement_id) FILTER (WHERE t.assignment_kind = 'INFERRED')
+               AS inferredAmount,
+             min(a.publication_year) AS firstYear,
+             max(a.publication_year) AS lastYear
+      FROM qry_achievement_topic t
+      JOIN qry_achievement a
+        ON a.generation = t.generation AND a.achievement_id = t.achievement_id
+      WHERE t.generation = #{generation}
+        AND a.type = 'PAPER'
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        AND a.publication_year IS NOT NULL
+        <if test="yearFrom != null">AND a.publication_year &gt;= #{yearFrom}</if>
+        <if test="yearTo != null">AND a.publication_year &lt;= #{yearTo}</if>
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+      GROUP BY t.topic_id
+      ORDER BY achievements DESC, lower(coalesce(max(t.canonical_name), t.topic_id)) ASC
+      LIMIT #{limit}
+      </script>
+      """)
+  List<HotspotRow> topicHotspots(
+      @Param("generation") String generation,
+      @Param("dataNature") String dataNature,
+      @Param("yearFrom") Integer yearFrom,
+      @Param("yearTo") Integer yearTo,
+      @Param("limit") int limit);
+
+  /** 热点统计的样本基数：同一窗口内的公开生效论文数（含没有领域标注的）。 */
+  @Select(
+      """
+      <script>
+      SELECT count(*)
+      FROM qry_achievement a
+      WHERE a.generation = #{generation}
+        AND a.type = 'PAPER'
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        AND a.publication_year IS NOT NULL
+        <if test="yearFrom != null">AND a.publication_year &gt;= #{yearFrom}</if>
+        <if test="yearTo != null">AND a.publication_year &lt;= #{yearTo}</if>
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+      </script>
+      """)
+  long countHotspotSample(
+      @Param("generation") String generation,
+      @Param("dataNature") String dataNature,
+      @Param("yearFrom") Integer yearFrom,
+      @Param("yearTo") Integer yearTo);
+
+  /**
+   * 窗口内「有领域标注的领域个数」。
+   *
+   * <p>为什么要单独查一次：这个数此前是拿返回结果的行数填的，于是 `limit=2` 时它会显示「只有 2 个
+   * 领域有标注」——把「本页显示几条」当成了「一共几个领域」。数字在页面上看起来正常（默认 limit
+   * 大于领域总数时两者相等），只在调小 limit 或分享带 limit 的链接时开始说谎，属于最难发现的一类错误。
+   *
+   * <p>查询条件必须与 {@link #topicHotspots} 完全一致，否则「有 N 个领域」与「榜上 M 行」的差别
+   * 会被读成数据缺失。
+   */
+  @Select(
+      """
+      <script>
+      SELECT count(DISTINCT t.topic_id)
+      FROM qry_achievement_topic t
+      JOIN qry_achievement a
+        ON a.generation = t.generation AND a.achievement_id = t.achievement_id
+      WHERE t.generation = #{generation}
+        AND a.type = 'PAPER'
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        AND a.publication_year IS NOT NULL
+        <if test="yearFrom != null">AND a.publication_year &gt;= #{yearFrom}</if>
+        <if test="yearTo != null">AND a.publication_year &lt;= #{yearTo}</if>
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+      </script>
+      """)
+  long countHotspotTopics(
+      @Param("generation") String generation,
+      @Param("dataNature") String dataNature,
+      @Param("yearFrom") Integer yearFrom,
+      @Param("yearTo") Integer yearTo);
 
   @Select(
       """

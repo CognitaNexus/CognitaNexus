@@ -287,6 +287,32 @@ function resumeJob(row: Row) {
   run(`resume:${String(row.id)}`, () => ingestionApi.resumeJob(String(row.id), '管理台手动恢复'), '任务已恢复。', loadJobs)
 }
 
+/**
+ * 停止与暂停是两件事。
+ *
+ * 暂停可以恢复；停止是终态，停止后这条任务不会再被调度，已交接的记录与暂存记录都保留。
+ * 界面上把两个按钮并列给出并各自说明后果——只给「暂停」会让想彻底结束任务的人反复暂停，
+ * 只给「停止」则会让人以为还能恢复。
+ */
+function stopJob(row: Row) {
+  run(
+    `stop:${String(row.id)}`,
+    () => ingestionApi.stopJob(String(row.id), '管理台手动停止'),
+    '任务已停止。检查点与已交接记录保留，但该任务不会再继续；要接着抓请新建任务。',
+    loadJobs,
+  )
+}
+
+/** 失败重试：只对 FAILED 显示。重试不改检查点，已交接过的那批不会重复交付。 */
+function retryJob(row: Row) {
+  run(
+    `retry:${String(row.id)}`,
+    () => ingestionApi.retryJob(String(row.id), '管理台手动重试'),
+    '任务已重新排队。将从已确认的检查点继续，历史已交接记录不会重复交付。',
+    loadJobs,
+  )
+}
+
 async function inspectJob(row: Row) {
   const id = String(row.id)
   selectedJobId.value = id
@@ -671,6 +697,24 @@ onMounted(loadAll)
                       </button>
                       <button class="btn small" :disabled="busy === `resume:${String(row.id)}`" @click="resumeJob(row)">
                         恢复
+                      </button>
+                      <!-- 只有失败的任务能重试；把按钮做成「能不能点」而不是「点了报错」。 -->
+                      <button
+                        v-if="String(row.status ?? '') === 'FAILED'"
+                        class="btn small primary"
+                        :disabled="busy === `retry:${String(row.id)}`"
+                        @click="retryJob(row)"
+                      >
+                        失败重试
+                      </button>
+                      <!-- 终态任务不再提供停止：停止一个已经结束的任务没有意义，只会造成误解。 -->
+                      <button
+                        v-if="!['SUCCEEDED', 'FAILED', 'STOPPED'].includes(String(row.status ?? ''))"
+                        class="btn small danger"
+                        :disabled="busy === `stop:${String(row.id)}`"
+                        @click="stopJob(row)"
+                      >
+                        停止
                       </button>
                       <button class="btn small" @click="inspectJob(row)">明细</button>
                     </div>

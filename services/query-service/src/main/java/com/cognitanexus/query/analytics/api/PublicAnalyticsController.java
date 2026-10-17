@@ -35,6 +35,27 @@ public class PublicAnalyticsController {
   }
 
   /**
+   * 关键词热点（FR13）。
+   *
+   * <p>年份窗用两个可空参数表达「不限」，而不是用一个字符串解析：空值就是空值，
+   * 前端不需要约定「"all" 或空串表示不限」这类隐形协议。
+   *
+   * <p>limit 有上限（服务层再夹到 50）：热点榜的意义是「看一眼最活跃的几个」，
+   * 允许拉全量会让这个端点变成另一种导出接口。
+   */
+  @GetMapping("/keywords")
+  public ResponseEntity<ApiResponse<Map<String, Object>>> keywords(
+      @RequestParam(required = false, defaultValue = "REAL") String dataNature,
+      @RequestParam(required = false) Integer yearFrom,
+      @RequestParam(required = false) Integer yearTo,
+      @RequestParam(required = false, defaultValue = "20") int limit) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            analyticsService.keywordHotspots(dataNature, yearFrom, yearTo, limit),
+            TraceIdHolder.current()));
+  }
+
+  /**
    * 领域洞察。
    *
    * <p>领域标识放在路径里而不是查询参数：它标识的是「这一页讲的是哪个领域」，属于资源身份；

@@ -115,6 +115,30 @@ function disableAccount(row: Row) {
   run(`disable:${id}`, () => adminApi.disableAccount(id, reason), `账号 ${id} 已封禁。`, loadAccounts)
 }
 
+/**
+ * 撤销角色。
+ *
+ * 只对 USER 以外的角色提供入口：USER 是账号的基础身份，撤销它等于把人变成「能登录但什么都不能做」，
+ * 真要禁止使用应当封禁账号（封禁有独立入口与独立审计）。
+ *
+ * 撤销同样会让对方当前会话失效——这是刻意的：角色是权限，权限收回必须立即生效，
+ * 不能等对方下次登录。
+ */
+function revokeRole(row: Row, role: string) {
+  const id = String(row.id ?? '')
+  const reason = (accountReasons[id] ?? '').trim() || roleReason.value.trim()
+  if (!reason) {
+    actionError.value = '撤销角色必须填写原因（可用上方授角原因或该账号的封禁原因输入框）。'
+    return
+  }
+  run(
+    `revoke:${id}:${role}`,
+    () => adminApi.revokeRole(id, role, reason),
+    `已撤销账号 ${id} 的 ${role}。对方既有会话已失效。`,
+    loadAccounts,
+  )
+}
+
 function grantRole(row: Row) {
   const id = String(row.id ?? '')
   const role = (roleDraft[id] ?? '').trim()
@@ -129,7 +153,7 @@ function grantRole(row: Row) {
   run(
     `role:${id}`,
     () => adminApi.grantRole(id, role),
-    `已为账号 ${id} 授予 ${role}。该账号需要重新读取会话才能看到新增能力。`,
+    `已为账号 ${id} 授予 ${role}。该账号的既有会话已失效（角色变更提升会话版本），需重新登录后生效。`,
     loadAccounts,
   )
 }
@@ -311,8 +335,24 @@ onMounted(loadAll)
               <span :class="row.status === 'DISABLED' ? 'badge danger' : 'badge ok'">
                 {{ row.status === 'DISABLED' ? '已封禁' : String(row.status ?? '未知') }}
               </span>
-              <span class="tiny faint">
-                角色：{{ (row.roles as string[])?.join(', ') || '无' }}
+              <span class="tiny faint" style="display: inline-flex; gap: 6px; flex-wrap: wrap">
+                <span>角色：</span>
+                <template v-for="role in (row.roles as string[]) ?? []" :key="role">
+                  <span class="badge neutral">
+                    {{ role }}
+                    <button
+                      v-if="role !== 'USER'"
+                      class="btn small"
+                      style="margin-left: 4px; padding: 0 4px; line-height: 1.2"
+                      :disabled="busy === `revoke:${String(row.id)}:${role}`"
+                      :title="`撤销 ${role}`"
+                      @click="revokeRole(row, role)"
+                    >
+                      ×
+                    </button>
+                  </span>
+                </template>
+                <span v-if="!((row.roles as string[]) ?? []).length">无</span>
               </span>
               <span class="tiny faint">会话版本 {{ String(row.authVersion ?? '') }}</span>
             </div>

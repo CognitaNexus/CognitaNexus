@@ -304,6 +304,7 @@ class CrossrefAdapterStubTest {
         null,
         "tester",
         0,
-        null);
+        null,
+        0);
   }
 }

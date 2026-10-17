@@ -1,6 +1,7 @@
 package com.cognitanexus.core.catalog.infrastructure;
 
 import com.cognitanexus.core.catalog.application.CatalogRepositories.AchievementRepository;
+import com.cognitanexus.core.catalog.application.CatalogRepositories.AchievementRepository.SourceRef;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.ContributionRepository;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.FieldProvenanceRepository;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.IdentifierRegistryRepository;
@@ -254,6 +255,50 @@ public class CatalogCoreRepositories
   @Override
   public List<String> findExclusivelyFromSource(String sourceId, int limit) {
     return achievementMapper.findExclusivelyFromSource(sourceId, limit);
+  }
+
+  @Override
+  public long countExclusivelyFromSource(String sourceId) {
+    return achievementMapper.countExclusivelyFromSource(sourceId);
+  }
+
+  @Override
+  public long countPublicWithoutValidLicense(String sourceId) {
+    return achievementMapper.countPublicWithoutValidLicense(sourceId);
+  }
+
+  @Override
+  public List<String> tightenBatchForSource(String sourceId, int limit) {
+    return achievementMapper.tightenBatchForSource(sourceId, limit);
+  }
+
+  @Override
+  public long countRestrictedBySource(String sourceId) {
+    return achievementMapper.countRestrictedBySource(sourceId);
+  }
+
+  @Override
+  public List<String> restoreBatchForSource(String sourceId, int limit) {
+    return achievementMapper.restoreBatchForSource(sourceId, limit);
+  }
+
+  @Override
+  public List<SourceRef> sourcesOf(String achievementId) {
+    return achievementMapper.findSourceRefs(achievementId).stream()
+        .map(
+            row ->
+                new SourceRef(
+                    row.sourceId(),
+                    row.sourceCode(),
+                    row.displayName(),
+                    row.sourceRecordId(),
+                    row.externalUrl(),
+                    row.licenseScope(),
+                    row.dataNature(),
+                    row.sourceUpdatedAt(),
+                    row.receivedAt(),
+                    row.displayLicenseStatus()))
+        .toList();
   }
 
   @Override

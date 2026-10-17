@@ -128,6 +128,8 @@ watch(() => scope.nature, load)
         <span>·</span>
         <RouterLink to="/search">高级检索与筛选</RouterLink>
         <span>·</span>
+        <span>·</span>
+        <RouterLink to="/hotspots">关键词热点</RouterLink>
         <RouterLink to="/network">合作网络查询</RouterLink>
       </div>
     </section>

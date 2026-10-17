@@ -56,6 +56,96 @@ const paper = computed<PaperView | null>(() => {
   return raw as unknown as PaperView
 })
 
+/**
+ * 专利 / 项目 / 获奖的专属字段。
+ *
+ * 三类成果的扩展表由后端按类型装配（PublicCatalogQueryService.detailViewOf），页面此前只渲染了
+ * paper 一块——于是打开任何一条专利、项目或获奖详情，除了标题与年份之外什么都没有。四类成果是
+ * FR16 的硬性验收点，字段看不见等于没有实现。
+ *
+ * 字段名逐个对齐后端：专利 applicationNo/publicationNo/ipcCodes/applicantNames/filingDate/
+ * publicationDate；项目 projectNo/leaderName/fundingAgency/projectCategory；获奖 awardName/
+ * awardYear/awardLevel/grantingBody。
+ */
+interface PatentView {
+  applicationNo?: string | null
+  publicationNo?: string | null
+  ipcCodes?: string[] | null
+  applicantNames?: string[] | null
+  filingDate?: string | null
+  publicationDate?: string | null
+}
+
+interface ProjectView {
+  projectNo?: string | null
+  leaderName?: string | null
+  fundingAgency?: string | null
+  projectCategory?: string | null
+  fundingNote?: string | null
+}
+
+interface AwardView {
+  awardName?: string | null
+  awardYear?: number | null
+  awardLevel?: string | null
+  grantingBody?: string | null
+}
+
+function blockOf<T>(key: string): T | null {
+  const raw = detail.data.value?.[key]
+  if (!raw || typeof raw !== 'object') return null
+  return raw as T
+}
+
+const patent = computed(() => blockOf<PatentView>('patent'))
+const project = computed(() => blockOf<ProjectView>('project'))
+const award = computed(() => blockOf<AwardView>('award'))
+
+/**
+ * 来源清单（FR02）。
+ *
+ * externalUrl 可能为空——来源没给原站地址时不拼一个看起来能点的链接，直接写「来源未提供可跳转地址」。
+ * 外链一律 target=_blank + rel=noopener：这是跳原站，不是站内导航，且不能把本页交给对方窗口。
+ */
+interface SourceRefView {
+  sourceCode?: string | null
+  displayName?: string | null
+  sourceRecordId?: string | null
+  externalUrl?: string | null
+  licenseScope?: string | null
+  dataNature?: string | null
+  sourceUpdatedAt?: string | null
+  receivedAt?: string | null
+}
+
+const sources = computed<SourceRefView[]>(
+  () => (detail.data.value?.sources as SourceRefView[] | undefined) ?? [],
+)
+
+/** 时间只显示到分钟：来源侧时间用于「新旧判断」，秒级精度对读者没有意义且更易被误读为精确时刻。 */
+function shortTime(value: string | null | undefined): string {
+  if (!value) return '来源未提供'
+  return value.replace('T', ' ').slice(0, 16)
+}
+
+function listOrUnknown(values: string[] | null | undefined): string {
+  return values && values.length ? values.join('、') : '来源未提供'
+}
+
+/**
+ * 标题下方那行「出处」。
+ *
+ * 四类成果的「出处」不是同一个概念：论文看载体、专利看申请人、项目看资助机构、获奖看颁奖机构。
+ * 统一写「来源未提供发表载体」会让一条获奖记录看起来像是缺了论文字段。
+ */
+const subtitleText = computed(() => {
+  const type = String(detail.data.value?.type ?? '')
+  if (type === 'PATENT') return patent.value?.applicantNames?.join('、') || '申请人未提供'
+  if (type === 'PROJECT') return project.value?.fundingAgency || '资助机构未提供'
+  if (type === 'AWARD') return award.value?.grantingBody || '颁奖机构未提供'
+  return paper.value?.venue || '来源未提供发表载体'
+})
+
 const redirectedFrom = computed(() => detail.data.value?.redirectedFrom as string | undefined)
 
 /**
@@ -213,8 +303,7 @@ onMounted(detail.run)
         </div>
 
         <div class="result-source" style="margin-bottom: 12px">
-          <template v-if="paper?.venue">{{ paper.venue }}</template>
-          <template v-else>来源未提供发表载体</template>
+          {{ subtitleText }}
           ·
           <template v-if="detail.data.value.publicationYear">
             {{ detail.data.value.publicationYear }} 年
@@ -263,6 +352,84 @@ onMounted(detail.run)
                       <div class="tiny faint">{{ paper.citationNote }}</div>
                     </template>
                     <span v-else class="faint">来源未提供引用量</span>
+                  </dd>
+                </template>
+
+                <!-- 专利：申请号与公开号分开列。二者不是同一件事，合并成「专利号」会让读者
+                     把「已申请」误读成「已授权公开」。 -->
+                <template v-if="patent">
+                  <dt>申请号</dt>
+                  <dd>
+                    <span v-if="patent.applicationNo" class="mono">{{ patent.applicationNo }}</span>
+                    <span v-else class="faint">来源未提供</span>
+                  </dd>
+                  <dt>公开号</dt>
+                  <dd>
+                    <span v-if="patent.publicationNo" class="mono">{{ patent.publicationNo }}</span>
+                    <span v-else class="faint">来源未提供</span>
+                  </dd>
+                  <dt>申请人</dt>
+                  <dd>{{ listOrUnknown(patent.applicantNames) }}</dd>
+                  <dt>申请日</dt>
+                  <dd>
+                    <span v-if="patent.filingDate" class="mono">{{ patent.filingDate }}</span>
+                    <span v-else class="faint">来源未提供</span>
+                  </dd>
+                  <dt>公开日</dt>
+                  <dd>
+                    <span v-if="patent.publicationDate" class="mono">{{ patent.publicationDate }}</span>
+                    <span v-else class="faint">来源未提供</span>
+                  </dd>
+                  <dt>IPC 分类</dt>
+                  <dd>{{ listOrUnknown(patent.ipcCodes) }}</dd>
+                </template>
+
+                <!-- 项目：不显示经费金额（BR-IMP-11 数据最小化，后端也不返回该字段）。 -->
+                <template v-if="project">
+                  <dt>项目编号</dt>
+                  <dd>
+                    <span v-if="project.projectNo" class="mono">{{ project.projectNo }}</span>
+                    <span v-else class="faint">来源未提供</span>
+                  </dd>
+                  <dt>负责人</dt>
+                  <dd>
+                    <span v-if="project.leaderName">{{ project.leaderName }}</span>
+                    <span v-else class="faint">来源未提供</span>
+                  </dd>
+                  <dt>资助机构</dt>
+                  <dd>
+                    <span v-if="project.fundingAgency">{{ project.fundingAgency }}</span>
+                    <span v-else class="faint">来源未提供</span>
+                  </dd>
+                  <dt>项目类别</dt>
+                  <dd>
+                    <span v-if="project.projectCategory">{{ project.projectCategory }}</span>
+                    <span v-else class="faint">来源未提供</span>
+                  </dd>
+                  <dt>经费</dt>
+                  <dd class="faint">{{ project.fundingNote ?? '本平台不展示经费金额' }}</dd>
+                </template>
+
+                <template v-if="award">
+                  <dt>奖项名称</dt>
+                  <dd>
+                    <span v-if="award.awardName">{{ award.awardName }}</span>
+                    <span v-else class="faint">来源未提供</span>
+                  </dd>
+                  <dt>获奖年度</dt>
+                  <dd>
+                    <span v-if="award.awardYear">{{ award.awardYear }}</span>
+                    <span v-else class="faint">来源未提供</span>
+                  </dd>
+                  <dt>奖项级别</dt>
+                  <dd>
+                    <span v-if="award.awardLevel">{{ award.awardLevel }}</span>
+                    <span v-else class="faint">来源未提供</span>
+                  </dd>
+                  <dt>颁奖机构</dt>
+                  <dd>
+                    <span v-if="award.grantingBody">{{ award.grantingBody }}</span>
+                    <span v-else class="faint">来源未提供</span>
                   </dd>
                 </template>
               </dl>
@@ -323,7 +490,7 @@ onMounted(detail.run)
           </div>
         </div>
 
-        <div class="panel">
+        <div v-if="paper" class="panel">
           <div class="panel-head">
             <h2>摘要</h2>
             <span class="tiny faint">来源原文，未经改写</span>
@@ -333,6 +500,62 @@ onMounted(detail.run)
               {{ paper.abstractText }}
             </p>
             <div v-else class="empty">来源未提供摘要。</div>
+          </div>
+        </div>
+
+        <!-- 来源清单（FR02）：一条成果可以有多处来源，这里逐条给出可核对的信息与外链。
+             外链只跳原站，不承诺全文；没有外链时明说，不拼一个大概能点的地址。 -->
+        <div class="panel">
+          <div class="panel-head">
+            <h2>来源</h2>
+            <span class="tiny faint">
+              共 {{ detail.data.value.sourceCount ?? sources.length }} 处可公开来源
+              · 外链只跳原站，不代表本平台已核验全文
+            </span>
+          </div>
+          <div class="panel-body">
+            <div v-if="sources.length === 0" class="empty">
+              本条记录暂无仍具展示许可的来源引用。这不等于数据来源不明，只表示当前没有可对外披露的来源条目。
+            </div>
+            <table v-else class="data">
+              <thead>
+                <tr>
+                  <th>来源</th>
+                  <th>来源侧记录号</th>
+                  <th>许可范围</th>
+                  <th>数据性质</th>
+                  <th>来源更新时间</th>
+                  <th>原站</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="source in sources" :key="String(source.sourceCode) + String(source.sourceRecordId)">
+                  <td>
+                    {{ source.displayName ?? source.sourceCode ?? '来源未标注' }}
+                    <div class="tiny faint mono">{{ source.sourceCode }}</div>
+                  </td>
+                  <td class="mono tiny">{{ source.sourceRecordId ?? '—' }}</td>
+                  <td class="tiny">{{ source.licenseScope ?? '未提供许可说明' }}</td>
+                  <td class="tiny">{{ source.dataNature ?? '未知' }}</td>
+                  <td class="tiny">{{ shortTime(source.sourceUpdatedAt) }}</td>
+                  <td class="tiny">
+                    <a
+                      v-if="source.externalUrl"
+                      :href="source.externalUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      打开原站
+                    </a>
+                    <span v-else class="faint">来源未提供可跳转地址</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="tiny faint" style="margin: 10px 0 0">
+              外链失效不影响本条元数据可读：平台保存的是来源记录，不是原站页面。
+              同一成果的多处来源不重复计数，也不把来源条数当作成果条数。
+            </p>
           </div>
         </div>
 

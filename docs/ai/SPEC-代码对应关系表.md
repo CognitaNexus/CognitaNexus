@@ -89,7 +89,57 @@
   用真实来源数据标定各来源的周期（WB-13 要求「先从已接入来源各选一类实际数据说明理由」，本仓库
   没有获准使用的真实来源样本，故不填）。
 
-## 7 规范与代码的开发顺序（SDD 证据）
+## 7 来源展示许可（ADR-001 方案 A，2026-10-18 增补）
+
+方案与决策依据见 [ADR-001](../architecture/adr/ADR-001-来源暂停与撤销展示许可.md)；实现记录与未解决项在其 §8。
+
+| 条款 | 要求要点 | 实现位置 | 测试与自检 | 验收编号 |
+| --- | --- | --- | --- | --- |
+| AC-FR01-S01-02 / BR-606 | 来源暂停采集**不得**改变历史成果的可读性 | `.../catalog/application/SourceAdminService.java#setCollectionPaused`；旧入口 `setEnabled` 已标记 `@Deprecated` 且语义收敛为「只切采集开关」 | `SourceDisplayLicenseProbe` A1（真实库）；`tests/api/smoke-core.sh` | AC-IMPL-NF07-01 |
+| BR-606 | 撤销展示许可后公开读**立即**不再返回依赖该来源的成果，不等逐批收紧跑完 | `.../catalog/infrastructure/AchievementMapper.java#PUBLIC_SOURCE_LICENSE_CONDITION`（导出与计数共用同一常量） | 探针 A2 | AC-IMPL-NF07-01 |
+| AC-IMPL-NF07-01 | 「有效依据」的判据看**展示许可**，不看采集开关 | 同上；迁移 `V11__source_display_license.sql` | 探针 A4 | AC-IMPL-NF07-01 |
+| 架构 §7.2 | 大规模撤权不得「一次事务里最多改 5000 条」：作业可中断、可续跑，完成判据是残留为 0 | 表 `core_source_display_revocation`；`SourceAdminService#revokeDisplayLicense`、`resumeJob`；批大小 500、单次上限 400 批 | 探针 A3（5001 条，`target=5001`/`tightened=5001`/残留 0/`SUCCEEDED`） | AC-IMPL-NF07-01 |
+| BR-606 | 恢复许可只放开「因本次撤权被收紧」的对象，不碰因治理未通过或人工限制而受限的成果 | `core_achievement.display_restriction_source_id`（部分索引）；`SourceAdminService#restoreDisplayLicense` | 探针 A5 | AC-IMPL-NF07-01 |
+| 编码规范 §1.4 | 撤权必须留时间点与理由，事后可复核 | 库级 CHECK `ck_raw_source_config_display_license_changed`、`ck_core_source_revocation_reason`（V11） | 迁移即断言；`tests/api/smoke-core.sh` | AC-IMPL-NF07-01 |
+
+## 8 统一待办与账户安全（FR14 / FR04 / A08，2026-10-18 增补）
+
+| 条款 | 要求要点 | 实现位置 | 测试与自检 | 验收编号 |
+| --- | --- | --- | --- | --- |
+| FR14 | 采集、异常治理、学者核验、认领审核、成果变更、账号维护要有**统一入口**，而不是散在四处 | `.../catalog/api/AdminCatalogController.java#todos`（`GET /admin/core/todos`）；前端 `frontend/src/views/TodosView.vue` | `AdminCatalogTodosTest`（4 项） | AC-IMPL-FR14-01 |
+| FR14 | 待办只统计「需要人做决定」的事项；采集失败与投递积压属运行状态，不计入 | 同上（`todoNote` 随数据返回说明口径） | `AdminCatalogTodosTest.todoTotalCountsOnlyHumanDecisions` | AC-IMPL-FR14-01 |
+| FR14 | 无该类审核能力时计数为 `null` 而不是 0（「没有待办」与「你看不到」是两件事） | 同上（`Capabilities.has` 分支） | 同上；前端 `display()` 把 null 渲染为「无权限查看」 | AC-IMPL-FR14-01 |
+| FR04 | 角色授予与撤销都必须提升认证版本，否则旧会话仍按旧角色鉴权 | `.../identity/application/AccountAdminService.java#grantRole/revokeRole`；`.../infrastructure/AccountMapper.java#bumpAuthVersion` | `AccountAdminServiceTest`（14 项：授予、重复授予幂等、撤销、撤自己、撤 USER、缺理由、并发被撤、能力校验、审计人取自上下文、停用） | AC-IMPL-FR04-04 |
+| FR04 | 撤销角色三条守卫：不能撤自己（会把人锁在门外）、`USER` 是基础身份不可撤（禁止登录应走停用）、账号没有该角色时按冲突拒绝且**不**提升认证版本 | 同上 | 同上 | AC-IMPL-FR04-04 |
+| A08 | 认领材料下载不得用「404 不存在 / 403 无权」的差别泄露材料存在性 | `.../portal/application/PortalService.java#downloadEvidence`、`listEvidenceForClaim`（两种失败同码同文案） | `PortalEvidenceAccessTest`（8 项，含「拒绝发生在读文件之前」与「两种失败报文一致」） | AC-IMPL-FR05-04 |
+
+## 9 采集任务停止与重试（SRS §6.2 六状态，2026-10-18 增补）
+
+| 条款 | 要求要点 | 实现位置 | 测试与自检 | 验收编号 |
+| --- | --- | --- | --- | --- |
+| SRS §6.2 | 采集状态含 `STOPPED`：终止而不是暂停，保留检查点但**没有**恢复路径 | `.../ingestion/collect/domain/JobStatus.java`；迁移 `V9__job_stop_and_retry.sql`（ingestion）；`CollectJobService#stop` | `CollectJobServiceTest`（4 项：停止保检查点且不可恢复、已成功不可停止、重试不动检查点、只有 FAILED 可重试） | AC-IMPL-FR08-03 |
+| FR08 | 人工重试只从 `FAILED` 出发，不动检查点与已抓条数；重试次数单独计数（`retry_count`）而不是复用退避计数 `consecutive_failures` | `CollectMapper#requeueFailedJob`；`CollectJob.retryCount` | 同上 | AC-IMPL-FR08-03 |
+
+## 10 关键词热点（FR13，2026-10-18 增补）
+
+| 条款 | 要求要点 | 实现位置 | 测试与自检 | 验收编号 |
+| --- | --- | --- | --- | --- |
+| FR13 | 只统计论文、只统计有发表年份的成果；专利/项目/获奖不参与热点排序 | `.../query/analytics/infrastructure/AnalyticsMapper.java#topicHotspots`（`a.type='PAPER'`、`publication_year IS NOT NULL`） | `services/query-service/src/test/.../KeywordHotspotTest`（10 项） | AC-IMPL-FR13-01 |
+| FR13 | 领域为多对多，占比之和可超过 100%，必须随数据写明分母 | `AnalyticsService#keywordHotspots`（`sampleSize` + `shareOfSample` + `note`） | 同上「占比以窗口内全部公开论文为分母」 | AC-IMPL-FR13-01 |
+| FR13 | 样本不足时明确「不构成热点结论」，不把排名当结论 | 同上（`sparse` + 分段 note） | 同上「样本不足 5 篇」「样本足够但没有领域标注」 | AC-IMPL-FR13-01 |
+| 编码规范 §1.4 | 热点口径与总览不同，规则版本必须分开（`KEYWORD_HOTSPOT_V1` ≠ `ANALYTICS_V1`） | `AnalyticsService.HOTSPOT_RULE_VERSION` | 同上「规则版本与总览分开」 | — |
+| FR13 | 计数相同时按领域规范词升序破并列，结果与数据加载顺序无关（可复现） | `AnalyticsMapper#topicHotspots`（`ORDER BY achievements DESC, lower(coalesce(...)) ASC`） | 同上（规则文本断言） | AC-IMPL-FR13-01 |
+
+## 11 成果详情与来源清单（FR02，2026-10-18 增补）
+
+| 条款 | 要求要点 | 实现位置 | 测试与自检 | 验收编号 |
+| --- | --- | --- | --- | --- |
+| FR02 | 成果详情要让读者能回到来源：来源名、记录号、许可范围、数据性质、来源更新时间、原站外链 | `PublicCatalogQueryService#sourceViews`；`frontend/src/views/AchievementDetailView.vue`「来源」面板 | 未建专门单元测试（如实标注）；由 `tests/api/smoke-core.sh` 与页面逐条核对 | AC-IMPL-FR02-02 |
+| FR02 | 外链只取来源给的 `sourceUrl` 或 DOI 解析地址，**不拼** `base_url + record_id`（会 404）；来源未给地址时如实写「来源未提供可跳转地址」 | `AchievementMapper#findSourceRefs`（`COALESCE(NULLIF(payload->>'sourceUrl',''), 'https://doi.org/'||doi)`） | 同上 | AC-IMPL-FR02-02 |
+| FR02 | 许可为 `REVOKED` 的来源不出现在公开来源清单里 | `PublicCatalogQueryService#sourceViews`（过滤非 `GRANTED`） | 探针 A2 的同一判据（公开导出不含） | AC-IMPL-FR02-02 |
+| FR02 | 四类成果各自的关键字段不混用：专利（申请号/公开号）、项目（资助机构，**不展示经费**）、获奖（颁奖机构） | `AchievementDetailView.vue`（`patent`/`project`/`award` 分块） | 页面核对；类型缺失时只显示该类型对应的块 | AC-IMPL-FR02-01 |
+
+## 12 规范与代码的开发顺序（SDD 证据）
 
 | 环节 | 做法 | 可核对位置 |
 | --- | --- | --- |
@@ -98,9 +148,12 @@
 | 规范评审记录存档 | 评审报告与决策登记在需求仓库 | 需求仓库 `docs/spec/spec-review-report.md`、`docs/srs/integration/decision-register-2026-10-12.md` |
 | 规范—代码对应 | 本表；新功能或改口径时同步更新本表 | 本文件 |
 
-## 8 未覆盖与待办
+## 13 未覆盖与待办
 
 1. 检索排序的权重参数、相似度阈值仍为候选值，待 SPEC 联合评审后回填。
 2. 本仓库目前没有 `core` 侧解析入库（Intake）的专门单元测试，该段规则由接口自检与代码审查覆盖；表中已逐行如实标注，不把接口自检写成单元测试结论。
 3. 100 万规模已实测但**未达标**（见 `docs/ai/第三批-容量与恢复验证记录-2026-10-17.md`）；500 万规模与 300／1000 并发未执行。不得把「跑过 100 万」写成「容量验证通过」。
 4. 采集端到端（真实服务 + 替身来源）未跑：本轮只验证了适配器与执行服务两层，见 §6.1。
+5. 来源许可恢复（`RUNNING_RESTORE`）只在探针里跑过小样本，百万级恢复的耗时与中断续跑**未实测**；见 ADR-001 §8.4。
+6. 「登记为停用 + 许可未审核 → 直接恢复采集」这条路径**未堵住**：许可审核状态在采集侧，核心服务看不到。详见 ADR-001 §8.4 第 1 条，属跨服务契约变更，需单独评审。
+7. 详情页「来源清单」没有单元测试，只有接口自检与页面核对；这是本轮明确留下的缺口，不写成「已覆盖」。

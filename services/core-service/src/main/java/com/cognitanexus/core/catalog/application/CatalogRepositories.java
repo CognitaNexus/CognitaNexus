@@ -23,6 +23,13 @@ public interface CatalogRepositories {
   /** 来源配置。来源许可与允许展示规则以 core 为权威（架构 §4.2）。 */
   interface SourceConfigRepository {
 
+    /**
+     * 来源配置。
+     *
+     * <p>{@code enabled} 是<b>采集开关</b>，{@code displayLicenseStatus} 是<b>展示许可</b>，
+     * 两者互不影响（ADR-001 §3 方案 A）：暂停采集不动许可，撤销许可也不停止采集——
+     * 后者仍可为已授权范围更新元数据。
+     */
     record SourceConfig(
         String id,
         String sourceCode,
@@ -31,7 +38,15 @@ public interface CatalogRepositories {
         String licenseScope,
         String baseUrl,
         int configVersion,
-        List<String> allowedFields) {}
+        List<String> allowedFields,
+        String displayLicenseStatus,
+        java.time.Instant displayLicenseChangedAt,
+        String displayLicenseNote) {
+
+      public boolean displayLicenseGranted() {
+        return "GRANTED".equals(displayLicenseStatus);
+      }
+    }
 
     Optional<SourceConfig> findByCode(String sourceCode);
 
@@ -59,6 +74,14 @@ public interface CatalogRepositories {
 
     /** 更新字段白名单并提升配置版本；白名单变化后适配器必须按新版本执行。 */
     int updateAllowedFields(String sourceId, List<String> allowedFields);
+
+    /**
+     * 设置展示许可状态（{@code GRANTED} / {@code REVOKED}）；状态未变时返回 0。
+     *
+     * <p>它只改许可位。撤权带来的成果收紧是另一件事，由撤权作业逐批完成——两者分开，
+     * 才能让「阻断」即时发生、而「落地」可以慢慢来（ADR-001 §4）。
+     */
+    int setDisplayLicense(String sourceId, String status, String note);
   }
 
   /** 原始来源记录。原值只追加；幂等重复不改原值。 */
@@ -159,8 +182,48 @@ public interface CatalogRepositories {
 
     long countPublicForExport();
 
-    /** 唯一来源为指定来源且当前公开的成果标识；用于撤销展示许可时收紧可见性。 */
+    /**
+     * 除该来源外已无有效展示依据、且当前公开的成果标识；用于撤销展示许可时收紧可见性。
+     *
+     * <p>「有效」指那个来源的展示许可仍是 {@code GRANTED}——只暂停采集的来源仍构成有效依据。
+     */
     List<String> findExclusivelyFromSource(String sourceId, int limit);
+
+    /** 撤权受理时的目标条数。 */
+    long countExclusivelyFromSource(String sourceId);
+
+    /** 完成判据：仍公开、且已无任何有效展示依据的成果数（撤权作业收尾时必须为 0）。 */
+    long countPublicWithoutValidLicense(String sourceId);
+
+    /** 收紧一批并把收紧原因记为该来源；返回实际改动的成果标识。 */
+    List<String> tightenBatchForSource(String sourceId, int limit);
+
+    /**
+     * 一条成果的全部来源引用，按接收时间排序。
+     *
+     * <p>详情页据此展示「这条元数据从哪几处来」：来源编码、来源记录号、原站外链、许可范围、
+     * 数据性质与来源侧更新时间。不含原始载荷——对外要的是可核对，不是把采集到的内容全量倒出。
+     */
+    List<SourceRef> sourcesOf(String achievementId);
+
+    /** 来源引用（对外可披露字段）。 */
+    record SourceRef(
+        String sourceId,
+        String sourceCode,
+        String displayName,
+        String sourceRecordId,
+        String externalUrl,
+        String licenseScope,
+        String dataNature,
+        Instant sourceUpdatedAt,
+        Instant receivedAt,
+        String displayLicenseStatus) {}
+
+    /** 恢复作业的目标条数：因该来源撤权被收紧、当前仍受限的成果数。 */
+    long countRestrictedBySource(String sourceId);
+
+    /** 恢复许可时的一批回填：只放开「因该来源撤权被收紧、且现在又有有效依据」的成果。 */
+    List<String> restoreBatchForSource(String sourceId, int limit);
 
     /** 收紧可见性；只降不升，且仅在当前可见性不同时产生一次版本变更。 */
     int tightenVisibility(String achievementId, String visibility);

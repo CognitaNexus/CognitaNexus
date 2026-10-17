@@ -85,4 +85,32 @@ class PublicAnalyticsControllerTest {
 
     verify(service).topicInsight("top_ai", "REAL");
   }
+
+  @Test
+  @DisplayName("关键词热点：年份窗与条数原样下传，结果放进统一响应包")
+  void keywordHotspotsDelegatesWindow() {
+    when(service.keywordHotspots("REAL", 2020, 2024, 20))
+        .thenReturn(Map.of("ruleVersion", AnalyticsService.HOTSPOT_RULE_VERSION));
+
+    ResponseEntity<ApiResponse<Map<String, Object>>> response =
+        controller.keywords("REAL", 2020, 2024, 20);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(200);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().code()).isEqualTo("OK");
+    assertThat(response.getBody().data())
+        .containsEntry("ruleVersion", AnalyticsService.HOTSPOT_RULE_VERSION);
+    verify(service).keywordHotspots("REAL", 2020, 2024, 20);
+  }
+
+  @Test
+  @DisplayName("关键词热点：年份窗用 null 表达「不限」，不发明 all 之类的字符串协议")
+  void keywordHotspotsAcceptsOpenWindow() {
+    when(service.keywordHotspots("REAL", null, null, 20)).thenReturn(Map.of());
+
+    controller.keywords("REAL", null, null, 20);
+
+    // 传 null 就下传 null：接口层不得把「不限」翻译成某个魔法字符串。
+    verify(service).keywordHotspots("REAL", null, null, 20);
+  }
 }

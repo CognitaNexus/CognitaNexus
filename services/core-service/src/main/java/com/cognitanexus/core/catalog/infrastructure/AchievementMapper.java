@@ -381,6 +381,62 @@ public interface AchievementMapper {
       """)
   int countDistinctSources(@Param("achievementId") String achievementId);
 
+  /**
+   * 一条成果的全部来源引用（对外展示用）。
+   *
+   * <p>依据 FR02：详情要展示「全部可公开来源ID」、许可范围、数据性质与来源更新时间，外链只跳原站。
+   * 这里的字段都是对外可披露的：来源编码与名称、来源记录号、外链、许可范围、数据性质、来源侧
+   * 更新时间与接收时间。<b>不返回 payload 原文</b>——原始记录里可能有未获准公开的字段，
+   * 而 FR02 要的是「来源可核对」，不是「把采集到的所有东西倒出来」。
+   *
+   * <p>外链的取法有明确边界，宁可不给也不编：
+   * <ul>
+   *   <li>来源自己给了 {@code sourceUrl} 就用它（这是来源声明的原站地址）；
+   *   <li>否则若来源记录带 DOI，用 doi.org 解析器——DOI 是公开标识，解析地址不依赖任何私有约定；
+   *   <li>两者都没有就返回 NULL，前端显示「来源未提供可跳转地址」。
+   * </ul>
+   * 刻意不用 {@code base_url + '/' + source_record_id} 拼：各来源的记录号形态不同（OpenAlex 是
+   * 完整 URL、Crossref 是 DOI、NSF 是纯数字），拼接出来的地址十有八九 404，比没有链接更糟。
+   */
+  @Select(
+      """
+      SELECT c.id                      AS sourceId,
+             c.source_code             AS sourceCode,
+             c.display_name            AS displayName,
+             l.source_record_id        AS sourceRecordId,
+             COALESCE(
+               NULLIF(r.payload ->> 'sourceUrl', ''),
+               CASE
+                 WHEN NULLIF(r.payload ->> 'doi', '') IS NOT NULL
+                   THEN 'https://doi.org/' || (r.payload ->> 'doi')
+               END
+             )                         AS externalUrl,
+             c.license_scope           AS licenseScope,
+             r.data_nature             AS dataNature,
+             l.source_updated_at       AS sourceUpdatedAt,
+             l.received_at             AS receivedAt,
+             c.display_license_status  AS displayLicenseStatus
+      FROM core_achievement_source l
+      JOIN raw_source_config c ON c.id = l.source_id
+      JOIN raw_source_record r ON r.id = l.source_record_id
+      WHERE l.achievement_id = #{achievementId}
+      ORDER BY l.received_at, c.source_code
+      """)
+  List<SourceRefRow> findSourceRefs(@Param("achievementId") String achievementId);
+
+  /** 来源引用行。字段与对外展示一一对应，不含原始载荷。 */
+  record SourceRefRow(
+      String sourceId,
+      String sourceCode,
+      String displayName,
+      String sourceRecordId,
+      String externalUrl,
+      String licenseScope,
+      String dataNature,
+      Instant sourceUpdatedAt,
+      Instant receivedAt,
+      String displayLicenseStatus) {}
+
   // ---------------------------------------------------------------------------
   // 稳定标识注册
   // ---------------------------------------------------------------------------
@@ -599,6 +655,55 @@ public interface AchievementMapper {
       "SELECT count(*) FROM core_achievement WHERE effective_status = #{effectiveStatus} AND merged_into_id IS NULL")
   long countByStatus(@Param("effectiveStatus") String effectiveStatus);
 
+  /**
+   * 公开投影导出的公共可见性条件。
+   *
+   * <p>V11 起这条条件不只读 {@code core_achievement} 自身，还要读来源的展示许可：
+   * <b>一条成果只有在「至少一个来源仍具展示许可」时才算公开</b>（没有任何来源行的人工实体不受此限）。
+   *
+   * <p>为什么必须放在导出条件里，而不是等撤权作业把 visibility 逐批改成 RESTRICTED：
+   *
+   * <ul>
+   *   <li>撤权请求受理的同一个事务里就把来源标成 REVOKED 并推进公开水位。query 侧屏障随即要求
+   *       追平水位，追平就要重新拉这份导出。如果导出仍按旧的 {@code visibility='PUBLIC'} 判断，
+   *       它在追平的过程中会把「还没被逐批收紧」的成果重新装回投影——屏障追平了，数据却还是错的。
+   *       把许可条件放进导出，受理那一刻起导出就再也看不到这些成果，阻断是即时的；
+   *   <li>逐批收紧因此可以慢慢来、可以中断、可以续跑，它变成「把数据落成与事实一致」的收尾动作，
+   *       不再是「唯一的阻断手段」。这也是 ADR-001 §4 要求的分层。
+   * </ul>
+   *
+   * <p>语义分三种情形，这条条件必须同时说清三种，缺一种就会误伤：
+   *
+   * <ul>
+   *   <li>没有任何来源行（人工录入的实体）：不受来源许可约束，保持原判据；
+   *   <li>有来源行且至少一个仍 GRANTED：公开。多来源成果不会因为其中一个来源撤权而整体下线，
+   *       这正是 §2.4 修的那一半——原来的 {@code NOT EXISTS (... source_id <> ?)} 会把一份
+   *       已撤销许可的第二来源当成有效依据；
+   *   <li>有来源行但全部 REVOKED：不公开，且不需要等 visibility 被逐批改成 RESTRICTED。
+   * </ul>
+   *
+   * <p>写成「无来源行 OR 存在 GRANTED 来源」而不是「不存在 REVOKED 来源」：后者会让
+   * 「A 有效、B 已撤权」的成果被误拦，那是一次撤权连坐全部共源成果。
+   *
+   * <p>子查询用 {@code NOT EXISTS}/{@code EXISTS} 而不是 join：一个成果可能有多个来源，join 会放大
+   * 行数，分页导出的 OFFSET 立刻就错位。
+   */
+  // 接口里的字段隐式 public static final，不能写 private；用常量拼接是为了让导出与计数两条
+  // 查询共用同一份条件，避免其中一处改了另一处没改（那会让 count 与 list 不一致）。
+  String PUBLIC_SOURCE_LICENSE_CONDITION =
+      """
+        AND (
+          NOT EXISTS (SELECT 1 FROM core_achievement_source any_src
+                      WHERE any_src.achievement_id = core_achievement.id)
+          OR EXISTS (
+            SELECT 1 FROM core_achievement_source ok_src
+            JOIN raw_source_config ok_cfg ON ok_cfg.id = ok_src.source_id
+            WHERE ok_src.achievement_id = core_achievement.id
+              AND ok_cfg.display_license_status = 'GRANTED'
+          )
+        )
+      """;
+
   @Select(
       """
       SELECT id             AS id,
@@ -616,6 +721,9 @@ public interface AchievementMapper {
              updated_at     AS updatedAt
       FROM core_achievement
       WHERE merged_into_id IS NULL AND visibility = 'PUBLIC' AND effective_status = 'EFFECTIVE'
+      """
+          + PUBLIC_SOURCE_LICENSE_CONDITION
+          + """
       ORDER BY id
       LIMIT #{limit} OFFSET #{offset}
       """)
@@ -625,7 +733,8 @@ public interface AchievementMapper {
       """
       SELECT count(*) FROM core_achievement
       WHERE merged_into_id IS NULL AND visibility = 'PUBLIC' AND effective_status = 'EFFECTIVE'
-      """)
+      """
+          + PUBLIC_SOURCE_LICENSE_CONDITION)
   long countPublicForExport();
 
   /**
@@ -757,10 +866,21 @@ public interface AchievementMapper {
   long countAll();
 
   /**
-   * 找出「唯一来源是该来源」且当前公开的成果。
+   * 找出「除了该来源之外没有其它<b>有效</b>展示依据」且当前公开的成果。
    *
-   * <p>用于撤销来源展示许可：只有完全依赖该来源的成果才必须随之收紧可见性；
-   * 同时有其它来源证据的成果不应因为一个来源被停用而整体下线。
+   * <p>用于撤销来源展示许可：只有失去全部有效依据的成果才必须随之收紧可见性；
+   * 同时有其它有效来源的成果不应因为一个来源被撤权而整体下线。
+   *
+   * <p>V11 起有两个变化，都针对 ADR-001 登记的真实缺陷：
+   *
+   * <ul>
+   *   <li>「其它来源」必须仍具展示许可（{@code display_license_status = 'GRANTED'}）。原来的
+   *       {@code NOT EXISTS (... source_id <> ?)} 只看有没有第二行，于是一份早已撤销许可的第二来源
+   *       足以让成果被判定为「非独占」而逃过收紧（ADR §2.4）。注意判据是「许可」而不是「enabled」：
+   *       暂停采集的来源仍持有许可，它的成果依据仍然成立；
+   *   <li>许可状态与采集开关彻底分开。采购侧暂停一个来源不再产生任何收紧动作——这个查询现在只由
+   *       撤权作业调用，不再由 {@code enabled=false} 触发。
+   * </ul>
    */
   @Select(
       """
@@ -772,13 +892,146 @@ public interface AchievementMapper {
         AND a.merged_into_id IS NULL
         AND NOT EXISTS (
           SELECT 1 FROM core_achievement_source s2
-          WHERE s2.achievement_id = a.id AND s2.source_id <> #{sourceId}
+          JOIN raw_source_config c2 ON c2.id = s2.source_id
+          WHERE s2.achievement_id = a.id
+            AND s2.source_id <> #{sourceId}
+            AND c2.display_license_status = 'GRANTED'
         )
       ORDER BY a.id
       LIMIT #{limit}
       """)
   List<String> findExclusivelyFromSource(
       @Param("sourceId") String sourceId, @Param("limit") int limit);
+
+  /** 撤权受理时的目标条数：仅依赖该来源且仍公开的成果有多少。 */
+  @Select(
+      """
+      SELECT count(*)
+      FROM core_achievement a
+      JOIN core_achievement_source s ON s.achievement_id = a.id
+      WHERE s.source_id = #{sourceId}
+        AND a.visibility = 'PUBLIC'
+        AND a.merged_into_id IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM core_achievement_source s2
+          JOIN raw_source_config c2 ON c2.id = s2.source_id
+          WHERE s2.achievement_id = a.id
+            AND s2.source_id <> #{sourceId}
+            AND c2.display_license_status = 'GRANTED'
+        )
+      """)
+  long countExclusivelyFromSource(@Param("sourceId") String sourceId);
+
+  /** 撤权作业的完成判据：仍然公开、且已无任何有效展示依据的成果数必须为 0。 */
+  @Select(
+      """
+      SELECT count(*)
+      FROM core_achievement a
+      WHERE a.visibility = 'PUBLIC'
+        AND a.merged_into_id IS NULL
+        AND EXISTS (
+          SELECT 1 FROM core_achievement_source s
+          WHERE s.achievement_id = a.id AND s.source_id = #{sourceId}
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM core_achievement_source s2
+          JOIN raw_source_config c2 ON c2.id = s2.source_id
+          WHERE s2.achievement_id = a.id
+            AND c2.display_license_status = 'GRANTED'
+        )
+      """)
+  long countPublicWithoutValidLicense(@Param("sourceId") String sourceId);
+
+  /**
+   * 收紧一批：把「已无有效展示依据」的公开成果改成 RESTRICTED，并记录收紧原因。
+   *
+   * <p>用一条 {@code UPDATE ... RETURNING} 而不是「先 SELECT id 再逐条 UPDATE」：
+   * 后者在同一批里会把已经被别的治理动作改走的行也算进候选，逐条更新时才发现影响 0 行，
+   * 于是进度数字对不上；而且中间没有任何并发保护。单语句让筛选与写入看到同一份快照。
+   *
+   * <p>{@code display_restriction_source_id} 只在原本为 NULL 时写入（{@code COALESCE}）：
+   * 一条成果可能先后被两个来源撤权牵连，归因保留第一次，恢复时按「是否还有有效依据」重新判定，
+   * 不依赖这个字段的唯一性。
+   */
+  @Select(
+      """
+      WITH batch AS (
+        SELECT a.id
+        FROM core_achievement a
+        JOIN core_achievement_source s ON s.achievement_id = a.id
+        WHERE s.source_id = #{sourceId}
+          AND a.visibility = 'PUBLIC'
+          AND a.merged_into_id IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM core_achievement_source s2
+            JOIN raw_source_config c2 ON c2.id = s2.source_id
+            WHERE s2.achievement_id = a.id
+              AND s2.source_id <> #{sourceId}
+              AND c2.display_license_status = 'GRANTED'
+          )
+        ORDER BY a.id
+        LIMIT #{limit}
+        FOR UPDATE OF a SKIP LOCKED
+      )
+      UPDATE core_achievement a
+      SET visibility = 'RESTRICTED',
+          display_restriction_source_id =
+              COALESCE(a.display_restriction_source_id, #{sourceId}),
+          version = version + 1,
+          updated_at = now()
+      FROM batch
+      WHERE a.id = batch.id
+      RETURNING a.id
+      """)
+  List<String> tightenBatchForSource(@Param("sourceId") String sourceId, @Param("limit") int limit);
+
+  /** 恢复作业的目标条数：因该来源撤权被收紧、当前仍受限的成果有多少。 */
+  @Select(
+      """
+      SELECT count(*) FROM core_achievement
+      WHERE visibility = 'RESTRICTED'
+        AND display_restriction_source_id = #{sourceId}
+        AND merged_into_id IS NULL
+      """)
+  long countRestrictedBySource(@Param("sourceId") String sourceId);
+
+  /**
+   * 恢复许可时的一批回填：只放开「因该来源撤权被收紧、且现在又有有效依据」的成果。
+   *
+   * <p>三个条件缺一不可，分别挡住三类误放开：{@code display_restriction_source_id} 挡住
+   * 「本来就被人工限制或治理未通过的成果」；{@code effective_status = 'EFFECTIVE'} 挡住
+   * 「当前治理状态不允许公开」；{@code EXISTS (... GRANTED)} 挡住「许可回来了但另一个依据也没了」。
+   *
+   * <p>这就是 ADR-001 §3 说的「逐条重新计算」：不是简单地把 RESTRICTED 改成 PUBLIC。
+   */
+  @Select(
+      """
+      WITH batch AS (
+        SELECT a.id
+        FROM core_achievement a
+        WHERE a.visibility = 'RESTRICTED'
+          AND a.display_restriction_source_id = #{sourceId}
+          AND a.merged_into_id IS NULL
+          AND a.effective_status = 'EFFECTIVE'
+          AND EXISTS (
+            SELECT 1 FROM core_achievement_source s
+            JOIN raw_source_config c ON c.id = s.source_id
+            WHERE s.achievement_id = a.id AND c.display_license_status = 'GRANTED'
+          )
+        ORDER BY a.id
+        LIMIT #{limit}
+        FOR UPDATE OF a SKIP LOCKED
+      )
+      UPDATE core_achievement a
+      SET visibility = 'PUBLIC',
+          display_restriction_source_id = NULL,
+          version = version + 1,
+          updated_at = now()
+      FROM batch
+      WHERE a.id = batch.id
+      RETURNING a.id
+      """)
+  List<String> restoreBatchForSource(@Param("sourceId") String sourceId, @Param("limit") int limit);
 
   default Achievement toDomain(AchievementRow row) {
     return new Achievement(

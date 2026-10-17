@@ -310,6 +310,41 @@ public class AdminIngestionController {
   }
 
   /**
+   * 停止任务。
+   *
+   * <p>与暂停的区别写在响应里：{@code resumable=false}。暂停的任务可以恢复，停止的不行——
+   * 前端据此决定显示「恢复」还是「已结束」，不靠猜状态串。
+   */
+  @PostMapping("/jobs/{jobId}/stop")
+  public ApiResponse<Map<String, Object>> stopJob(
+      @PathVariable String jobId, @RequestBody(required = false) ReasonRequest request) {
+    CollectJob job =
+        jobs.stop(
+            ActorContextHolder.currentOrNull(), jobId, request == null ? null : request.reason());
+    Map<String, Object> view = toJobView(job);
+    view.put("resumable", false);
+    view.put("note", "已停止：检查点与已交接记录保留，但该任务不会再继续；要接着抓请新建任务");
+    return ApiResponse.ok(view, TraceIdHolder.current());
+  }
+
+  /**
+   * 失败重试：把 FAILED 任务放回队列，从已确认的检查点继续。
+   *
+   * <p>不做「只重跑失败的那几条」：采集任务是按页推进的，检查点之前的内容已经交付，
+   * 之后的内容还没抓。从检查点继续就是最小重跑范围，再细分需要来源侧提供逐条状态，不在本期范围。
+   */
+  @PostMapping("/jobs/{jobId}/retry")
+  public ApiResponse<Map<String, Object>> retryJob(
+      @PathVariable String jobId, @RequestBody(required = false) ReasonRequest request) {
+    CollectJob job =
+        jobs.retry(
+            ActorContextHolder.currentOrNull(), jobId, request == null ? null : request.reason());
+    Map<String, Object> view = toJobView(job);
+    view.put("note", "已重新排队；检查点未变，已交接过的那批不会重复交付");
+    return ApiResponse.ok(view, TraceIdHolder.current());
+  }
+
+  /**
    * 立即执行一轮（有界）。
    *
    * <p>这是后台执行器的同步版本，存在的理由是运维与验收需要可重复的驱动方式：等待定时调度
@@ -400,6 +435,8 @@ public class AdminIngestionController {
     // 连续失败次数与下一次尝试时刻：任务列表要能回答「这个任务为什么没在跑」。只给 lastError
     // 时看不出「它正在退避」，运维会以为调度坏了。
     view.put("consecutiveFailures", job.consecutiveFailures());
+    // 重试次数与连续失败次数并列给出：前者是「人让它重来过几次」，后者是「退避计数」。
+    view.put("retryCount", job.retryCount());
     view.put("nextAttemptAt", job.nextAttemptAt() == null ? null : job.nextAttemptAt().toString());
     return view;
   }

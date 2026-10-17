@@ -29,7 +29,10 @@ public interface SourceMapper {
       String licenseScope,
       String baseUrl,
       int configVersion,
-      String allowedFieldsJson) {}
+      String allowedFieldsJson,
+      String displayLicenseStatus,
+      Instant displayLicenseChangedAt,
+      String displayLicenseNote) {}
 
   @Select(
       """
@@ -40,7 +43,10 @@ public interface SourceMapper {
              license_scope AS licenseScope,
              base_url      AS baseUrl,
              config_version AS configVersion,
-             allowed_fields::text AS allowedFieldsJson
+             allowed_fields::text AS allowedFieldsJson,
+             display_license_status   AS displayLicenseStatus,
+             display_license_changed_at AS displayLicenseChangedAt,
+             display_license_note     AS displayLicenseNote
       FROM raw_source_config
       WHERE source_code = #{sourceCode}
       """)
@@ -55,7 +61,10 @@ public interface SourceMapper {
              license_scope AS licenseScope,
              base_url      AS baseUrl,
              config_version AS configVersion,
-             allowed_fields::text AS allowedFieldsJson
+             allowed_fields::text AS allowedFieldsJson,
+             display_license_status   AS displayLicenseStatus,
+             display_license_changed_at AS displayLicenseChangedAt,
+             display_license_note     AS displayLicenseNote
       FROM raw_source_config
       WHERE id = #{id}
       """)
@@ -70,7 +79,10 @@ public interface SourceMapper {
              license_scope AS licenseScope,
              base_url      AS baseUrl,
              config_version AS configVersion,
-             allowed_fields::text AS allowedFieldsJson
+             allowed_fields::text AS allowedFieldsJson,
+             display_license_status   AS displayLicenseStatus,
+             display_license_changed_at AS displayLicenseChangedAt,
+             display_license_note     AS displayLicenseNote
       FROM raw_source_config
       ORDER BY source_code
       """)
@@ -95,6 +107,12 @@ public interface SourceMapper {
       @Param("baseUrl") String baseUrl,
       @Param("allowedFields") String allowedFields);
 
+  /**
+   * 采集开关。
+   *
+   * <p>V11 起它<b>只</b>影响任务调度：不再有任何可见性收紧。收紧改由 {@link #setDisplayLicense}
+   * 与撤权作业承担。ADR-001 §3 方案 A。
+   */
   @Update(
       """
       UPDATE raw_source_config
@@ -102,6 +120,31 @@ public interface SourceMapper {
       WHERE id = #{sourceId}
       """)
   int setEnabled(@Param("sourceId") String sourceId, @Param("enabled") boolean enabled);
+
+  /**
+   * 展示许可状态。
+   *
+   * <p>撤销时必须留时间点与依据：只改状态位的话，事后无法回答「这条成果是撤权之后才下线的，
+   * 还是之前就已经被人工限制」。恢复许可时同样写入时间点，但不保留旧的撤销依据（它描述的是
+   * 上一次撤权，留着会让「为什么现在又允许了」变得无法解释）。
+   *
+   * <p>{@code WHERE display_license_status <> #{status}} 让重复撤权表现为 0 行影响，
+   * 而不是把 changed_at 悄悄刷新成「刚刚」。
+   */
+  @Update(
+      """
+      UPDATE raw_source_config
+      SET display_license_status = #{status},
+          display_license_changed_at = now(),
+          display_license_note = #{note},
+          updated_at = now()
+      WHERE id = #{sourceId}
+        AND display_license_status <> #{status}
+      """)
+  int setDisplayLicense(
+      @Param("sourceId") String sourceId,
+      @Param("status") String status,
+      @Param("note") String note);
 
   @Update(
       """

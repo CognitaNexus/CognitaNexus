@@ -14,7 +14,10 @@ import java.util.List;
  *   <li>必须带有来源提供的稳定标识（DOI / 申请号 / 项目号），因为稳定标识是跨源同一性的唯一可靠依据；
  *   <li>该标识在注册表中未被其他规范实体占用（占用说明存在冲突，须人工）；
  *   <li>不存在同标题的开放候选（相似即存疑，存疑即不自动）；
- *   <li>数据性质必须为 REAL：合成数据不得冒充真实收录。
+ *   <li>数据性质必须为 REAL：合成数据不得冒充真实收录；
+ *   <li>来源的展示许可必须仍然有效（ADR-001 方案 A）。撤权之后仍在采集的来源会继续送来新记录，
+ *       这些成果不能因为「DOI 正常、无相似候选」就自动公开——那等于撤权只在当下拦住存量，
+ *       下一次采集就把许可又踩回来了。
  * </ol>
  *
  * <p>不满足时返回理由列表，调用方据此把实体留在 PENDING_GOVERNANCE 并登记候选或异常；
@@ -55,6 +58,9 @@ public final class AutoPublishPolicy {
     if (!inputs.dataNature().equals("REAL")) {
       reasons.add("数据性质为 " + inputs.dataNature() + "，不得进入默认现实视图");
     }
+    if (!inputs.sourceDisplayLicenseGranted()) {
+      reasons.add("来源展示许可已撤销，新成果不得自动公开");
+    }
     return reasons.isEmpty() ? Decision.allow() : new Decision(false, reasons);
   }
 
@@ -62,10 +68,12 @@ public final class AutoPublishPolicy {
    * 判定输入。
    *
    * @param dataNature 数据性质名称（REAL/SIMULATED/MIXED）
+   * @param sourceDisplayLicenseGranted 来源当前是否仍有展示许可；撤销后新成果一律不自动公开
    */
   public record Inputs(
       boolean hasStableIdentifier,
       boolean identifierConflicted,
       boolean hasOpenSimilarCandidate,
-      String dataNature) {}
+      String dataNature,
+      boolean sourceDisplayLicenseGranted) {}
 }

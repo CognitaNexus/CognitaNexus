@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -92,6 +93,23 @@ public interface AccountMapper {
       ON CONFLICT (account_id, role) DO NOTHING
       """)
   int insertRole(@Param("accountId") String accountId, @Param("role") String role);
+
+  @Delete("DELETE FROM iam_account_role WHERE account_id = #{accountId} AND role = #{role}")
+  int deleteRole(@Param("accountId") String accountId, @Param("role") String role);
+
+  /**
+   * 仅提升认证版本，不动账号状态。
+   *
+   * <p>角色变化必须走这条路：会话里存的是登录那一刻的角色集合，不提升版本的话，
+   * 被撤销 REVIEWER 的人在当前会话里仍然是审核员，能一直用到自己退出为止——
+   * 这不是缓存陈旧，是权限没有真正收回。
+   */
+  @Update(
+      """
+      UPDATE iam_account SET auth_version = auth_version + 1, updated_at = now()
+      WHERE id = #{accountId}
+      """)
+  int bumpAuthVersion(@Param("accountId") String accountId);
 
   @Select("SELECT role FROM iam_account_role WHERE account_id = #{accountId} ORDER BY role")
   Set<String> findRoles(@Param("accountId") String accountId);

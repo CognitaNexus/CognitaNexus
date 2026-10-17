@@ -86,6 +86,113 @@ public class AnalyticsService {
   }
 
   /**
+   * 关键词热点（FR13）。
+   *
+   * <p>与总览的「领域分布」不是同一件事：那里回答「平台里各领域各有多少成果」，这里回答
+   * 「在指定年份窗内，哪些领域在论文里最活跃」。三个输入必须由调用方明确给出或明确留空，
+   * 不接受「不带参数就统计全部并当成热点」——那是把平台收录量当成学术热度。
+   *
+   * <p>口径边界，全部写进响应：
+   *
+   * <ul>
+   *   <li>只统计<b>论文</b>：专利分类号、项目学科代码属于另一套体系，混排得到的是「四类里都常见的词」；
+   *   <li>只统计<b>有年份</b>的成果：年份未知的不能塞进任何窗口，否则时间窗本身失效；
+   *   <li>领域是多对多，<b>占比之和可以超过 100%</b>。这不是 bug，是一篇论文可属于多个领域，
+   *       响应里必须明说，否则读者会拿它当互斥分布看；
+   *   <li>同义词已按<b>有凭证</b>的映射归并（{@code ref_topic_alias.evidence} 非空才允许存在），
+   *       没有凭证的近义词不会被合并——宁可分成两个词，也不替读者决定它们是一回事；
+   *   <li>样本不足时明确说「不构成热点结论」，不给排名加一段「仅供参考」的空话。
+   * </ul>
+   *
+   * @param yearFrom 起始年（含）；{@code null} 表示不设下限
+   * @param yearTo 结束年（含）；{@code null} 表示不设上限
+   */
+  public Map<String, Object> keywordHotspots(
+      String dataNature, Integer yearFrom, Integer yearTo, int limit) {
+    if (yearFrom != null && yearTo != null && yearFrom > yearTo) {
+      throw BusinessException.invalidArgument("起始年份不能晚于结束年份");
+    }
+    if ((yearFrom != null && (yearFrom < 1800 || yearFrom > 2200))
+        || (yearTo != null && (yearTo < 1800 || yearTo > 2200))) {
+      throw BusinessException.invalidArgument("年份超出可接受范围（1800–2200）");
+    }
+    PublicBarrierGuard.BarrierSnapshot barrier = guard.assertPubliclyServed();
+    String generation = barrier.activeGeneration();
+    String nature = normalizeNature(dataNature);
+    int size = Math.min(Math.max(limit, 1), 50);
+
+    long sample = mapper.countHotspotSample(generation, nature, yearFrom, yearTo);
+    long topicsWithKeywords = mapper.countHotspotTopics(generation, nature, yearFrom, yearTo);
+    List<AnalyticsMapper.HotspotRow> rows =
+        mapper.topicHotspots(generation, nature, yearFrom, yearTo, size);
+
+    List<Map<String, Object>> items = new ArrayList<>(rows.size());
+    for (AnalyticsMapper.HotspotRow row : rows) {
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("topicId", row.topicId());
+      view.put("canonicalName", row.canonicalName());
+      view.put("canonicalNameKnown", row.canonicalName() != null && !row.canonicalName().isBlank());
+      view.put("achievements", row.achievements());
+      view.put("sourceProvided", row.sourceAmount());
+      view.put("systemInferred", row.inferredAmount());
+      view.put("firstYear", row.firstYear());
+      view.put("lastYear", row.lastYear());
+      // 占比按「窗口内论文数」为分母，且明确标注可超过 100%：多对多时不加这句，
+      // 读者会把它当成互斥分布的百分比。
+      view.put(
+          "shareOfSample",
+          sample == 0 ? null : Math.round(row.achievements() * 1000.0 / sample) / 10.0);
+      items.add(view);
+    }
+
+    Map<String, Object> window = new LinkedHashMap<>();
+    window.put("yearFrom", yearFrom);
+    window.put("yearTo", yearTo);
+    window.put(
+        "label",
+        (yearFrom == null && yearTo == null)
+            ? "全时段（未限定年份窗）"
+            : ((yearFrom == null ? "不限" : yearFrom) + "–" + (yearTo == null ? "不限" : yearTo)));
+
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("window", window);
+    data.put("sampleSize", sample);
+    // 「有标注的领域一共几个」与「本页显示几行」必须分开：把行数当成领域总数，在 limit 小于领域数时
+    // 会把「一共有 18 个领域」说成「只有 2 个领域有标注」。
+    data.put("topicsWithKeywords", topicsWithKeywords);
+    data.put("returnedTopics", rows.size());
+    data.put("sparse", sample < 5 || rows.isEmpty());
+    data.put("items", items);
+    data.put("scope", scope(nature));
+    data.put("countingRules", hotspotCountingRules());
+    data.put("ruleVersion", HOTSPOT_RULE_VERSION);
+    data.put("publishedRevision", barrier.publishedRevision());
+    data.put("generatedAt", Instant.now());
+    data.put(
+        "note",
+        sample < 5
+            ? "窗口内公开论文样本不足 5 篇，下列排序不构成热点结论；请扩大年份窗或调整数据性质口径。"
+            : (rows.isEmpty()
+                ? "窗口内有论文，但都没有可用的领域标注；本平台不按标题猜主题，因此没有可排序的热点。"
+                : "领域为多对多：占比之和可超过 100%；只统计论文，专利/项目/获奖不参与本页排序。"));
+    return data;
+  }
+
+  /** 热点统计的规则版本。与总览/领域洞察分开：分母不同，不能用同一个版本号互相核对。 */
+  public static final String HOTSPOT_RULE_VERSION = "KEYWORD_HOTSPOT_V1";
+
+  private static Map<String, Object> hotspotCountingRules() {
+    Map<String, Object> rules = new LinkedHashMap<>();
+    rules.put("unit", "按去重成果实体计数；同一篇论文属于两个领域时，两个领域各计一次");
+    rules.put("types", "只统计论文（PAPER）；专利、科研项目、获奖不参与热点排序");
+    rules.put("years", "只统计有发表年份的论文；年份未知的不进入任何年份窗，单独表现为样本外");
+    rules.put("order", "计数降序；计数相同时按领域规范词升序（与数据加载顺序无关，可复现）");
+    rules.put("synonyms", "同义词只在有凭证的映射下合并（凭证随映射一起保存），无凭证不合并");
+    rules.put("sample", "sampleSize 为窗口内全部公开生效论文数，是占比的分母，也是「样本是否足够」的判据");
+    return rules;
+  }
+
+  /**
    * 单个领域的洞察。
    *
    * <p>为什么要有这个端点：总览里的领域榜只给出「哪些领域大」，回答不了「这个领域里是谁在做、
