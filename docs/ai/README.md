@@ -29,7 +29,7 @@
 | --- | --- |
 | [ADR-001-来源暂停与撤销展示许可.md](../architecture/adr/ADR-001-来源暂停与撤销展示许可.md) | 状态 Proposed。一个 `enabled` 布尔同时表达「暂停采集」与「撤销展示许可」，停用会把独占该来源的公开成果收紧为 RESTRICTED，与 `AC-FR01-S01-02`、`BR-606` 直接冲突。含两条候选方案、大规模撤权作业设计、待决策项；**只出方案，不改实现、不含 DDL** |
 | `services/core-service/src/test/java/com/cognitanexus/core/it/SourcePauseConflictProbe.java` + `bash ops/verify/source-pause-conflict.sh` | ADR-001 §2.1／§2.2／§2.4 的实测探针。它断言的是「当前实现做了什么」，所以**探针全绿 = 冲突仍在**；不进默认构建，避免绿灯被读成「符合需求」。输出与读法见 ADR §2.6 |
-| [ADR-002-认领核验判据.md](../architecture/adr/ADR-002-认领核验判据.md) | 状态 Proposed。WB-04 的候选规则表：六种情形的建议方向、必须先解决的问题、现行实现能否表达。SRS 原文明确「不承诺学校邮箱验证或 ORCID 自动认证」，因此任何自动授权都超出现行需求；§6 给出不改外部能力也能先做的三步 |
+| [ADR-002-认领核验判据.md](../architecture/adr/ADR-002-认领核验判据.md) | 状态 Proposed。WB-04 的候选规则表：六种情形的建议方向、必须先解决的问题、现行实现能否表达。SRS 原文明确「不承诺学校邮箱验证或 ORCID 自动认证」，因此任何自动授权都超出现行需求；§6 核对了审核页**已经**显示材料份数与受保护下载链接（不必重做），并指出剩下两步都要动字段 |
 
 与批次二（WB-06／09／10／11）同时交付的两份记录：
 
