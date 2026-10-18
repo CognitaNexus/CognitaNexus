@@ -43,6 +43,22 @@ public class AnalyticsService {
   private final AnalyticsMapper mapper;
   private final PublicBarrierGuard guard;
 
+  /**
+   * 总览聚合的备忘缓存，键为「代 + 数据口径 + 已发布修订」。
+   *
+   * <p>为什么可以有这层缓存而护栏不行：公开资格的线性化要求卡在 {@link PublicBarrierGuard}——
+   * 它<b>每次请求都读权威水位</b>，这一步没有任何缓存。总览聚合是「某个已发布修订下的确定性
+   * 产物」，水位没变，重算 12 条聚合只会得到同一批数字；实测一次全量重算 1.2～2.2 秒
+   * （12.2 万贡献 / 42 万边 / 18.9 万机构归属），是统计概览 P95 超工程上限的主因。
+   * 键里带修订号，水位一推进键即失效，自然重算——不会把旧数字冒充新数字。
+   *
+   * <p>只保留最近一次（单代单口径），内存占用是一个响应对象。命中时返回外层浅拷贝并把
+   * generatedAt 刷新为当前时刻：调用方拿到的耗时语义是「本次应答生成时间」，不是「聚合计算时间」。
+   */
+  private volatile OverviewCacheEntry lastOverview;
+
+  private record OverviewCacheEntry(String key, Map<String, Object> data) {}
+
   public AnalyticsService(AnalyticsMapper mapper, PublicBarrierGuard guard) {
     this.mapper = mapper;
     this.guard = guard;
@@ -52,7 +68,23 @@ public class AnalyticsService {
     PublicBarrierGuard.BarrierSnapshot barrier = guard.assertPubliclyServed();
     String generation = barrier.activeGeneration();
     String nature = normalizeNature(dataNature);
+    String cacheKey = generation + "|" + nature + "|" + barrier.publishedRevision();
 
+    OverviewCacheEntry cached = lastOverview;
+    if (cached != null && cached.key().equals(cacheKey)) {
+      Map<String, Object> data = new LinkedHashMap<>(cached.data());
+      data.put("generatedAt", Instant.now());
+      return data;
+    }
+    Map<String, Object> computed = computeOverview(barrier, generation, nature);
+    lastOverview = new OverviewCacheEntry(cacheKey, computed);
+    Map<String, Object> data = new LinkedHashMap<>(computed);
+    data.put("generatedAt", Instant.now());
+    return data;
+  }
+
+  private Map<String, Object> computeOverview(
+      PublicBarrierGuard.BarrierSnapshot barrier, String generation, String nature) {
     long achievements = mapper.countAchievements(generation, nature);
     long scholars = mapper.countScholars(generation, nature);
     long contributions = mapper.countContributions(generation, nature);

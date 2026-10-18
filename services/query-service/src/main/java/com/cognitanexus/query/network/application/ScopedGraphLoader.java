@@ -32,8 +32,16 @@ import java.util.Set;
  */
 final class ScopedGraphLoader {
 
-  /** 单条 SQL 的 IN 列表规模。 */
-  static final int CHUNK = 400;
+  /**
+   * 单条 SQL 的 IN 列表规模。
+   *
+   * <p>2026-10-18 由 400 提到 1000：合作网络 2 跳的边界层常见近千学者，400 的块下发现一层与收尾
+   * 各要 3 条扩边 SQL，每条都要服务端重新解析计划，单请求 DB 时间约 0.9 秒；978 个参数合并成
+   * 单条后实测计划开销不随参数量线性涨（约 35ms），查询次数减半。配合扩边 SQL 拆成两条单列
+   * IN（见 {@code NetworkMapper}），计划在任意 ID 集合下都稳定走索引。上限仍远小于 PgJDBC 的
+   * 65535 参数上限与节点上限 20000，不改变「明确失败、不截断」的语义。
+   */
+  static final int CHUNK = 1000;
 
   private final NetworkMapper mapper;
   private final String generation;
@@ -100,31 +108,21 @@ final class ScopedGraphLoader {
       List<String> chunk = ids.subList(start, Math.min(start + CHUNK, ids.size()));
       int remaining = maxEdges - loadedEdges.size();
       int limit = Math.max(remaining, 0) + 1;
-      List<NetworkMapper.EdgeRow> rows =
-          mapper.listEdgesOfScholars(generation, dataNature, topicId, organization, chunk, limit);
-      boolean saturated = rows.size() >= limit;
-      for (NetworkMapper.EdgeRow row : rows) {
-        String a = row.scholarA();
-        String b = row.scholarB();
-        boolean aKnown = visited.contains(a);
-        boolean bKnown = visited.contains(b);
-        if (!allowNewNodes && !(aKnown && bKnown)) {
-          // 收尾阶段只认两端都已在子图内的边：否则会把子图悄悄扩到 depth 之外。
-          continue;
-        }
-        if (!aKnown) {
-          visited.add(a);
-          discovered.add(a);
-        }
-        if (!bKnown) {
-          visited.add(b);
-          discovered.add(b);
-        }
-        String key = a.compareTo(b) <= 0 ? a + "\u0001" + b : b + "\u0001" + a;
-        if (loadedEdges.putIfAbsent(key, row.strength()) == null) {
-          adjacency.computeIfAbsent(a, k -> new LinkedHashMap<>()).put(b, row.strength());
-          adjacency.computeIfAbsent(b, k -> new LinkedHashMap<>()).put(a, row.strength());
-        }
+      // 两支单列 IN 查询（a 端 / b 端），不合并成 OR：OR 形状的计划对 ID 集合敏感，
+      // 实测有的集合会被规划器判成 2 秒级的「扫整代再过滤」；单列 IN 三种执行方式都稳定走索引。
+      // 两支对同一对返回的强度相同（都统计该对全部合格论文），putIfAbsent 去重即合并。
+      List<NetworkMapper.EdgeRow> rowsFromA =
+          mapper.listEdgesWhereScholarA(
+              generation, dataNature, topicId, organization, chunk, limit);
+      List<NetworkMapper.EdgeRow> rowsFromB =
+          mapper.listEdgesWhereScholarB(
+              generation, dataNature, topicId, organization, chunk, limit);
+      boolean saturated = rowsFromA.size() >= limit || rowsFromB.size() >= limit;
+      for (NetworkMapper.EdgeRow row : rowsFromA) {
+        absorb(row, allowNewNodes, discovered);
+      }
+      for (NetworkMapper.EdgeRow row : rowsFromB) {
+        absorb(row, allowNewNodes, discovered);
       }
       if (visited.size() > maxNodes) {
         throw new BusinessException(
@@ -137,6 +135,30 @@ final class ScopedGraphLoader {
       }
     }
     return discovered;
+  }
+
+  private void absorb(NetworkMapper.EdgeRow row, boolean allowNewNodes, List<String> discovered) {
+    String a = row.scholarA();
+    String b = row.scholarB();
+    boolean aKnown = visited.contains(a);
+    boolean bKnown = visited.contains(b);
+    if (!allowNewNodes && !(aKnown && bKnown)) {
+      // 收尾阶段只认两端都已在子图内的边：否则会把子图悄悄扩到 depth 之外。
+      return;
+    }
+    if (!aKnown) {
+      visited.add(a);
+      discovered.add(a);
+    }
+    if (!bKnown) {
+      visited.add(b);
+      discovered.add(b);
+    }
+    String key = a.compareTo(b) <= 0 ? a + "\u0001" + b : b + "\u0001" + a;
+    if (loadedEdges.putIfAbsent(key, row.strength()) == null) {
+      adjacency.computeIfAbsent(a, k -> new LinkedHashMap<>()).put(b, row.strength());
+      adjacency.computeIfAbsent(b, k -> new LinkedHashMap<>()).put(a, row.strength());
+    }
   }
 
   /** 生成不可变快照；邻接已在构造时复制，之后不再修改。 */

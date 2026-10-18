@@ -302,6 +302,48 @@ class AnalyticsServiceTest {
     verifyNoInteractions(mapper);
   }
 
+  @Test
+  @DisplayName("同一修订重复取总览命中备忘缓存：聚合 SQL 只执行一次，护栏仍每次读")
+  void overviewCachedWithinSameRevision() {
+    givenServing();
+    when(mapper.countAchievements(GENERATION, "REAL")).thenReturn(1L);
+
+    Map<String, Object> first = service.overview("REAL");
+    Map<String, Object> second = service.overview("REAL");
+
+    verify(mapper, org.mockito.Mockito.times(1)).countAchievements(GENERATION, "REAL");
+    // 护栏不是缓存的一部分：每次请求都必须重新读权威水位，这是线性化要求的底线。
+    verify(guard, org.mockito.Mockito.times(2)).assertPubliclyServed();
+    // 数字一致、generatedAt 各自刷新：应答时间语义是「本次应答生成时间」。
+    assertThat(section(second, "totals")).isEqualTo(section(first, "totals"));
+    assertThat((Instant) second.get("generatedAt"))
+        .isAfterOrEqualTo((Instant) first.get("generatedAt"));
+  }
+
+  @Test
+  @DisplayName("修订推进后缓存失效：同一服务实例按新修订重算，不把旧数字带进新水位")
+  void cacheInvalidatedWhenRevisionAdvances() {
+    when(guard.assertPubliclyServed())
+        .thenReturn(
+            new PublicBarrierGuard.BarrierSnapshot(1L, 1L, 1L, 1L, GENERATION),
+            new PublicBarrierGuard.BarrierSnapshot(2L, 2L, 2L, 2L, GENERATION));
+    when(mapper.countAchievements(GENERATION, "REAL")).thenReturn(1L, 2L);
+
+    assertThat(section(service.overview("REAL"), "totals")).containsEntry("achievements", 1L);
+    assertThat(section(service.overview("REAL"), "totals")).containsEntry("achievements", 2L);
+
+    verify(mapper, org.mockito.Mockito.times(2)).countAchievements(GENERATION, "REAL");
+    // 口径不同也是不同键：同一修订下换口径必须重算，不能把 REAL 的数字给 ALL。
+    when(mapper.countAchievements(GENERATION, null)).thenReturn(9L);
+    when(mapper.countScholars(GENERATION, null)).thenReturn(0L);
+    when(mapper.countContributions(GENERATION, null)).thenReturn(0L);
+    when(mapper.countCoauthorPairs(GENERATION, null)).thenReturn(0L);
+    when(mapper.countUnknownOrganization(GENERATION, null)).thenReturn(0L);
+    when(guard.assertPubliclyServed())
+        .thenReturn(new PublicBarrierGuard.BarrierSnapshot(2L, 2L, 2L, 2L, GENERATION));
+    assertThat(section(service.overview("ALL"), "totals")).containsEntry("achievements", 9L);
+  }
+
   // ---------------- 领域洞察 ----------------
 
   private static final String TOPIC_ID = "top_ai";

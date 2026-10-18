@@ -111,11 +111,14 @@ public interface NetworkMapper {
       @Param("limit") int limit);
 
   /**
-   * 「以这些学者为至少一端」的合作边。
+   * 「以这些学者为 a 端」的合作边（扩边查询的一半，与 {@link #listEdgesWhereScholarB} 成对使用）。
    *
-   * <p>邻域与最短路径都从这里按需扩边，而不是把整个筛选范围读进内存：真实库里有 2.5 万位学者、
-   * 7.7 万条边，全局载入会让任何一次单学者查询都撞上范围上限——那不是「范围太大，请加筛选」，
-   * 而是「这个功能在真实规模下不可用」。按种子逐层扩边后，代价只与查询真正需要的子图有关。
+   * <p>为什么不是一条 {@code scholar_a IN (...) OR scholar_b IN (...)}：实测（2026-10-18，真实库）这条
+   * OR 查询的执行计划对 ID 集合敏感——同一形状的语句，有的 ID 集合走 54ms 的双侧位图索引计划，
+   * 有的集合被规划器判成「按主键扫整代再过滤」的 2.2 秒计划，字面量与绑定参数都会踩中，且
+   * 服务端无法干预计划选择。拆成两条单列 IN 之后，列与索引一一对应（ix_qry_coauthor_edge_a/b），
+   * 三种执行方式（字面量、自定义计划、泛型计划）实测全部稳定在 1～19ms。两端各自查全该对的
+   * 强度（count(DISTINCT achievement_id) 不受端点筛选影响），调用方按对去重合并即可，不会重复计数。
    *
    * <p>过滤条件与 {@link #listEdges} 完全一致，保证「同一个边在两个出口的口径相同」。
    */
@@ -128,10 +131,8 @@ public interface NetworkMapper {
         ON a.generation = e.generation AND a.achievement_id = e.achievement_id
       WHERE e.generation = #{generation}
         AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
-        AND (e.scholar_a IN
+        AND e.scholar_a IN
              <foreach collection="scholars" item="s" open="(" separator="," close=")">#{s}</foreach>
-          OR e.scholar_b IN
-             <foreach collection="scholars" item="s" open="(" separator="," close=")">#{s}</foreach>)
         <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
         <if test="topicId != null">
           AND EXISTS (SELECT 1 FROM qry_achievement_topic t
@@ -148,7 +149,43 @@ public interface NetworkMapper {
       LIMIT #{limit}
       </script>
       """)
-  List<EdgeRow> listEdgesOfScholars(
+  List<EdgeRow> listEdgesWhereScholarA(
+      @Param("generation") String generation,
+      @Param("dataNature") String dataNature,
+      @Param("topicId") String topicId,
+      @Param("organization") String organization,
+      @Param("scholars") List<String> scholars,
+      @Param("limit") int limit);
+
+  /** {@link #listEdgesWhereScholarA} 的 b 端版本，除列名外逐字相同，保证两支口径一致。 */
+  @Select(
+      """
+      <script>
+      SELECT e.scholar_a, e.scholar_b, count(DISTINCT e.achievement_id) AS strength
+      FROM qry_coauthor_edge e
+      JOIN qry_achievement a
+        ON a.generation = e.generation AND a.achievement_id = e.achievement_id
+      WHERE e.generation = #{generation}
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        AND e.scholar_b IN
+             <foreach collection="scholars" item="s" open="(" separator="," close=")">#{s}</foreach>
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+        <if test="topicId != null">
+          AND EXISTS (SELECT 1 FROM qry_achievement_topic t
+                      WHERE t.generation = a.generation AND t.achievement_id = a.achievement_id
+                        AND t.topic_id = #{topicId})
+        </if>
+        <if test="organization != null">
+          AND EXISTS (SELECT 1 FROM qry_contribution_org o
+                      WHERE o.generation = a.generation AND o.achievement_id = a.achievement_id
+                        AND o.organization = #{organization})
+        </if>
+      GROUP BY e.scholar_a, e.scholar_b
+      ORDER BY e.scholar_a, e.scholar_b
+      LIMIT #{limit}
+      </script>
+      """)
+  List<EdgeRow> listEdgesWhereScholarB(
       @Param("generation") String generation,
       @Param("dataNature") String dataNature,
       @Param("topicId") String topicId,

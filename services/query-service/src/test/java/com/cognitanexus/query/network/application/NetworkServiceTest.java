@@ -51,14 +51,24 @@ class NetworkServiceTest {
         .thenReturn(new PublicBarrierGuard.BarrierSnapshot(120L, 120L, 120L, 120L, "42"));
     when(mapper.listScholarNames(anyString(), anyList())).thenReturn(List.of());
     edges = new ArrayList<>();
-    when(mapper.listEdgesOfScholars(anyString(), any(), any(), any(), anyList(), anyInt()))
+    when(mapper.listEdgesWhereScholarA(anyString(), any(), any(), any(), anyList(), anyInt()))
         .thenAnswer(
             invocation -> {
               Collection<String> scholars = invocation.getArgument(4);
               int limit = invocation.getArgument(5);
               return edges.stream()
-                  .filter(
-                      row -> scholars.contains(row.scholarA()) || scholars.contains(row.scholarB()))
+                  .filter(row -> scholars.contains(row.scholarA()))
+                  .sorted(Comparator.comparing(EdgeRow::scholarA).thenComparing(EdgeRow::scholarB))
+                  .limit(limit)
+                  .toList();
+            });
+    when(mapper.listEdgesWhereScholarB(anyString(), any(), any(), any(), anyList(), anyInt()))
+        .thenAnswer(
+            invocation -> {
+              Collection<String> scholars = invocation.getArgument(4);
+              int limit = invocation.getArgument(5);
+              return edges.stream()
+                  .filter(row -> scholars.contains(row.scholarB()))
                   .sorted(Comparator.comparing(EdgeRow::scholarA).thenComparing(EdgeRow::scholarB))
                   .limit(limit)
                   .toList();

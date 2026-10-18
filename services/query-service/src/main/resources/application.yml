@@ -26,7 +26,13 @@ spring:
       # 生成计划」切到「通用计划」，而这些查询的参数区分度极高（领域热度从 50 条到 7000 条），
       # 通用计划按均值估算行数，实测把一条 18ms 的领域统计查询拖到 262ms（14 倍），
       # 领域洞察页因此稳定停在 2 秒以上。改由服务端每次按实际参数生成计划。
-      connection-init-sql: SET plan_cache_mode = force_custom_plan
+      #
+      # 禁用并行查询（2026-10-18）。PostgreSQL 在 Windows 上每次执行并行计划都要为 Gather 节点
+      # 拉起 worker 进程，实测单次 1～2 秒：qry_contribution_org 涨到 18.9 万行后规划器开始给
+      # 统计计数选并行计划，统计概览从 381ms 劣化到 4～8 秒；合作网络扩边查询同样中招。
+      # 同一条 NOT EXISTS 计数禁并行后 44～84ms（串行扫描本身不慢，慢的是进程创建）。
+      # 本规模（单代 <20 万行）并行没有收益，明确关掉；若迁到 fork 便宜的系统可重新评估。
+      connection-init-sql: SET plan_cache_mode = force_custom_plan; SET max_parallel_workers_per_gather = 0
 
   flyway:
     enabled: true
