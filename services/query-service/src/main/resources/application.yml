@@ -112,6 +112,18 @@ cn:
     search-default-page-size: 20
     search-max-page-size: 100
 
+# OpenAPI 文档（部署前功能项）。文档只含路径、参数与响应结构，不含任何业务数据。
+# 只文档化 /api/v1/**：/internal/v1/** 是服务间调用，写进文档会诱导外部照着调，
+# 得到 401 后还要来问「文档说可以」。
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  paths-to-match: /api/v1/**
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: alpha
+    tags-sorter: alpha
+
 logging:
   level:
     root: INFO

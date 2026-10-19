@@ -20,6 +20,7 @@ import com.cognitanexus.core.catalog.domain.Scholar;
 import com.cognitanexus.core.governance.domain.DedupCandidate;
 import com.cognitanexus.core.governance.domain.GovernanceAnomaly;
 import com.cognitanexus.core.governance.domain.MergeLedgerEntry;
+import com.cognitanexus.core.notification.application.NotificationService;
 import com.cognitanexus.core.platform.audit.AuditRecorder;
 import com.cognitanexus.core.platform.event.OutboxStore;
 import com.cognitanexus.core.platform.security.ActorContext;
@@ -67,6 +68,7 @@ class GovernanceServiceTest {
   @Mock ScholarRepository scholars;
   @Mock OutboxStore outbox;
   @Mock AuditRecorder audit;
+  @Mock NotificationService notifications;
 
   private GovernanceService service;
   private ActorContext actor;
@@ -83,7 +85,8 @@ class GovernanceServiceTest {
             achievements,
             scholars,
             outbox,
-            audit);
+            audit,
+            notifications);
     actor =
         new ActorContext(
             new AccountId("acc_reviewer"), "reviewer", "审核员", Set.of(RoleNames.REVIEWER), 1L);

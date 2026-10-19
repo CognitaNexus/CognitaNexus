@@ -996,6 +996,23 @@ public interface AchievementMapper {
   long countRestrictedBySource(@Param("sourceId") String sourceId);
 
   /**
+   * 因该来源撤权被收紧的成果的参与学者（去重）。ADR-003 §3：撤权完成后的站内通知按
+   * 「认领了这些学者的账号」去重投递。
+   *
+   * <p>不筛 effective_status / visibility：通知的语义是「你的档案有成果因此不再公开」，
+   * 收紧时已经限定 RESTRICTED + 标记来源；治理状态不影响「这个人需要知道」。
+   */
+  @Select(
+      """
+      SELECT DISTINCT c.scholar_id
+      FROM core_contribution c
+      JOIN core_achievement a ON a.id = c.achievement_id
+      WHERE a.display_restriction_source_id = #{sourceId}
+        AND a.merged_into_id IS NULL
+      """)
+  java.util.List<String> listScholarIdsByRestrictionSource(@Param("sourceId") String sourceId);
+
+  /**
    * 恢复许可时的一批回填：只放开「因该来源撤权被收紧、且现在又有有效依据」的成果。
    *
    * <p>三个条件缺一不可，分别挡住三类误放开：{@code display_restriction_source_id} 挡住

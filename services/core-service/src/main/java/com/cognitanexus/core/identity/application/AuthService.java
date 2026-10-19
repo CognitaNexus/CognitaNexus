@@ -6,12 +6,14 @@ import com.cognitanexus.core.identity.domain.Account;
 import com.cognitanexus.core.identity.domain.AccountCredentials;
 import com.cognitanexus.core.platform.audit.AuditRecorder;
 import com.cognitanexus.core.platform.security.ActorContext;
+import com.cognitanexus.core.platform.security.Capabilities;
 import com.cognitanexus.core.platform.security.RoleNames;
 import com.cognitanexus.core.platform.util.Fingerprints;
 import com.cognitanexus.core.platform.util.Identifiers;
 import com.cognitanexus.core.platform.util.TextNormalizer;
 import com.cognitanexus.sharedkernel.BusinessException;
 import com.cognitanexus.sharedkernel.ErrorCode;
+import java.security.SecureRandom;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -160,7 +162,8 @@ public class AuthService {
             credentials.username(),
             credentials.displayName(),
             credentials.roles(),
-            credentials.authVersion()));
+            credentials.authVersion()),
+        credentials.mustChangePassword());
   }
 
   /**
@@ -195,6 +198,144 @@ public class AuthService {
             reason));
   }
 
+  /**
+   * 本人修改口令。
+   *
+   * <p>顺序不能换：先校验当前口令，再校验新口令强度，最后判断「新口令是否与旧口令相同」。
+   * 若先判强度，用户输入一个不合规的新口令时会先收到「长度不足」，而真正的问题可能是当前口令
+   * 输错了——两条错误同时成立时，必须先报能让人继续操作的那一条。
+   *
+   * <p>返回值是提升后的认证版本。会话层必须用它重写当前会话，否则本次请求一结束，
+   * 用户就被自己的改密操作登出了（authVersion 已 +1，会话里还是旧值）。
+   *
+   * @return 新的 authVersion
+   */
+  @Transactional
+  public long changePassword(ActorContext actor, String currentPassword, String newPassword) {
+    if (actor == null || actor.accountIdValue() == null) {
+      throw new BusinessException(ErrorCode.AUTH_REQUIRED, "请先登录");
+    }
+    String accountId = actor.accountIdValue();
+    AccountCredentials credentials =
+        accounts
+            .findCredentialsById(accountId)
+            .orElseThrow(() -> BusinessException.notFound("账号不存在"));
+    if (!credentials.status().active()) {
+      throw BusinessException.businessRule("账号已停用，不能修改口令");
+    }
+    if (!passwordEncoder.matches(
+        currentPassword == null ? "" : currentPassword, credentials.passwordHash())) {
+      // 与登录失败不同，这里调用方已经是登录用户，不存在用户名枚举问题，可以如实说明是哪一项错了
+      throw BusinessException.businessRule("当前口令不正确");
+    }
+    passwordPolicy.validate(newPassword);
+    if (passwordEncoder.matches(newPassword, credentials.passwordHash())) {
+      throw BusinessException.businessRule("新口令不能与当前口令相同");
+    }
+    int affected = accounts.updatePassword(accountId, passwordEncoder.encode(newPassword), false);
+    if (affected != 1) {
+      throw BusinessException.versionConflict("账号状态已变化，请刷新后重试");
+    }
+    audit.record(
+        new AuditRecorder.AuditEntry(
+            accountId,
+            credentials.username(),
+            "PASSWORD_CHANGED",
+            "ACCOUNT",
+            accountId,
+            null,
+            // 只记「改了」与「需改标记已清除」，绝不记口令、哈希或其长度
+            Map.<String, Object>of("mustChangePassword", false),
+            "本人修改口令"));
+    log.info("口令已修改 accountId={}", accountId);
+    return credentials.authVersion() + 1;
+  }
+
+  /**
+   * 管理员重置口令（无邮件找回通道时的唯一路径）。
+   *
+   * <p>返回的一次性口令只在本次响应里出现一次，平台不存储明文，事后无法再查；
+   * 管理员必须当面或经可信渠道转交本人。重置后 {@code mustChangePassword} 置为 true，
+   * 页面会提示本人改密（不阻断登录，理由见 V18 迁移注释）。
+   *
+   * <p>不允许重置自己：管理员要改自己的口令应走 {@link #changePassword}，否则一次误操作
+   * 就会把当前会话踢掉，并把「自己知道的口令」换成一个只显示过一次的串。
+   */
+  @Transactional
+  public PasswordReset resetPassword(
+      ActorContext actor, String accountId, String requestedPassword, String reason) {
+    Capabilities.require(actor, RoleNames.CAP_ACCOUNT_MANAGE);
+    if (reason == null || reason.isBlank()) {
+      throw BusinessException.invalidArgument("必须说明重置理由");
+    }
+    if (actor != null && accountId != null && accountId.equals(actor.accountIdValue())) {
+      throw BusinessException.businessRule("不能重置当前登录账号的口令，请使用「修改口令」");
+    }
+    AccountCredentials credentials =
+        accounts
+            .findCredentialsById(accountId)
+            .orElseThrow(() -> BusinessException.notFound("账号不存在"));
+    if (!credentials.status().active()) {
+      throw BusinessException.businessRule("账号已停用，不能重置口令");
+    }
+    boolean generated = requestedPassword == null || requestedPassword.isBlank();
+    String password = generated ? temporaryPassword() : requestedPassword.trim();
+    passwordPolicy.validate(password);
+    int affected = accounts.updatePassword(accountId, passwordEncoder.encode(password), true);
+    if (affected != 1) {
+      throw BusinessException.versionConflict("账号状态已变化，请刷新后重试");
+    }
+    audit.record(
+        new AuditRecorder.AuditEntry(
+            actor == null ? null : actor.accountIdValue(),
+            actor == null ? RoleNames.SYSTEM : actor.username(),
+            "PASSWORD_RESET_BY_ADMIN",
+            "ACCOUNT",
+            accountId,
+            null,
+            Map.<String, Object>of("mustChangePassword", true, "generated", generated),
+            reason));
+    log.info("管理员重置口令 accountId={} generated={}", accountId, generated);
+    return new PasswordReset(accountId, credentials.username(), password, true);
+  }
+
+  /**
+   * 生成一次性口令。
+   *
+   * <p>字符集去掉了 0/O/1/l/I 这类肉眼易混字符：这个口令要靠人读给另一个人，
+   * 一次读错就要再重置一次，而重置会再次踢掉对方所有会话。
+   *
+   * <p>首尾各钉一个字母与一个数字，保证必然满足 {@link PasswordPolicy} 的「字母+数字」要求，
+   * 而不是靠概率——概率写法在极少数情况下会生成不合规口令，然后被自己的策略拒绝。
+   */
+  static String temporaryPassword() {
+    final String letters = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    final String digits = "23456789";
+    final String all = letters + digits;
+    StringBuilder sb = new StringBuilder(16);
+    sb.append(letters.charAt(RANDOM.nextInt(letters.length())));
+    for (int i = 0; i < 14; i++) {
+      sb.append(all.charAt(RANDOM.nextInt(all.length())));
+    }
+    sb.append(digits.charAt(RANDOM.nextInt(digits.length())));
+    return sb.toString();
+  }
+
+  private static final SecureRandom RANDOM = new SecureRandom();
+
+  /** 管理员重置结果。{@code temporaryPassword} 是本次响应中唯一一次出现的明文。 */
+  public record PasswordReset(
+      String accountId, String username, String temporaryPassword, boolean mustChangePassword) {}
+
+  /** 当前账号是否处于「需修改口令」状态（管理员重置后为 true）。 */
+  @Transactional(readOnly = true)
+  public boolean mustChangePassword(String accountId) {
+    return accounts
+        .findCredentialsById(accountId)
+        .map(AccountCredentials::mustChangePassword)
+        .orElse(false);
+  }
+
   /** 维护清理：删除超出保留窗口的会话撤销记录。保留窗口须长于会话最大寿命。 */
   @Transactional
   public int purgeRevocations(int retentionDays) {
@@ -202,7 +343,7 @@ public class AuthService {
   }
 
   /** 认证结果。会话层据此写入会话属性。 */
-  public record AuthenticatedAccount(ActorContext actor) {
+  public record AuthenticatedAccount(ActorContext actor, boolean mustChangePassword) {
 
     public Map<String, Object> toView() {
       Map<String, Object> view = new LinkedHashMap<>();
@@ -210,7 +351,17 @@ public class AuthService {
       view.put("username", actor.username());
       view.put("displayName", actor.displayName());
       view.put("roles", actor.roles().stream().sorted().toList());
+      // 能力是「角色 → 许可」的推导结果，由服务端算好下发：前端各页若各自维护一份映射，
+      // 加一个新能力就要改一遍所有页面，漏改的那一处表现为「按钮不见了」，且没人会报错。
+      view.put(
+          "capabilities",
+          com.cognitanexus.core.platform.security.Capabilities.of(actor).stream()
+              .sorted()
+              .toList());
       view.put("authVersion", actor.authVersion());
+      // 「管理员刚重置过口令」必须随登录响应下发：前端据此在顶部提示本人尽快改密，
+      // 而不是等用户下次点进账号页才看到。
+      view.put("mustChangePassword", mustChangePassword);
       return view;
     }
   }

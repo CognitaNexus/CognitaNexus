@@ -2,13 +2,14 @@
 
 > 本文件是交接用的一次性上下文包。用法：把「提示词正文」整段复制给新的 AI 会话，
 > 它即可在不需要历史对话的情况下接着干活。维护要求：每次交接前更新「当前状态」一节。
+> **本文件的数字只写实测得到的值，改了代码就要重跑再改数字，不允许按印象填写。**
 
 ---
 
 ## 提示词正文
 
 你在接手一个已经在跑的工程仓库：`D:/code/academicplatform`，分支 `feat/v0.2-implementation`，
-最近提交 `0aad3b0`（端到端测试 T1–T11 全部跑通）。
+最近提交 `e071e94`（此后 64 个文件改动仍在工作区未提交）。
 
 ### 一、这是什么
 
@@ -20,10 +21,10 @@ CognitaNexus 学术成果分享平台的工程实现仓库，课程项目（北�
 
 | 服务 | 端口 | 库 | 职责 |
 |---|---|---|---|
-| core-service | 8081 | core_db | 权威数据、治理、合并、发布、审计、治理巡检 |
+| core-service | 8081 | core_db | 权威数据、治理、合并、发布、审计、治理巡检、账户与门户 |
 | ingestion-service | 8082 | ingestion_db | 来源登记、采集任务、抓取、暂存、交接批次 |
 | query-service | 8083 | query_db | 读投影、公开检索、统计、合作网络、领域洞察 |
-| frontend | 5173 | — | Vue 3 SPA，17 条路由 |
+| frontend | 5173 | — | Vue 3 SPA，20 条路由（`grep -c "path:" frontend/src/router/index.ts`） |
 
 全链路：来源登记 → 采集任务 → 抓取 → 暂存 → 交接批次 → core 清洗去重入库 →
 自动/人工发布 → outbox 事件 → query 投影 → 公开检索/统计/详情。
@@ -46,169 +47,102 @@ Vue 3 + TypeScript + Vite + Pinia。**刻意不引入** Elasticsearch、图数�
    - 同名不得直接合并学者（不同名且无共同稳定标识更不行）；
    - 待核验 / 争议 / 已排除的关系不得建边，也不得显示为确定合作；
    - 前端隐藏入口不构成授权（授权必须服务端校验）；
-   - 无稳定标识不自动发布；模拟数据不得冒充真实。
+   - 无稳定标识不自动发布；模拟数据不得冒充真实；
+   - 公众纠错只登记线索，不直接改数据（核实后走既有修订/裁决路径）。
 6. **输出风格**：中文；分步骤、最简；不用表格回答计算/推导类问题；不用成对反引号包裹普通词汇
    （工程文档内标记代码标识可以）。
 
-### 三、当前状态（2026-10-17 22:40）
+### 三、当前状态（2026-10-18）
 
-任务清单 47 项：**47 项全部完成**。#22（Agentic Coding 证据文档）已补齐，
-`docs/ai/` 下六类证据全部落为真实文件，README 的每个链接都指到存在的文件。
+**功能补齐进行中，尚未进入非功能阶段（部署、CI/CD 等由用户后续决定）。** 用户当前要求是
+「按专业学术平台的标准把功能补全，文档也要一并修整，重点解决功能性问题」。
 
-**此后开始执行《老师指导对照检查与 WorkBuddy 改进建议》的第一批任务**（WB-01 / 02 / 03 / 07，
-WB-05 只交方案）。这批改动**未提交**，工作区有未提交修改。
+已完成且经可执行验证的部分（括号内为实测口径）：
 
-已完成且经可执行验证的部分（括号内为实测时间与命令）：
+- **单元测试 705 项全绿**：shared-kernel 14 / core-service 439 / ingestion-service 109 / query-service 143（计数取 `TEST-*.xml` 根节点 `tests` 属性，字符串数 `<testcase` 会多算 1 项）。
+- **集成测试 34 项全绿**：core 28 / query 6（`ops/local/test-db.sh` 起原生 PG 55432，Failsafe 跑 `*IT.java`）。注意 `test-db.sh start` 在沙箱里活不过一次调用，start、verify、stop 必须在同一次调用内。
+- 计数口径：只认 `target/surefire-reports/TEST-*.xml` 的 `<testcase>` 节点数。`*.txt` 汇总行对参数化
+  用例会写 `Tests run: 0`，按 txt 累加会明显算少。
+- 覆盖率门禁：四条 JaCoCo 门禁覆盖 9 个包，全部通过；`governance/api` 曾 78.00% 低于 80% 被拦，
+  补 controller 测试后 88.71%；`governance/application` 93.97%；`query/discovery` 三包在第九批
+  首次纳入门禁后为 100%（此前 api 0%、application 38.36%）。门禁的「不是空集合恒真」由
+  `bash ops/verify-coverage-gates.sh` 反证（阈值提到 1.01 必须失败，四条均实测失败）。
+- 接口与端到端自检（`tests/api/`，第五批重跑的真实结果，均 0 失败）：
+  core 21、ingestion 41、query 90、contract 12、redlines 24、claim-evidence 27、notifications 26
+  （合并通知 1 项 SKIP）、corrections 33、portal-export 15、scholar-metrics 24。
+  其余脚本本轮未重跑，项数取自脚本自身断言：relations 14 / dq-scan 19 / portal 27 / perf 17 /
+  merge-aftermath 8 / merge-visibility 15 / projection-consistency 15 / e2e-pipeline / merge-preview。
+  逐项状态见 `docs/ai/测试与覆盖率报告.md`。
+- 前端：`npm run build`（vue-tsc + vite）通过；`npm test` 11 项纯函数用例通过；逐页截图与运行期
+  异常采集、批量引用导出的真实 DOM 断言已入库为 `tests/ui/`（`npm run check`，依赖整栈与真实 Chrome）。
 
-- 单元测试 **490 项全绿**：shared-kernel 9 / core-service 305 / ingestion-service 82 / query-service 94
-  （`./mvnw -B -ntp verify -Dspotless.check.skip=true` exit 0，2026-10-17 17:15）。
-- 覆盖率门禁：8 个受门禁包 97.36% / 94.64% / 99.48% / 100% / 87.39% / 94.25% / 100% / 85.71%，
-  合计行覆盖 95.93%（1556/1622）、分支 80.00%（352/440）；三条门禁在阈值提到 1.01 时全部失败，
-  证明不是空集合恒真（`bash ops/verify-coverage-gates.sh --skip-build`，16:00 实测）。
-- 接口与端到端自检（`tests/api/`，本轮重跑的真实结果）：
-  `smoke-core.sh` 21、`smoke-ingestion.sh` 41、`smoke-query.sh` 90、`smoke-contract.py` 12、
-  `smoke-redlines.py` 24、`smoke-projection-consistency.py` 15，均 0 失败。
-  本轮新增两套并实测通过：`smoke-merge-visibility.py` 15（WB-01／T01）、
-  `smoke-claim-evidence.py` 27（WB-03 材料闭环）。
-  其余脚本（relations 14 / dq-scan 19 / portal 27 / perf 17 / merge-aftermath 8 / merge-preview）
-  本轮未重跑，项数取自脚本自身断言，见 `docs/ai/测试与覆盖率报告.md` §4 的状态列。
-- 数据规模（17:20 读数）：`core_achievement` 15313 条（公开且生效 9638）、投影当前代 9638、
-  有公开成果的学者 30298。来源为 OpenAlex 等真实来源。注意 `qry_achievement` 跨代累加为 53171，
-  **不能当作现库规模**。
-- 前端：57 张截图（含新增的默认检索入口、学者作用域、带目标学者的门户页），
-  0 控制台错误 / 0 失败请求 / 24 次窄屏无横向溢出（17:22 实测）。
-- 证据文档：`docs/ai/` 下 AI 使用日志、修正案例（9 例）、测试与覆盖率报告、审查记录、提示词资产清单。
+**第五批功能补齐的内容**（详细映射见 `docs/ai/SPEC-代码对应关系表.md` §12–§14）：
 
-**本轮修掉的两个真实缺口**：
+- **公众纠错入口**：匿名访客可在成果详情页报告字段错误。只登记到 `gov_anomaly`
+  （`kind=PUBLIC_CORRECTION_REPORT`），核实后走既有修订/裁决路径。三层防灌：来源级 5 次/10 分钟、
+  单成果全局 20 条/24 小时（键不拼来源）、同来源 1 分钟内同内容只并入不累加。去重键
+  `achievementId|FIELD|SHA-256(归一化内容)` 前 12 位，未处理期间只占一条待办。限流先于存在性判断，
+  「不存在」与「不可见」同一个 404。治理页展示报告原文与累计次数，待办 `correctionsOpen` 是
+  `anomaliesOpen` 的子集（不重复相加）。
+- **学者档案指标**：年份分布（未知年份单列）、主要合作者 10 位（两端关系都合格、共同作学者未合并）。
+  **不派生 h-index / 影响因子 / 综合评分**——没有权威数据源时派生指标等于编造，`note` 字段明写这一点。
+- **CSV 导出**：转义单点化到共享内核 `Csv`（RFC 4180、CRLF、null→空字段、UTF-8 BOM），检索导出与
+  「我的成果」导出共用。门户导出 11 列、含未确认行、不分页、**超 5000 行拒绝而非截断**。
+- **站内通知**：通知中心与合并通知闭环（`smoke-notifications.py` 26 项，1 项按条件 SKIP）。
+- **学术诚信声明（第六批）**：`CONCERN` / `CORRECTION` / `RETRACTION` 三类声明挂在成果上，
+  **不改成果任何原始字段**；撤稿不换下架——成果仍可检索、详情仍可打开，但列表与详情都带标记；
+  同一成果同一类型只能一条生效声明（部分唯一索引兜底），撤销必须写理由并留撤销人；
+  学者指标单列 `worksRetracted`，不从 `worksTotal` 扣除。链路贯穿 core → outbox 载荷
+  `integrityStatus` → `qry_achievement.integrity_status` → 检索响应 `integrity` 三字段 → 前端徽标。
+  治理入口在治理页底部「学术诚信声明」面板。
+- **引用导出（第七批）**：`GET /api/v1/public/achievements/{id}/citations` 一次给全 BibTeX / RIS /
+  GB-T 7714 / APA，`GET .../citation?format=` 下载附件。文本与告警**都在服务端生成**（ADR-004），
+  前端只展示、复制、下载。三条硬规则：缺失事实不编造（年份未知用 `n.d.` / 「出版年不详」，
+  BibTeX 直接省略 `year`）；不替用户猜姓名结构（不拆姓／名，APA 的简化作为该格式专属告警）；
+  撤稿进文本（`note` 加撤稿说明），且**撤稿后引用端点仍返回 200**。告警分两层：
+  `warnings`（元数据：缺年份、署名顺序未知、待核验归属、已排除关系、撤稿、模拟数据）与
+  `formats[].warnings`（格式：APA 不拆姓名）。出处与生成时刻是 `provenance` / `exportedOn`
+  两个字段，**不写进引用正文**——引用会被粘进参考文献表，非书目信息不该跟着进去。
 
-1. `mvn verify` 曾失败——core 的 `governance/infrastructure` 行覆盖率 73.20%，原因是数据质量巡检
-   新增的适配器方法只有接口自检、没有单元测试。补 `GovernanceDataQualityAdapterTest`（13 项）后
-   升到 99.48%，verify 恢复通过。
-2. 第一版 `smoke-merge-visibility.py` 的夹具直接插 `PUBLIC/EFFECTIVE` 成果，被库内延迟约束
-   触发器拒绝（「可发布成果必须恰好有一个类型扩展」），而 `psql` 未加 `ON_ERROR_STOP=1` 时
-   退出码仍是 0，脚本「静默通过」。修法是夹具先以 `RESTRICTED/PENDING` 插入、补 `core_paper`、
-   再改状态，并给所有 psql 调用加 `ON_ERROR_STOP=1`。**这类失败不会报错，只会给出假绿。**
+- **批量引用导出（第八批）**：检索页勾选若干成果 → 一份文献库文件。两个入口都是 GET：
+  `GET /api/v1/public/citations/batch?ids=..&format=..` 给预览（JSON，含整份正文与逐条文本），
+  `GET .../batch/download` 给文件。**读操作不用 POST**：平台的一次性 CSRF 令牌校验通过后即失效，
+  让预览消耗写令牌会让紧接着的下载莫名 403（这条是真实自检抓到的，不是设计推演）。四条硬规则：
+  ① 同一文件内引用键唯一，撞键时后者追加 `a/b/c…`、第一个保持原样，并回 `CITE_KEY_DISAMBIGUATED`；
+  ② 条目文本与单条端点逐字一致（`[1]` 这类编号由装配统一加，不属于条目本身）；
+  ③ 单条不可公开只跳过并报数，原因统一 `NOT_AVAILABLE`（不区分「不存在」与「不可公开」）；
+  ④ 合并过的成果会被重定向到终点实体，同时勾「原记录」与「幸存记录」时按解析后实体分组去重，
+  旧记录记为 `DUPLICATE_TARGET`。上限 100 条，超过 422 拒绝而非截断。
 
-**第一批任务的落地范围**（详见 `docs/ai/测试与覆盖率报告.md` §9）：
+**这轮修掉的三个真实缺陷**（案例见 `docs/ai/AI生成-人工修正案例.md` C-10、C-11）：
 
-- WB-01：代码已在上一轮修复，本轮补真实接口验证（T01 四态 + 恢复 + 不存在），15/15。
-- WB-02：检索页成果／学者双作用域、成果类型筛选、学者档案与认领入口、条件写 URL。
-- WB-03：认领视图带材料元信息与 `canResubmit`／`canAttachEvidence`；申请人可按申请追加材料、
-  原 `claimId` 重提；审核端可见材料清单并下载。
-- WB-07：路由驱动检索、请求序号丢弃过期响应、版本失效最多自动重试一次、排序标签改后端枚举、
-  关键词占位文案改为实际支持字段（原写「作者」但 SQL 不匹配作者）。
-- 附带：`likePatternOf` 转义 LIKE 通配符；学者检索补 `queryVersion` 校验与非法排序拒绝。
-- WB-05：只交方案 `docs/architecture/adr/ADR-001-来源暂停与撤销展示许可.md`（Proposed，代码未改）。
+1. **无授权下载返回 401 而不是 403**：`@RestControllerAdvice` 返回 `ResponseEntity` 时 Spring 按
+   `Accept` 选转换器，下载接口的 `Accept: text/csv` 下没有转换器能产出 `ApiResponse` → 406 →
+   ERROR 派发 → 认证过滤器不处理 ERROR 派发 → 客户端看到「请先登录」。两侧改为 `void` + ObjectMapper 直写。
+2. **限流规则永不生效**：单成果配额键多拼了来源地址，变成「同来源×同成果」，来源级窗口永远先触发。
+3. **覆盖率门禁被拦**：新增 controller 无单测，`governance/api` 78.00% < 80%。补 5 项后 88.71%。
 
-**随后执行了第二批任务（WB-06 / 09 / 10 / 11，含 WB-08 收尾）**，改动同样**未提交**。要点（详细记录见
-`docs/ai/批次二验证记录-2026-10-17.md`，用例状态与命令在里面，不在本文重复）：
+**已知未修（不要当成已完成）**：
 
-- 新建了一条不依赖 Docker 的 PostgreSQL 集成测试层：`ops/local/test-db.sh` 管第二个原生实例
-  （端口 55432，数据目录在仓库内），Failsafe 跑 `*IT.java`；根 pom 的 `cn.it.skip` 默认 `true`，
-  要跑集成测试必须显式 `-Dcn.it.skip=false`。本机 Docker/WSL2 被安全策略阻断，Testcontainers 不可用。
-- 全量实测（2026-10-17 19:20 前后）：`./mvnw -B -ntp verify -Dcn.it.skip=false
-  -Dfailsafe.failIfNoSpecifiedTests=false` exit 0；**单元 491**（9/305/82/95）＋**集成 20**（core 18 / query 2）；
-  三条 JaCoCo 门禁通过；`spotless:check` 通过（格式化了 9 个存量违规文件）。
-- WB-09：同 DOI 但证据矛盾（类型／年份／作者完全不相交／题名明显不同）现在登记 `METADATA_CONFLICT`
-  异常，不采信矛盾字段、不刷新指标；并发首采用 `pg_advisory_xact_lock` 串行化。
-- WB-10：白名单在解析前生效（四个出口都验证）；配置收紧只影响后续入库，**重放不能清洗历史字段**，
-  历史违规字段只给只读诊断，未授权清库。说明见 `docs/ai/来源许可与字段白名单说明.md`。
-- WB-06：`SearchService` 两个入口改为 `REPEATABLE_READ`，混合快照已用真实数据库复现并修复。
-- WB-08：零跳改为「在范围内才算可达」，范围外 `reachable=false`、`hops=null`。
-- 浏览器实测 6 个场景（默认入口、双作用域、未知排序、极大页码、`%_` 关键词）：0 未捕获异常，
-  非法参数一律 400 + 可读提示；每页有一次 401（匿名会话探测，预期）。
-
-**第二批结束时仍明确未做的**（不要当成已完成）：跨服务重复／乱序／毒事件（T32）、备份恢复（T33）、
-越权与 CSRF 实测（T34）、性能与容量（T36）、人工标注样本复核（T35）、四类成果专属字段与参与角色映射
-（T28 后半）、网络逐跳论文证据（T20）、多数认领与审核端到端用例（T07–T13）。逐项见验证记录 §5。
-
-**随后执行了第三批任务（容量与恢复：T10／T11／T12／T32／T33）**，改动同样**未提交**。详细记录见
-`docs/ai/第三批-容量与恢复验证记录-2026-10-17.md`（环境、原始输出、未达成项都在里面）：
-
-- A 阶段（规则验证）：`ClaimConcurrencyIT` 5 项，在真实 PG 上用「延迟触发器 + 双线程」受控制造重叠，
-  证明部分唯一索引 `uk_iam_portal_authority_active` 才是互斥的执行者（删索引后同一语句直接 42P10 反证）。
-  该组用例先红后绿，抓到并修掉一个真实缺口：并发路径原来不写审计，事后无法区分「确有并发」与「人工改判」。
-- B 阶段（业务联调）：固定种子合成 100 万去重成果（`tests/perf/seed-core.sql` / `seed-query.sql`），
-  分层计数、9 条与真实 SQL 同形的 `EXPLAIN (ANALYZE, BUFFERS)`；两个统计类查询在 100 万口径下 5,877 ms / 4,779 ms，
-  **未提交任何索引迁移**（先给证据，扩容前再定）。
-- C 阶段（容量）：10/20/50/100 VU 四档，100 VU 稳态 5 分钟。**NF02 未达成**：统计概览单请求 34–64 秒 →
-  query 连接池（16）被打满 → 3,848 次 `CannotGetJdbcConnectionException` → 76 次超时取消。100 VU 的 P95
-  反而低于 50 VU，因为请求在 5 秒连接超时处快速失败，这是「失败得快」不是「更快」。
-- T32：`ProjectionRecoveryIT` 4 项，抓到 `InboxReceiver` 回执的两个口径错误（`received` 把本批条数当落库条数、
-  `pendingRemaining` 在缺口停摆时回答「没有积压」），已修。
-- T33：`ops/perf/restore-drill.sh`，100 万数据 dump→restore→逐表核对：core 36 表、query 12 表行数一致，
-  约束/延迟触发器/索引都在，同一检索命中数 828,174 = 828,174。
-- 全量实测（21:19）：`./mvnw -B -ntp verify -Dcn.it.skip=false -Dfailsafe.failIfNoSpecifiedTests=false`
-  exit 0；**单元 491**（9/305/82/95）＋**集成 29**（core 23 / query 6）；三条 JaCoCo 门禁通过；`spotless:check` 通过。
-- 第三批结束时仍明确未做：500 万规模、300/1000 并发、真实许可数据源容量、CPU/GC/IO 资源曲线、
-  浏览器级并发、跨服务传播延迟、记录级重试退避。压测与演练都在隔离部署（18081/18083 + 55432）上做，
-  未占用共享开发库，也未对任何公网站点施压。
-
-**随后执行了第四批任务（WB-13 采集更新周期、WB-14 交付证据）**，改动同样**未提交**：
-
-- WB-13：把三个此前混在一起的「周期」拆成可分别指出的东西——调度轮询（`cn.collect.worker-interval-ms`）、
-  失败退避（`ing_collect_job.next_attempt_at`，V5）、来源业务更新周期（`V8__source_update_plan.sql`：
-  `new_record_interval_minutes` / `field_refresh_interval_minutes` / `update_plan_note` / `next_due_at`）。
-  周期默认空置（`NULL` = 未设定，行为与引入前完全一致），设周期必须写依据（库级 CHECK），
-  周期只挡「还没开始的执行」（`total_fetched > 0 OR next_due_at <= now()`）。
-  新增 `PUT /api/v1/admin/ingestion/sources/{id}/update-plan`。
-- 429／503 的 `Retry-After` 现在优先于本地指数退避（`SourceFetchException` → `decideBackoff`），
-  仍受 `max-backoff-seconds` 封顶，运行记录里留 `backoffBasis`。
-- 验证：`SourceFetchExceptionTest`（6）、`CrossrefAdapterStubTest`（7，真实 HTTP 替身：429／503／超限／
-  非法 JSON／连接不可用／分页不跳不重）、`CollectExecutionServiceTest` 增 5 项（Retry-After 优先、
-  封顶、0 秒、依据落库）、`SourceRunConfigUpdatePlanTest`（4）、`CollectMapperSqlTest` 增门控断言（4）；
-  真实库：`bash ops/verify/collect-update-plan.sh`（V1–V8 全跑 + 7 条断言，含「去掉门控条件会多取出
-  未到期任务」的反证）。
-- WB-14：`docs/ai/总体用例图复核-2026-10-17.md`（21 个用例对照实现与验证状态，4 条偏差待评审，
-  不改需求仓库）；`AI生成-人工修正案例.md` 增 3 个真实分歧案例；README 的验证状态按第三批实测改写
-  （容量未达标、集成 29 项）；`SPEC-代码对应关系表.md` 增 §6.1 三种周期的映射。
-- 第四批仍明确未做：到点自动创建采集任务（需先定幂等键与人工建任务的关系）、用真实来源数据标定周期、
-  采集端到端（真服务 + 替身源）、真实用户短任务验证（需真人）。
-
-**随后又做了一件事：把 ADR-001 的静态判断变成实测**（改动未提交）：
-
-- 新增 `services/core-service/src/test/java/com/cognitanexus/core/it/SourcePauseConflictProbe.java`
-  （3 项）与 `bash ops/verify/source-pause-conflict.sh`。类名刻意不以 `Test`／`IT` 结尾，
-  Surefire／Failsafe 都不收集它，`mvn verify` 的 514／29 计数不变。
-- 实测三条（原样输出见 ADR-001 §2.6）：
-  ① 以「上游维护窗口，暂停采集」为理由停用来源，独占该来源的公开成果被改成 `RESTRICTED`；
-  ② 5001 条独占公开成果撤权，响应 `tightenedCount=5000`，第 5001 条仍 `PUBLIC`，响应无剩余标记；
-  ③ 两个来源都停用后，成果仍为 `PUBLIC`（`NOT EXISTS` 只看有没有第二个来源行）。
-- **探针绿 = 冲突仍在**，不是验收通过。ADR-001 §2.3／§2.5 仍为静态阅读结论，未实测。
-
-**WB-04 也写成了可评审文件**：`docs/architecture/adr/ADR-002-认领核验判据.md`（Proposed）。六种情形
-逐行给「建议方向／必须先解决的问题／现行实现能否表达」，并引用 SRS 原文——**「不承诺学校邮箱验证或
-ORCID 自动认证」，所以任何自动授权都超出现行需求**。§6 核对后确认审核页**已经**显示材料份数与受保护下载
-链接（不必重做），剩下两步（材料挂种类、审核说明结构化）都要动字段，需走构件设计评审；
-现行界面已核对，没有「已验证」字样。
-
-**下一步只剩两件需要人拍的事**：ADR-001 选方案 A 还是 B（决定是否新增 `display_license_status`
-与撤权作业表）；ADR-002 的六条判据（尤其 C2 邮箱挑战、C3 ORCID 授权登录要不要做）由团队签认，
-签认前不改代码。两项都不该由 AI 自定。
-
-**已知未修（全部在 `docs/ai/测试与覆盖率报告.md` §7、§9.5 登记，不要当成已完成）**：
-
-1. `spotless:check` 在存量代码上检出 9 个文件的格式偏差（core 2 个、query 7 个）。索引有效时
-   （增量检查）`mvn verify` 会通过，索引失效后会在格式这一步失败。本轮只格式化了本次改动的文件，
-   存量未动。要让 `mvn verify` 在干净环境一次通过，需要人工决定是否跑 `spotless:apply`。
-2. 编码规范 §8.3 要求的三个核心模块之一是 query/discovery，它**没有纳入门禁**，实测行覆盖率
-   13.50%（22/163），`discovery.api` 为 0%。这是覆盖率口径上的真实缺口，不是「已达标」。
-3. Testcontainers 依赖在 pom 里，但没有任何测试类使用它：490 项全是 Mockito 单元测试，
-   没有真实 PostgreSQL 的集成测试层。
-4. 前端没有 lint、没有组件单元测试、没有 Playwright E2E（`frontend/package.json` 只有
-   dev/build/preview/typecheck）。逐页断言脚本 `cn-shoot.mjs` 在 workspace 目录，**不在仓库内**。
-5. 500 万可检索成果 / 100 并发的容量验证未执行：k6 未接入，`tests/perf/` 目录未建。
-   `tests/api/smoke-perf.py` 是本地单用户串行基线，文件头明确写了「不得据此宣称验收达标」。
-   连跑两次**各有 1 条链路 P95 超过 2 秒工程上限**（第一次领域洞察 2110ms，第二次合作网络 2 跳 5723ms），
-   两次都是 15/17。抖动未归因，见 `docs/ai/测试与覆盖率报告.md` §4.1。
-6. **WB-06 的一致快照未修**：`SearchService` 仍是默认隔离级别，`count`、列表、作者、领域四条 SQL
-   分四次读取，「总量与列表来自不同修订却标同一版本」的风险仍然存在。学者检索现在会拒绝过期
-   `queryVersion`，但那只是「拒绝旧 token」，不等于「一次请求内一致快照」。
-7. 并发业务不变量（两审核者同时裁决、两账号同时批准同一门户）未用真实双事务验证；
-   浏览器端请求竞态只有人工核验，没有自动断言。
-8. 存量代码另有两条设计层欠缺：投影导出与事件载荷的字段集靠纪律保证同源（无编译期约束）；
-   工作台里「被合并方牵涉的第三方候选」没有一键改判入口。
-
+1. `spotless:check` 在存量代码上检出 **9 个文件**的格式偏差（core 2、query 7）。增量索引有效时
+   `mvn verify` 会跳过它们，索引失效转全量检查时会红。要让干净环境一次通过，需人工决定是否
+   `spotless:apply`。`-DspotlessFiles` 是**正则**且只对 check 生效。
+2. ~~编码规范 §8.3 指定 query/discovery 为三个核心模块之一，但它没有纳入覆盖率门禁~~
+   ——第九批已补：新增 `jacoco-check-discovery`，三包行覆盖 100%，1.01 反证确认门禁真实生效。
+   但「100% 行覆盖」不等于 SQL 有覆盖：`SearchMapper` 的注解 SQL 仍只由 `tests/api/smoke-query.sh`
+   在真实库上验证，而那些脚本不在 `verify` 流水线内。
+3. 公众纠错无浏览器级 E2E；门户导出「超 5000 行拒绝」路径未构造（代码有，断言缺）；纠错限流是
+   **单实例内存窗口**，多实例部署需网关限流或共享计数器。
+4. 前端没有 lint、没有组件单元测试、没有 Playwright E2E（`package.json` 只有 dev/build/preview/typecheck）。
+   逐页断言脚本已入库为 `tests/ui/`（第九批），但仍是**人工触发**、不入 CI，且没有视觉回归基线。
+5. 容量：100 万口径下 **NF02 未达成**（详见下方「容量与恢复」）。500 万 / 300 / 1000 并发未做。
+6. 投影快照导出与事件载荷的字段集靠同一装配点保证同源（无编译期约束）；将来加字段两个出口必须同时改。
+7. 工作台里「被合并方牵涉的第三方候选」只能驳回或先解析到最终实体后另建候选，没有「改判为与幸存成果相关」
+   的一键入口（预览的 warnings 已如实说明）。
+8. 未开工的延伸功能：成果订阅/关注、机构维度可比指标、编辑建议的版本化修订流、通知中心按 kind 分组与批量已读。
+9. 沉淀在两份 ADR 里待人工拍板的事：ADR-001 的方案取舍、ADR-002 的六条认领核验判据（签认前不改代码）。
+10. 诚信声明没有浏览器级 E2E；投影重建与增量未对 `integrity_status` 做逐值比对；声明不影响检索排序，
+    也不改变「已撤稿成果是否参与合作网络」（口径变更需先评审）。
 
 ### 四、已修的真实缺陷（写文档时的素材，不要编新的）
 
@@ -232,11 +166,16 @@ ORCID 自动认证」，所以任何自动授权都超出现行需求**。§6 �
    而旧截图脚本一直用 `?q=graph`，首条是论文，这条崩溃长期不可见。
 8. **撤销发布后无恢复入口**：`confirmPublication` 放行 `WITHDRAWN` 后可重新确认恢复。
 9. **注释声称的不变量代码没做到**：`AdminCatalogService` 曾说公开投影的两个出口「字段名逐字一致」，
-   实际不一致；契约脚本的逐字段比对才发现。已改为三个出口共用 `publicProjectionView`，
-   并在注释里写明当年真实出过的故障（导出少两个字段 → 重建后 6515 条公开成果被当成非公开行）。
+   实际不一致；契约脚本的逐字段比对才发现。已改为三个出口共用 `publicProjectionView`。
+10. **无授权下载返回 401，真实 403 被顶掉**：错误报文依赖 `Accept` 协商，406 触发 ERROR 派发，
+    安全过滤器不处理 ERROR 派发。两侧异常处理器改为直写响应体（见 C-10）。
+11. **限流规则永不生效**：键里多拼一个维度，让另一条更严的规则永远先触发（见 C-11）。
+12. **`ClaimConcurrencyIT` 抓到并发路径不写审计**：无法事后区分「确有并发」与「人工改判」。
+13. **`ProjectionRecoveryIT` 抓到 Inbox 回执两个口径错误**：`received` 把本批条数当落库条数、
+    `pendingRemaining` 在缺口停摆时回答「没有积压」。
 
-以上 9 例已在 `docs/ai/AI生成-人工修正案例.md` 中逐条展开（现象、发现方式、AI 初版错在哪、
-人工判据、修法、回归证据）。
+C-01～C-11 已在 `docs/ai/AI生成-人工修正案例.md` 中逐条展开（现象、发现方式、AI 初版错在哪、
+人工判据、修法、回归证据）；C-12、C-13 见 `docs/ai/第三批-容量与恢复验证记录-2026-10-17.md`。
 
 ### 五、环境与启动（踩过两次的硬坑）
 
@@ -249,15 +188,23 @@ ORCID 自动认证」，所以任何自动授权都超出现行需求**。§6 �
   整组被回收。改后端一律走 `stack.sh`。
 - **构建前必须停栈**：jar 被运行中的服务锁住，`repackage` 会以「Unable to rename ... .jar.original」失败。
   顺序是 `stack.sh stop` → 构建 → `stack.sh start`。
-- 回环请求一律 `curl --noproxy '*'`；Git Bash 里 URL 含 `/core/...` 需 `MSYS_NO_PATHCONV=1`。
+- 回环请求一律 `curl --noproxy '*'`；Git Bash 里 URL 含 `/core/...` 需 `MSYS_NO_PATHCONV=1`；
+  `-c` 存 cookie 要写 `D:/xxx` 形式，否则退出码 23。
 - **psql 在 Windows 上不能用 `-c` 传中文**：argv 按 ANSI 码页（CP936）转出，UTF-8 中文在这步就坏了，
   服务端报 `invalid byte sequence for encoding "UTF8"`。含中文的 SQL 一律走 stdin
   （脚本里 `psql -f -` + heredoc，脚本本身存 UTF-8），并设 `PGCLIENTENCODING=UTF8`。
-  范式见 `ops/local/backfill-merged-pair-candidates.sh`。
+  跑 `.sql` 文件同样要设（迁移里的中文注释会报错）。范式见 `ops/local/backfill-merged-pair-candidates.sh`。
+- **psql 必须加 `-v ON_ERROR_STOP=1`**：不加时 SQL 报错退出码仍是 0，脚本会把「插入被触发器拒绝」
+  当成功，给出假绿（第一版合并可见性夹具就这样静默通过）。
 - 数据库账号：`core_app` / `ingestion_app` / `query_app`，密码 `cn_<服务>_app_dev`；
   psql 在 `D:/dev-tools/pgsql/bin/psql.exe`。
 - Maven：`D:/dev-tools/apache-maven-3.9.16/bin/mvn -s /d/dev-tools/settings.xml`；
   Windows 控制台是 GBK，日志要 `iconv -f GBK -t UTF-8`。
+- 集成测试用独立 PG（55432）：`bash ops/local/test-db.sh [start|stop|status]`，必须
+  `./mvnw -B -ntp verify -Dcn.it.skip=false -Dfailsafe.failIfNoSpecifiedTests=false`。
+  本机 Docker / WSL2 被安全策略阻断，Testcontainers 不可用。
+- 压测与恢复演练用隔离部署（18081/18083 + 55432 的 `core_perf`/`query_perf`），
+  **不占用共享开发库**，也不对任何公网站点施压。
 - 前端逐页断言脚本：`C:/Users/白皓宇/.workbuddy/binaries/node/workspace/cn-shoot.mjs`
   （ESM 不认 `NODE_PATH`，脚本必须放在 workspace 目录内跑），截图落 `D:/dev-tools/cn-shots/admin`。
 
@@ -272,15 +219,21 @@ ORCID 自动认证」，所以任何自动授权都超出现行需求**。§6 �
 - **`PublicationYear.year()` 是 `Integer`，不要用 `==` 比较**：两个 2023 装箱后是不同对象。
   一律 `Objects.equals`。
 - **配置项可能静默失效**：`backoffSeconds` 里曾有 `1L << min(attempt-1, 6)` 位移上限，
-  使配置的 `max-backoff-seconds`（默认 300）永远不生效。写完上限类配置要反证「改了它行为真的变了」。
+  使配置的 `max-backoff-seconds`（默认 300）永远不生效；限流键拼错维度也让配额规则永不触发。
+  写完上限类配置/规则要反证「改了它行为真的变了」，并构造一次「刚好超限」的输入。
 - **JaCoCo 门禁有两种「匹配空集合 → 一律通过」的写法必须避开**：① `element=BUNDLE` 时 `includes`
   比的是 bundle 名（`core-service`），写包名永远匹配不上；② 即使 `element=PACKAGE`，`包名.*`
-  仍匹配不到包本身（`*` 被译成 `.*`，模式里的「.」是正则的任意字符，要求「包名后面还有字符」，
-  只能命中子包）。正确写法是 `包名*`。`ops/verify-coverage-gates.sh` 会重做这个反证。
+  仍匹配不到包本身（`*` 被译成 `.*`，模式里的「.」是正则的任意字符）。正确写法 `包名*`。
+- **`@RestControllerAdvice` 不要返回 `ResponseEntity`**：错误报文会随 `Accept` 变化，下载类接口
+  （`text/csv`）直接 406 → ERROR 派发 → 认证过滤器不处理 → 403 被顶成 401。一律 `void` + 直写。
 - **三个服务都配了 `default-property-inclusion: non_null`**：null 字段从响应里消失，
   「值未知」与「服务端漏写字段」在报文上无法区分，前端拿到 undefined 会渲染空白。
   凡要表达「未知/无」必须另给永不缺失的字段（布尔或标签），例如年份的 `yearKnown` +
   `publicationYearLabel`。前端判空必须同时挡 `null` 与 `undefined`。
+- **检索页条件以 URL 为唯一来源**；`router.replace` 前记下目标 fullPath，watch 里相等就跳过，
+  否则一次操作发两次请求；连续检索必须带请求序号，回来不是最新就整段丢弃。
+- **检索关键词直接拼 LIKE 会让 `%` 变通配**（输入一个 `%` 命中全库）。归一化与转义是两步，
+  `SearchQuery.likePatternOf` 负责转义。
 - **状态必须实时读，不能用登记时的快照**：候选的 evidence 是登记那一刻的结论，
   用它渲染工作台会把「当时的结论」当成「现在的事实」（某一端可能已被别的治理动作并走）。
 - **不要把「不能做的操作」做成可点的按钮**：被并走的一端不能作为幸存实体，卡片上就把该选项关掉
@@ -288,6 +241,7 @@ ORCID 自动认证」，所以任何自动授权都超出现行需求**。§6 �
 - **「合并回答了候选提出的问题」**：合并一对时要把这一对之间的 OPEN 候选裁决为 MERGED，
   否则它留在 OPEN 且因相似度最高永远压在工作台最前面。判据要窄：只裁决两端恰好是本次合并两端的那批。
 - 治理页刻意只提供批量驳回、不提供批量合并；翻页/改筛选必须清空勾选。
+- 认领材料只给元信息，绝不能给 `fileRef` 或磁盘路径；按 claimId 批量取材料要按「本人名下申请」过滤。
 
 ### 七、常见动作
 
@@ -295,8 +249,9 @@ ORCID 自动认证」，所以任何自动授权都超出现行需求**。§6 �
 # 起/停/看整栈（沙箱下用后台任务承载 start）
 bash ops/local/stack.sh [start|stop|status|--no-web]
 
-# 单元测试
-D:/dev-tools/apache-maven-3.9.16/bin/mvn -s /d/dev-tools/settings.xml -q test
+# 单元 + 集成（集成需先起 55432）
+./mvnw -B -ntp verify -Dspotless.check.skip=true
+./mvnw -B -ntp verify -Dcn.it.skip=false -Dfailsafe.failIfNoSpecifiedTests=false
 
 # 覆盖率门禁 + 反证
 bash ops/verify-coverage-gates.sh [--skip-build]
@@ -305,10 +260,23 @@ bash ops/verify-coverage-gates.sh [--skip-build]
 bash tests/api/smoke-core.sh
 bash tests/api/smoke-ingestion.sh
 bash tests/api/smoke-query.sh
-"C:/Users/白皓宇/.workbuddy/binaries/python/versions/3.13.12/python.exe" tests/api/smoke-e2e-pipeline.py
-"C:/Users/白皓宇/.workbuddy/binaries/python/versions/3.13.12/python.exe" tests/api/smoke-redlines.py
-"C:/Users/白皓宇/.workbuddy/binaries/python/versions/3.13.12/python.exe" tests/api/smoke-contract.py
-"C:/Users/白皓宇/.workbuddy/binaries/python/versions/3.13.12/python.exe" tests/api/smoke-projection-consistency.py
+python tests/api/smoke-contract.py
+python tests/api/smoke-redlines.py
+python tests/api/smoke-corrections.py
+python tests/api/smoke-portal-export.py
+python tests/api/smoke-scholar-metrics.py
+python tests/api/smoke-notifications.py
+python tests/api/smoke-integrity.py
+python tests/api/smoke-citations.py
+python tests/api/smoke-citation-batch.py
+```
+
+```
+# 前端：类型检查 + 构建 + 纯函数测试（node:test，无需浏览器）
+cd frontend && npm run build && npm test
+
+# 前端浏览器级断言（需整栈已起 + 本机 Chrome；首次先 npm install）
+cd tests/ui && npm run check      # = shoot（逐页截图+异常采集）+ batch（批量引用导出）
 ```
 
 工程记忆（README 之外的第二份必读）：`D:/code/academicplatform/.workbuddy/memory/MEMORY.md`
@@ -321,17 +289,18 @@ bash tests/api/smoke-query.sh
 1. `bash ops/local/stack.sh`（后台任务承载），`bash ops/local/stack.sh status` 等四个端口可访问；
 2. 跑 `smoke-core.sh` + `smoke-query.sh` 确认没有回归（预期 21 与 90 全过）；
 3. 要改后端就按「停栈 → 构建 → 起栈」的顺序，构建命令是
-   `./mvnw -B -ntp verify -Dspotless.check.skip=true`（跳过格式门禁的原因见「当前状态」的已知未修第 1 条；
-   若已决定格式化存量代码，去掉该参数）；
+   `./mvnw -B -ntp verify -Dspotless.check.skip=true`（跳过格式门禁的原因见已知未修第 1 条）；
 4. 完成一批工作后更新本文件的「当前状态」一节，并把 `.workbuddy/memory/YYYY-MM-DD.md` 追加一段。
 
 **若要继续推进，按代价从低到高排的候选**：
 
-1. 把 `query/discovery` 纳入覆盖率门禁并补测试（当前 13.50%，是 §8.3 口径里唯一没达标的选定模块）；
-2. 决定是否 `spotless:apply` 存量 26 个文件，使干净环境下一次 `mvn verify` 就能通过；
-3. 把逐页断言脚本 `cn-shoot.mjs` 收进仓库（现在在 workspace 目录，别人无法复核）；
-4. 为三条核心链路补 Testcontainers 集成测试（依赖已在 pom 里，没有任何用例）；
-5. 容量验证（500 万可检索 / 100 并发）——需要固定数据集与 k6，属于独立任务。
+1. ~~把 `query/discovery` 纳入覆盖率门禁并补测试~~（第九批已完成：三包 100%，门禁经 1.01 反证）；
+   剩下的同类缺口是「SQL 没有集成断言」——`tests/api/` 不在 `verify` 流水线内；
+2. 把逐页断言脚本 `cn-shoot.mjs` 收进仓库（现在在 workspace 目录，别人无法复核）；
+3. 补门户导出「超 5000 行拒绝」的断言；给纠错限流补一条「多实例失效」的说明或改成共享计数器；
+4. 前端加 lint 与最小组件测试（现在完全没有）；
+5. 决定是否 `spotless:apply` 存量 9 个文件，使干净环境下一次 `mvn verify` 就能通过；
+6. 容量验证（500 万可检索 / 300-1000 并发）——需要固定数据集与 k6，属独立任务。
 
 注意：这个仓库有个明确倾向——**宁可写「未实测」，也不要写一句代码没做到的漂亮话**。
 之前出过 `AdminCatalogService` 注释声称两组字段「逐字一致」而实际不一致的例子，
@@ -343,10 +312,11 @@ bash tests/api/smoke-query.sh
 
 | 事项 | 现状 |
 |---|---|
-| 分支 / 最近提交 | `feat/v0.2-implementation` / `0aad3b0`（本轮改动未提交） |
-| 任务清单 | 47/47 完成（#22 证据文档已补齐） |
-| 未提交内容 | `docs/ai/` 新增 5 份文档 + 更新的 README + `handover-prompt.md`；新增 `GovernanceDataQualityAdapterTest`（13 项）；根目录 `老师指导对照检查与WorkBuddy改进建议-2026-10-17.md`（非代码） |
-| 单元测试 | 487 项全绿（shared 9 / core 305 / ingestion 82 / query 91） |
-| 覆盖率 | 8 个受门禁包 85.71%～100%，合计 95.93%；三条门禁经 1.01 反证 |
-| 数据规模 | 成果 15326（公开生效 9638）、原始记录 21408、学者 43834 |
-| 已知未修 | ① 存量 26 个文件 spotless 不合规（干净环境 verify 会红在这一步）；② query/discovery 未进门禁、13.50%；③ 无 Testcontainers 集成测试；④ 前端无 lint/单测/E2E，逐页脚本不在仓库；⑤ 容量验证未执行；⑥ 投影导出与事件载荷将来加字段时两个出口必须同时改；⑦ 工作台「被合并方牵涉的第三方候选」没有一键改判入口 |
+| 分支 / 最近提交 | `feat/v0.2-implementation` / `e071e94`（此后 64 个文件改动未提交） |
+| 当前阶段 | 功能补齐（第五批已收尾），非功能阶段（部署/CI）未开始，等用户决定 |
+| 单元测试 | 705 全绿（shared 14 / core 439 / ingestion 109 / query 143） |
+| 集成测试 | 34 全绿（core 28 / query 6），原生 PG 55432 |
+| 覆盖率 | 四条门禁覆盖 9 个包全部通过；governance/api 88.71%、application 93.97%；query/discovery 三包 100% |
+| 接口自检 | 10 套已重跑全绿（core 21 / ingestion 41 / query 90 / contract 12 / redlines 24 / claim-evidence 27 / notifications 26 / corrections 33 / portal-export 15 / scholar-metrics 24） |
+| 前端 | 20 条路由；`npm run build` 通过；纯函数 11 项通过；浏览器断言脚本在 `tests/ui/`（人工触发）；无 lint / 组件单测 |
+| 已知未修 | ① 存量 9 个文件 spotless 不合规；② SQL 无集成断言（`tests/api/` 不在 verify 内）；③ 纠错限流是单实例内存窗口；④ 前端无 lint/组件单测，浏览器断言不入 CI、无视觉基线；⑤ 500 万规模与 300+ 并发未验证；⑥ 工作台「被合并方牵涉的第三方候选」无一键改判；⑦ NF02 在 100 万口径未达成 |

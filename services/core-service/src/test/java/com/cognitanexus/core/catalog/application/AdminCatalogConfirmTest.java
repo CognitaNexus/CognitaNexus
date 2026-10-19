@@ -78,7 +78,12 @@ class AdminCatalogConfirmTest {
             outbox,
             audit,
             projections,
-            new CatalogChangePublisher(achievements, projections, outbox));
+            new CatalogChangePublisher(
+                achievements,
+                projections,
+                outbox,
+                id -> com.cognitanexus.core.integrity.domain.IntegritySummary.STATUS_NONE),
+            id -> com.cognitanexus.core.integrity.domain.IntegritySummary.STATUS_NONE);
     actor =
         new ActorContext(
             new AccountId("acc_reviewer"), "reviewer", "审核员", Set.of(RoleNames.REVIEWER), 1L);

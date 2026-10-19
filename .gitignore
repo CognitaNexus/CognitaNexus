@@ -37,6 +37,8 @@ data/
 logs/
 *.log
 pgdata/
+# 本地整栈的进程标记：内容是 PID，每台机器都不一样，提交后每个人的工作区都显示「已修改」
+ops/local/run/*.pid
 
 # ===== 本地原始材料与本地产物（不入库）=====
 .local/
@@ -71,6 +73,11 @@ jacoco.exec
 *.exec
 test-output/
 allure-results/
+# 前端逐页断言的截图（可随时重建，只留脚本）
+tests/ui/.shots/
 
 # ===== 本地助手工作数据（不入库）=====
 .workbuddy/
+
+# 个人临时文档，不入库
+待办.docx

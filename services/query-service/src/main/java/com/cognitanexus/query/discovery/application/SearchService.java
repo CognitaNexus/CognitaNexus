@@ -5,6 +5,7 @@ import com.cognitanexus.query.discovery.infrastructure.SearchMapper;
 import com.cognitanexus.query.platform.scope.DataNatureScope;
 import com.cognitanexus.query.projection.application.ProjectionProperties;
 import com.cognitanexus.sharedkernel.BusinessException;
+import com.cognitanexus.sharedkernel.Csv;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -101,6 +102,10 @@ public class SearchService {
       item.put("dataNature", hit.dataNature());
       item.put("visibility", hit.visibility());
       item.put("effectiveStatus", hit.effectiveStatus());
+      // 诚信标记必须**始终存在**：三个服务都用 non_null 序列化，字段缺失与「无声明」在报文上
+      // 无法区分，前端拿到 undefined 会渲染成空白（C-07 的同一形态）。因此这里给出完整三字段，
+      // 而不是「有声明时才放进去」。
+      item.put("integrity", integrityView(hit.integrityStatus()));
       item.put("publicationYear", hit.publicationYear());
       item.put("doi", hit.doi());
       item.put("venue", hit.venue());
@@ -170,6 +175,64 @@ public class SearchService {
     data.put("publishedRevision", barrier.publishedRevision());
     data.put("generatedAt", Instant.now());
     data.put("countingNote", "只统计 AUTO 与 SELF_CONFIRMED 关系在公开生效成果上的成果数；待核验与已排除关系不计入");
+    return data;
+  }
+
+  /** 建议条数上限：建议是输入辅助，不是结果列表，超过 10 条对选择没有帮助。 */
+  public static final int MAX_SUGGEST_LIMIT = 10;
+
+  /**
+   * 检索框建议：题名与学者分两组返回。
+   *
+   * <p>和正式检索共用同一道公开资格屏障与同一条数据性质口径。建议看起来只是「打字提示」，
+   * 但它把未公开或已撤下的成果标题显示出来，就等于泄露了标题——所以这里走的是与列表查询
+   * 完全相同的 {@code assertPubliclyServed} + 资格条件，而不是一条轻量的独立 SQL。
+   *
+   * <p>只覆盖题名与学者名两类。摘要命中无法给出「建议」形态（用户看到的会是一段截断的正文），
+   * 因此建议里不含摘要；这不影响正式检索已经命中摘要。
+   */
+  @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+  public Map<String, Object> suggest(String rawKeyword, String rawDataNature, int limit) {
+    PublicBarrierGuard.BarrierSnapshot barrier = guard.assertPubliclyServed();
+    if (limit < 1 || limit > MAX_SUGGEST_LIMIT) {
+      throw BusinessException.invalidArgument("建议条数必须在 1 到 " + MAX_SUGGEST_LIMIT + " 之间");
+    }
+    String keyword = SearchQuery.normalizeKeyword(rawKeyword);
+    String nature = normalizeNature(rawDataNature);
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("keyword", keyword);
+    // 口径字段总是出现，理由同检索：省略会被读成「默认值」，而默认值恰恰是要说清楚的东西。
+    data.put("dataNatureScope", DataNatureScope.label(nature));
+    if (keyword == null) {
+      data.put("achievements", List.of());
+      data.put("scholars", List.of());
+      data.put("note", "关键词为空，不返回建议");
+      return data;
+    }
+    String like = SearchQuery.likePatternOf(keyword);
+    String generation = barrier.activeGeneration();
+    List<Map<String, Object>> achievements = new ArrayList<>();
+    for (SearchMapper.TitleSuggestion row :
+        mapper.suggestTitles(generation, keyword, like, nature, limit)) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("id", row.achievementId());
+      item.put("title", row.title());
+      item.put("type", row.type());
+      item.put("publicationYear", row.publicationYear());
+      achievements.add(item);
+    }
+    List<Map<String, Object>> scholars = new ArrayList<>();
+    for (SearchMapper.ScholarSuggestion row :
+        mapper.suggestScholars(generation, like, nature, limit)) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("scholarId", row.scholarId());
+      item.put("scholarName", row.scholarName());
+      item.put("qualifiedAchievementCount", row.achievementCount());
+      scholars.add(item);
+    }
+    data.put("achievements", achievements);
+    data.put("scholars", scholars);
+    data.put("note", "建议只覆盖题名与学者名；正式检索另外命中摘要、载体与 DOI。学者建议只统计 AUTO 与 SELF_CONFIRMED 关系");
     return data;
   }
 
@@ -283,6 +346,22 @@ public class SearchService {
     return sort == null || sort.isBlank() ? SearchQuery.SORT_RELEVANCE : sort;
   }
 
+  private static Map<String, Object> integrityView(String status) {
+    String code = status == null || status.isBlank() ? "NONE" : status;
+    String label =
+        switch (code) {
+          case "RETRACTION" -> "已撤稿";
+          case "CORRECTION" -> "已更正";
+          case "CONCERN" -> "有关注声明";
+          default -> "无诚信声明";
+        };
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("status", code);
+    view.put("label", label);
+    view.put("noticed", !"NONE".equals(code));
+    return view;
+  }
+
   private static Map<String, Object> topicView(SearchMapper.TopicRow row) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("topicId", row.topicId());
@@ -294,5 +373,90 @@ public class SearchService {
       view.put("confidence", row.confidence());
     }
     return view;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 导出（CSV）
+  // ---------------------------------------------------------------------------
+
+  /** 单次导出行数上限。到达上限即拒绝，不静默截断——截断的 CSV 看起来像完整结果。 */
+  public static final int MAX_EXPORT_ROWS = 5000;
+
+  private static final int EXPORT_BATCH = 500;
+
+  private static final String[] EXPORT_COLUMNS = {
+    "id",
+    "type",
+    "title",
+    "publicationYear",
+    "doi",
+    "venue",
+    "citationCount",
+    "dataNature",
+    "authors",
+    "topics"
+  };
+
+  /**
+   * 把当前检索条件下的全部命中导出为 CSV（RFC 4180 转义，带 UTF-8 BOM 便于 Excel 直接打开）。
+   *
+   * <p>与在线检索走同一套公开资格条件与口径归一：导出里的每一行都能在检索页翻到，检索页
+   * 翻到的每一行（在前 {@value #MAX_EXPORT_ROWS} 条之内）也都会出现在导出里。条数超过上限时
+   * 拒绝并要求缩小条件——分批导出与后台导出是另一种需求，不是本接口该顺手做的。
+   */
+  @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+  public byte[] exportCsv(SearchQuery query) {
+    PublicBarrierGuard.BarrierSnapshot barrier = guard.assertPubliclyServed();
+    // 导出不是交互翻页，不套 maxOffset；但排序与口径归一必须与在线检索同一条路，
+    // 否则「界面看到的顺序」与「导出的顺序」会对不上。
+    validateSort(query);
+    SearchCriteria criteria = criteriaOf(query);
+    String generation = barrier.activeGeneration();
+
+    long total = mapper.countHits(generation, criteria);
+    if (total > MAX_EXPORT_ROWS) {
+      throw BusinessException.invalidArgument(
+          "当前条件命中 "
+              + total
+              + " 条，超过单次导出上限 "
+              + MAX_EXPORT_ROWS
+              + " 条。请增加年份、领域或机构条件缩小范围，而不是期待导出被静默截断");
+    }
+
+    StringBuilder csv = Csv.begin();
+    Csv.appendRow(csv, EXPORT_COLUMNS);
+    for (int offset = 0; offset < total; offset += EXPORT_BATCH) {
+      List<SearchMapper.AchievementHit> hits =
+          mapper.listHits(generation, criteria, EXPORT_BATCH, offset);
+      List<String> ids = hits.stream().map(SearchMapper.AchievementHit::achievementId).toList();
+      Map<String, List<String>> authors = new LinkedHashMap<>();
+      for (SearchMapper.NameRow row : mapper.listAuthorNames(generation, ids)) {
+        authors.computeIfAbsent(row.achievementId(), key -> new ArrayList<>()).add(row.name());
+      }
+      Map<String, List<String>> topics = new LinkedHashMap<>();
+      for (SearchMapper.TopicRow row : mapper.listTopics(generation, ids)) {
+        List<String> names = topics.computeIfAbsent(row.achievementId(), key -> new ArrayList<>());
+        if (row.canonicalName() != null) {
+          names.add(row.canonicalName());
+        }
+      }
+      for (SearchMapper.AchievementHit hit : hits) {
+        Csv.appendRow(
+            csv,
+            new String[] {
+              hit.achievementId(),
+              hit.type(),
+              hit.title(),
+              hit.publicationYear() == null ? "" : String.valueOf(hit.publicationYear()),
+              hit.doi(),
+              hit.venue(),
+              hit.citationCount() == null ? "" : String.valueOf(hit.citationCount()),
+              hit.dataNature(),
+              String.join("; ", authors.getOrDefault(hit.achievementId(), List.of())),
+              String.join("; ", topics.getOrDefault(hit.achievementId(), List.of())),
+            });
+      }
+    }
+    return Csv.toBytes(csv);
   }
 }

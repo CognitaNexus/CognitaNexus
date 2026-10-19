@@ -12,7 +12,7 @@
 #      子包；对一个没有子包的包（如 catalog.domain）就等于空集合，静默判通过。
 #
 # 所以本脚本做两件事：
-#   ① 打印三个受门禁模块的真实行覆盖率（人要看的是这个数）；
+#   ① 打印受门禁包的真实行覆盖率（人要看的是这个数）；
 #   ② 把每条门禁阈值临时提到不可能达到的 1.01 再跑一次，**必须失败**。若仍判通过，就说明这条
 #      门禁没匹配到任何包，是假门禁，脚本以非零码退出。
 #
@@ -34,6 +34,7 @@ GATES=(
   "services/core-service:jacoco-check-governance"
   "services/core-service:jacoco-check-catalog-domain"
   "services/query-service:jacoco-check-analytics"
+  "services/query-service:jacoco-check-discovery"
 )
 
 PYTHON=$(command -v python3 || command -v python)
@@ -55,7 +56,7 @@ import xml.etree.ElementTree as ET
 
 GATES = {
     "services/core-service": ("com/cognitanexus/core/governance", "com/cognitanexus/core/catalog/domain"),
-    "services/query-service": ("com/cognitanexus/query/analytics",),
+    "services/query-service": ("com/cognitanexus/query/analytics", "com/cognitanexus/query/discovery"),
 }
 THRESHOLD = 0.80
 
@@ -106,4 +107,4 @@ if [ "$FAILED" -ne 0 ]; then
   echo "结果：存在假门禁，必须修 pom 里的 element / includes 模式。" >&2
   exit 1
 fi
-echo "结果：3 条门禁全部真实生效，且覆盖率均不低于 80%。"
+echo "结果：${#GATES[@]} 条门禁全部真实生效，且覆盖率均不低于 80%。"

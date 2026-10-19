@@ -61,6 +61,15 @@ spring:
     deserialization:
       fail-on-unknown-properties: false
 
+  task:
+    scheduling:
+      # 默认调度线程池只有 1 个线程。本服务已有 outbox 投递（fixedDelay 800ms），本次又加了
+      # 注销扫描与保留期清理；共用单线程时，一个慢任务会让其余任务排队，而排队中的任务
+      # 不会报错——表现为「定时任务静默不执行」，排查成本极高。
+      pool:
+        size: ${CN_SCHEDULING_POOL_SIZE:4}
+      thread-name-prefix: cn-sched-
+
 mybatis:
   configuration:
     map-underscore-to-camel-case: true
@@ -106,10 +115,35 @@ cn:
     auto-merge-requires-stable-identifier: true
   storage:
     claim-evidence-dir: ${CN_CLAIM_EVIDENCE_DIR:D:/dev-tools/cn-storage/claim-evidence}
+    # 头像与认领材料分目录：前者匿名可读、后者必须鉴权。放在同一个目录里，
+    # 任何一次「把目录挂成静态资源」的运维改动都会顺带公开认领材料。
+    scholar-avatar-dir: ${CN_SCHOLAR_AVATAR_DIR:D:/dev-tools/cn-storage/scholar-avatar}
   paging:
     default-page-size: 20
     max-page-size: 100
     max-offset: 10000
+  closure:
+    # 注销冷静期扫描。到期即执行，不再等管理员手动点——页面承诺的是「7 天后生效」。
+    # 想否决必须在 effective_at 之前裁决，过期后这里会直接停用账号。
+    sweep-interval-ms: ${CN_CLOSURE_SWEEP_INTERVAL_MS:3600000}
+    sweep-initial-delay-ms: ${CN_CLOSURE_SWEEP_INITIAL_DELAY_MS:60000}
+  identity:
+    # 会话撤销表保留窗口。必须长于会话最大寿命，否则被撤销的旧会话会在记录被删后重新可用。
+    revocation-retention-days: ${CN_REVOCATION_RETENTION_DAYS:30}
+    retention-interval-ms: ${CN_RETENTION_INTERVAL_MS:86400000}
+    retention-initial-delay-ms: ${CN_RETENTION_INITIAL_DELAY_MS:300000}
+
+# OpenAPI 文档（部署前功能项）。文档只含路径、参数与响应结构，不含任何业务数据。
+# 只文档化 /api/v1/**：/internal/v1/** 是服务间调用，写进文档会诱导外部照着调，
+# 得到 401 后还要来问「文档说可以」。
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  paths-to-match: /api/v1/**
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: alpha
+    tags-sorter: alpha
 
 logging:
   level:

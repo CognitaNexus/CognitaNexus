@@ -681,6 +681,30 @@ public interface GovernanceMapper {
       """)
   int refreshAnomalyDetail(@Param("id") String id, @Param("detailJson") String detailJson);
 
+  /**
+   * 按去重键取整条未处理异常。
+   *
+   * <p>与 {@link #findOpenAnomalyId} 的区别是它返回完整行：公众纠错的重复提交要在既有 detail 上
+   * 累加计数并保留首次提交时间，只拿到 id 就得再查一次，而在「取 id → 读详情 → 写详情」之间
+   * 还夹着一个并发窗口。
+   */
+  @Select(
+      """
+      SELECT id AS id, kind AS kind, source_record_id AS sourceRecordId, entity_id AS entityId,
+             detail::text AS detailJson, status AS status, created_at AS createdAt,
+             resolved_at AS resolvedAt
+      FROM gov_anomaly
+      WHERE kind = #{kind} AND status = 'OPEN' AND detail->>'dedupeKey' = #{dedupeKey}
+      ORDER BY created_at DESC
+      LIMIT 1
+      """)
+  AnomalyRow findAnomalyByDedupeKey(
+      @Param("kind") String kind, @Param("dedupeKey") String dedupeKey);
+
+  /** 某一类未处理异常条数。用于把公众纠错从总异常数里单独披露。 */
+  @Select("SELECT count(*) FROM gov_anomaly WHERE status = 'OPEN' AND kind = #{kind}")
+  long countOpenAnomaliesOfKind(@Param("kind") String kind);
+
   @Select(
       """
       SELECT id, entity_id AS entityId FROM gov_anomaly
@@ -789,6 +813,15 @@ public interface GovernanceMapper {
       ORDER BY c.id
       """)
   List<String> snapshotContributions(@Param("achievementId") String achievementId);
+
+  /** 某成果的参与学者（去重）。合并通知用它定位接收者，必须在 moveContributions 之前调用。 */
+  @Select(
+      """
+      SELECT DISTINCT c.scholar_id
+      FROM core_contribution c
+      WHERE c.achievement_id = #{achievementId}
+      """)
+  List<String> listScholarIdsOfAchievement(@Param("achievementId") String achievementId);
 
   @Select(
       """

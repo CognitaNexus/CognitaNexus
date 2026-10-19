@@ -1,181 +1,88 @@
 /**
- * 引用文本生成。
+ * 引用面板的状态装配。
  *
- * 为什么要做：这个平台是给读者「找到文献、拿去用」的。找到了却要手抄一遍引用，
- * 等于把最容易抄错的环节留给用户——年份、DOI、作者顺序抄错一位，引用就是错的。
+ * 四种格式的渲染与告警判定都在服务端（`GET /api/v1/public/achievements/{id}/citations`），
+ * 前端不再拼引用文本。理由与四个被修掉的具体缺陷写在 `citationView.ts` 的文件头。
  *
- * 三条不可让步的规则：
+ * 这里只做四件事，每一件失败得都不显眼，因此都单独处理：
  *
- *  1. **不编字段**。平台不采集卷号、期号、页码，因此导出的 BibTeX 里就没有 volume /
- *     number / pages。留空是「不知道」，填占位符是「编」。缺字段在出口处按各格式的
- *     惯例表达「不详」（APA 用 n.d.、GB/T 7714 用 [出版年不详]），而不是塞 0 或 1900。
- *  2. **不改姓名**。APA 要求「姓, 名首字母」，但平台存的是展示名（displayName），
- *     中英文名混排且无法可靠切分姓与名。强行转换会把「Wang Shiping」变成
- *     「S., Wang」之类的错误结果。因此作者一律按平台记录原样输出，并在界面上说明这一点。
- *  3. **标明出处与时刻**。导出文本里带上平台标识与导出日期，让读者能说明「这条引用
- *     是什么时候、从哪个库取的」——平台的元数据会随后续修订变化，引用需要可追溯。
+ *  1. **独立加载**。引用是详情页的附加信息，它失败不能让整页降级成错误页——读者来是为了看成果，
+ *     不是为了复制引用。因此错误只在引用面板内显示，页面其余部分照常。
+ *  2. **选中项跟随服务端默认值**。默认格式由服务端给，前端不写死「国标」，否则服务端改默认时
+ *     界面会与 API 说法不一致。
+ *  3. **复制失败要说人话**。非 HTTPS 页面上 `navigator.clipboard` 不存在或不放行，此时不能
+ *     静默无反应，否则用户会以为复制成功了。
+ *  4. **下载用服务端给的文件名**。文件名由引用键派生，前端自己拼一个就会和 .bib 里的 key 对不上。
  */
 
-export type CitationFormatKey = 'gb7714' | 'bibtex' | 'ris' | 'apa'
+import { computed, ref, type Ref } from 'vue'
+import { publicApi } from '@/api'
+import type { CitationBundle } from '@/api/types'
+import { activeFormat, mergeWarnings } from '@/composables/citationView'
+import { describeError } from '@/composables/useAsync'
 
-export interface CitationSource {
-  /** 成果标识，写进导出文本便于回溯。 */
-  achievementId: string
-  type: string
-  /** 后端给出的类型中文名（typeLabel），缺失时用空串。 */
-  typeLabel?: string
-  title: string
-  /** 已按署名序排好的合格作者名。 */
-  authors: string[]
-  year: number | null
-  venue: string | null
-  doi: string | null
-  /** 导出日期，由调用方传入以便测试与快照稳定。 */
-  exportedOn: string
-}
+export function useCitation(achievementId: Ref<string>) {
+  const bundle = ref<CitationBundle | null>(null)
+  const loading = ref(false)
+  const error = ref('')
+  const selectedCode = ref('')
+  const copied = ref('')
 
-export interface CitationFormat {
-  key: CitationFormatKey
-  label: string
-  /** 格式的适用范围说明，直接显示给用户。 */
-  note: string
-  build: (source: CitationSource) => string
-}
-
-/** GB/T 7714-2015 的文献类型标志。平台只采集四类成果。 */
-const GB_TYPE_CODES: Record<string, string> = {
-  PAPER: 'J',
-  PATENT: 'P',
-  PROJECT: 'R',
-  // 获奖成果在 GB/T 7714 里没有专用标志，归入「其他」而不是硬套一个期刊标志。
-  AWARD: 'Z',
-}
-
-/** RIS 的 TY 取值。 */
-const RIS_TYPES: Record<string, string> = {
-  PAPER: 'JOUR',
-  PATENT: 'PAT',
-  PROJECT: 'RPRT',
-  AWARD: 'GEN',
-}
-
-/** BibTeX 条目类型。标准 BibTeX 没有 @patent / @project / @award，落到 @misc 并注明。 */
-const BIBTEX_TYPES: Record<string, string> = {
-  PAPER: 'article',
-  PATENT: 'misc',
-  PROJECT: 'misc',
-  AWARD: 'misc',
-}
-
-/** 平台来源说明，附在每种格式末尾。 */
-function provenance(source: CitationSource): string {
-  return `CognitaNexus 学术成果分享平台（记录 ${source.achievementId}，导出于 ${source.exportedOn}）`
-}
-
-/**
- * BibTeX 的字段值转义。
- *
- * 只做必要的事：转义花括号与反斜杠（它们是 BibTeX 的语法字符），并把换行压平。
- * 不去动 & % $ # _ ^ ~ 这几个符号——它们在 .bib 正文里合法，擅自加反斜杠会让
- * 标题与数据库中的原文不一致。
- */
-function bibValue(value: string): string {
-  return value.replace(/\\/g, '\\textbackslash{}').replace(/[{}]/g, (ch) => `\\${ch}`).replace(/\s*\n\s*/g, ' ').trim()
-}
-
-/** 生成 BibTeX 的 key：第一作者姓 + 年份 + 标识尾段，保证同一库内不重复。 */
-function bibKey(source: CitationSource): string {
-  const firstAuthor = source.authors[0] ?? 'anon'
-  const surname = firstAuthor.trim().split(/\s+/).slice(-1)[0] ?? 'anon'
-  const safe = surname.replace(/[^A-Za-z0-9]/g, '') || 'anon'
-  return `${safe}${source.year ?? 'nd'}${source.achievementId.slice(-6)}`
-}
-
-function buildGb7714(source: CitationSource): string {
-  const code = GB_TYPE_CODES[source.type] ?? 'Z'
-  const authors = source.authors.length ? source.authors.join(', ') : '[作者不详]'
-  const year = source.year === null ? '[出版年不详]' : `${source.year}`
-  const venue = source.venue ? `${source.venue}, ` : ''
-  const doi = source.doi ? ` DOI: ${source.doi}.` : ''
-  // 文献类型标志紧随题名，这是 GB/T 7714 的固定位置，不放在行尾。
-  return `${authors}. ${source.title}[${code}]. ${venue}${year}.${doi}\n${provenance(source)}`
-}
-
-function buildBibtex(source: CitationSource): string {
-  const entry = BIBTEX_TYPES[source.type] ?? 'misc'
-  const lines: string[] = [`@${entry}{${bibKey(source)},`]
-  lines.push(`  title = {${bibValue(source.title)}},`)
-  if (source.authors.length) {
-    lines.push(`  author = {${source.authors.map(bibValue).join(' and ')}},`)
-  } else {
-    // 没有作者时不留空字段，而是写进 note：空 author 会让 BibTeX 静默忽略整条记录。
-    lines.push('  note = {作者不详},')
+  async function load() {
+    loading.value = true
+    error.value = ''
+    try {
+      const data = await publicApi.citations(achievementId.value)
+      bundle.value = data
+      selectedCode.value = data.defaultFormat
+    } catch (cause) {
+      bundle.value = null
+      error.value = describeError(cause).message
+    } finally {
+      loading.value = false
+    }
   }
-  if (source.year !== null) lines.push(`  year = {${source.year}},`)
-  if (source.venue) {
-    lines.push(
-      source.type === 'PAPER'
-        ? `  journal = {${bibValue(source.venue)}},`
-        : `  howpublished = {${bibValue(source.venue)}},`,
-    )
+
+  const active = computed(() => activeFormat(bundle.value, selectedCode.value))
+
+  /** 元数据告警 + 当前格式的告警。切换格式时格式层面的告警随之变化。 */
+  const warnings = computed(() =>
+    mergeWarnings(bundle.value?.warnings ?? [], active.value?.warnings ?? []),
+  )
+
+  /**
+   * 用法提示。
+   *
+   * 机读格式提示「导入」，人读格式提示「粘贴」——两种用法混在一句话里会让人找不到入口。
+   * 「需要补齐缺失项」只在**确实有告警**时出现，且指向下方：告警清单渲染在引用文本之后，
+   * 写「上方」会让人往面板顶部找一条不存在的提示。
+   */
+  const usageHint = computed(() => {
+    if (!active.value) return ''
+    if (active.value.machineReadable) {
+      return '该格式供文献管理软件读取（Zotero / EndNote / LaTeX），建议下载文件后导入'
+    }
+    return warnings.value.length
+      ? '该格式用于粘贴进论文参考文献表；下方列出的缺失项需按原文补全后再使用'
+      : '该格式用于粘贴进论文参考文献表'
+  })
+
+  async function copy() {
+    const text = active.value?.text ?? ''
+    if (!text) {
+      copied.value = '当前没有可复制的引用文本。'
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(text)
+      copied.value = '已复制到剪贴板。'
+    } catch {
+      copied.value = '浏览器拒绝了剪贴板写入（常见于非 HTTPS 页面），请手动选中上面的文本复制。'
+    }
+    window.setTimeout(() => {
+      copied.value = ''
+    }, 6000)
   }
-  if (source.doi) lines.push(`  doi = {${source.doi}},`)
-  // 平台不采集卷期页码，因此这里没有 volume / number / pages，且不填占位值。
-  lines.push(`  note = {${bibValue(provenance(source))}},`)
-  lines.push('}')
-  return lines.join('\n')
-}
 
-function buildRis(source: CitationSource): string {
-  const lines: string[] = [`TY  - ${RIS_TYPES[source.type] ?? 'GEN'}`]
-  for (const author of source.authors) lines.push(`AU  - ${author}`)
-  lines.push(`TI  - ${source.title}`)
-  if (source.venue) lines.push(`JO  - ${source.venue}`)
-  if (source.year !== null) lines.push(`PY  - ${source.year}`)
-  if (source.doi) {
-    lines.push(`DO  - ${source.doi}`)
-    lines.push(`UR  - https://doi.org/${source.doi}`)
-  }
-  if (source.year === null) lines.push('N1  - 出版年不详（来源未提供）')
-  lines.push(`N1  - ${provenance(source)}`)
-  lines.push('ER  - ')
-  return lines.join('\n')
+  return { bundle, loading, error, selectedCode, copied, active, warnings, usageHint, load, copy }
 }
-
-function buildApa(source: CitationSource): string {
-  // 姓名按平台记录原样输出，不做「姓, 名首字母」转换（理由见文件头第 2 条）。
-  const authors = source.authors.length
-    ? source.authors.join(', ') + (source.authors.length > 1 ? '' : '')
-    : '作者不详'
-  const year = source.year === null ? 'n.d.' : String(source.year)
-  const venue = source.venue ? ` ${source.venue}.` : ''
-  const doi = source.doi ? ` https://doi.org/${source.doi}` : ''
-  return `${authors} (${year}). ${source.title}.${venue}${doi} ${provenance(source)}`
-}
-
-export const CITATION_FORMATS: CitationFormat[] = [
-  {
-    key: 'gb7714',
-    label: 'GB/T 7714-2015',
-    note: '中文期刊与学位论文要求的国标格式。平台不采集卷、期、页码，因此这三项不会出现。',
-    build: buildGb7714,
-  },
-  {
-    key: 'bibtex',
-    label: 'BibTeX',
-    note: '供 LaTeX / Zotero 导入。平台没有卷期页码字段，故条目里也没有 volume / number / pages；专利、项目、获奖在标准 BibTeX 中无对应类型，落为 @misc。',
-    build: buildBibtex,
-  },
-  {
-    key: 'ris',
-    label: 'RIS',
-    note: '供 EndNote 等文献管理器导入。RIS 的条目类型里没有「获奖」，因此该项落为 GEN（通用）。',
-    build: buildRis,
-  },
-  {
-    key: 'apa',
-    label: 'APA 第 7 版',
-    note: '作者姓名按平台记录原样输出：平台只存展示名，不能可靠切分姓与名，强行转成「姓, 名首字母」会造成错误。',
-    build: buildApa,
-  },
-]

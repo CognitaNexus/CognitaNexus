@@ -1,0 +1,19 @@
+{
+  "name": "cognitanexus-ui-checks",
+  "private": true,
+  "type": "module",
+  "description": "CognitaNexus 前端浏览器级断言：逐页截图 + 运行期异常采集，以及检索建议/门户维护/引用量/引用网络/成果提交/批量导出等链路的真实 DOM 与接口闭合验证",
+  "scripts": {
+    "check": "node shoot-pages.mjs && node check-batch-citation.mjs && node check-search-suggest.mjs && node check-scholar-profile.mjs && node check-citation-metrics.mjs && node check-submission.mjs && node check-citation-network.mjs",
+    "shoot": "node shoot-pages.mjs",
+    "batch": "node check-batch-citation.mjs",
+    "suggest": "node check-search-suggest.mjs",
+    "profile": "node check-scholar-profile.mjs",
+    "citations": "node check-citation-metrics.mjs",
+    "submission": "node check-submission.mjs",
+    "network": "node check-citation-network.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.14.0"
+  }
+}

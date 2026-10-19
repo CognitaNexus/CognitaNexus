@@ -6,11 +6,19 @@ import com.cognitanexus.core.catalog.application.CatalogRepositories.ScholarRepo
 import com.cognitanexus.core.catalog.application.CatalogRepositories.TopicRepository;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.TopicRepository.TopicAssignment;
 import com.cognitanexus.core.catalog.domain.Achievement;
+import com.cognitanexus.core.catalog.domain.AchievementDetails;
 import com.cognitanexus.core.catalog.domain.Contribution;
 import com.cognitanexus.core.catalog.domain.Scholar;
+import com.cognitanexus.core.catalog.domain.ScholarProfile;
+import com.cognitanexus.core.integrity.application.IntegrityNoticeRepository;
+import com.cognitanexus.core.integrity.application.IntegrityNoticeViews;
+import com.cognitanexus.core.integrity.domain.IntegrityNotice;
+import com.cognitanexus.core.integrity.domain.IntegritySummary;
 import com.cognitanexus.sharedkernel.BusinessException;
 import com.cognitanexus.sharedkernel.RelationState;
 import com.cognitanexus.sharedkernel.Visibility;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,20 +38,26 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class PublicCatalogQueryService {
 
+  /** 主要合作者列表的展示上限。上限本身就是一种口径声明：这是「主要合作者」，不是完整名单。 */
+  private static final int COAUTHOR_LIMIT = 10;
+
   private final AchievementRepository achievements;
   private final ScholarRepository scholars;
   private final ContributionRepository contributions;
   private final TopicRepository topics;
+  private final IntegrityNoticeRepository integrityNotices;
 
   public PublicCatalogQueryService(
       AchievementRepository achievements,
       ScholarRepository scholars,
       ContributionRepository contributions,
-      TopicRepository topics) {
+      TopicRepository topics,
+      IntegrityNoticeRepository integrityNotices) {
     this.achievements = achievements;
     this.scholars = scholars;
     this.contributions = contributions;
     this.topics = topics;
+    this.integrityNotices = integrityNotices;
   }
 
   /**
@@ -58,6 +72,27 @@ public class PublicCatalogQueryService {
    */
   @Transactional(readOnly = true)
   public Map<String, Object> achievementDetail(String achievementId) {
+    PublicTarget target = requirePublicTarget(achievementId);
+    Map<String, Object> view = detailViewOf(target.achievement());
+    // 诚信声明是公开信息：读者有权在打开详情的第一屏就看到「这条成果是否仍然成立」。
+    // 汇总与明细一起给，前端不必为了显示一个标记再发一次请求。
+    attachIntegrity(view, target.achievement().id());
+    if (target.redirectedFrom() != null) {
+      view.put("redirectedFrom", target.redirectedFrom());
+      view.put("redirectNote", "该成果已被合并，本响应指向合并后的实体");
+    }
+    return view;
+  }
+
+  /**
+   * 解析合并重定向并校验公开资格，返回最终要返回的实体。
+   *
+   * <p>抽成独立方法是因为引用导出（{@code CatalogCitationService}）需要<b>完全相同的判定</b>。这套
+   * 判定里有两个曾经出过问题的点——重定向必须跳到链的终点、公开资格必须作用在终点实体上；两处各写
+   * 一份的话，修好一处漏掉另一处就留下一条公开读的旁路，而旁路平时看不出来，只有在「拿旧标识读一条
+   * 正被撤下的内容」时才暴露。
+   */
+  PublicTarget requirePublicTarget(String achievementId) {
     Achievement achievement =
         achievements
             .findById(achievementId)
@@ -79,13 +114,22 @@ public class PublicCatalogQueryService {
       // 不存在与不可见对外不可区分，避免通过状态码探测受限对象
       throw BusinessException.notFound("成果不存在或尚不可见");
     }
+    return new PublicTarget(target, redirectedFrom);
+  }
 
-    Map<String, Object> view = detailViewOf(target);
-    if (redirectedFrom != null) {
-      view.put("redirectedFrom", redirectedFrom);
-      view.put("redirectNote", "该成果已被合并，本响应指向合并后的实体");
-    }
-    return view;
+  /** 公开读的解析结果：最终实体，以及发生过合并重定向时请求进来的旧标识。 */
+  public record PublicTarget(Achievement achievement, String redirectedFrom) {}
+
+  /**
+   * 追加诚信声明。
+   *
+   * <p>已撤销的声明也一并返回，但 {@code active=false}：撤销是学术记录的一部分，读者看到
+   * 「曾有撤稿声明、后经复核撤销」与只看到「无声明」是完全不同的信息。前端自行决定是否折叠。
+   */
+  private void attachIntegrity(Map<String, Object> view, String achievementId) {
+    List<IntegrityNotice> notices = integrityNotices.findByAchievement(achievementId);
+    view.put("integrity", IntegrityNoticeViews.of(IntegritySummary.of(notices)));
+    view.put("integrityNotices", notices.stream().map(IntegrityNoticeViews::of).toList());
   }
 
   /** 按实体组装详情视图。调用方已确认该实体具备公开资格。 */
@@ -209,13 +253,171 @@ public class PublicCatalogQueryService {
       // 与成果同理：跳转要落到终点的完整视图，而不是一个只有姓名与单位的空壳。
       Map<String, Object> view = scholarBaseView(target);
       view.put("contributions", scholarContributionViews(target.id()));
+      view.put("metrics", scholarMetricsOf(target.id()));
       view.put("redirectedFrom", scholarId);
       view.put("redirectNote", "该档案已被合并，本响应指向合并后的实体");
       return view;
     }
     Map<String, Object> view = scholarBaseView(scholar);
     view.put("contributions", scholarContributionViews(scholarId));
+    view.put("metrics", scholarMetricsOf(scholarId));
     return view;
+  }
+
+  /**
+   * 学者档案页的客观指标：年份分布与主要合作者。
+   *
+   * <p><b>只披露计数，不给任何质量结论。</b>没有 h-index、影响因子、综合评分——本平台采集的
+   * 引用量来自单一来源且常常缺失，用它算出一串看起来权威的数字，等于把「来源没提供的指标」
+   * 加工成「平台的评价」。红线里写的是「不得把模拟或推断当作真实结论」，指标同理。
+   *
+   * <p>口径统一为「关系合格 + 成果公开生效未合并」，与 {@code contributions} 列表一致：
+   * 若这块数字与下方列表的条数对不上，读者只会有一个结论——数据不可信。
+   */
+  private Map<String, Object> scholarMetricsOf(String scholarId) {
+    List<ContributionRepository.YearAmount> years = contributions.yearDistributionOf(scholarId);
+    long undated = contributions.countUndatedWorksOf(scholarId);
+    long retracted = contributions.countRetractedWorksOf(scholarId);
+    long known = years.stream().mapToLong(ContributionRepository.YearAmount::amount).sum();
+    List<ContributionRepository.CoauthorCount> coauthors =
+        contributions.topCoauthorsOf(scholarId, COAUTHOR_LIMIT);
+
+    Map<String, Object> metrics = new LinkedHashMap<>();
+    metrics.put("worksTotal", known + undated);
+    metrics.put("worksWithYear", known);
+    metrics.put("worksWithoutYear", undated);
+    // 撤稿成果单列：不从 worksTotal 里扣除（见 CatalogRepositories 的同名方法注释）。
+    metrics.put("worksRetracted", retracted);
+    List<Map<String, Object>> byYear = new ArrayList<>();
+    for (ContributionRepository.YearAmount row : years) {
+      Map<String, Object> bucket = new LinkedHashMap<>();
+      bucket.put("year", row.year());
+      bucket.put("amount", row.amount());
+      byYear.add(bucket);
+    }
+    metrics.put("byYear", byYear);
+    List<Map<String, Object>> coauthorViews = new ArrayList<>();
+    for (ContributionRepository.CoauthorCount row : coauthors) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("scholarId", row.scholarId());
+      item.put("displayName", row.displayName());
+      item.put("organizationName", row.organizationName());
+      item.put("sharedAchievements", row.sharedAchievements());
+      coauthorViews.add(item);
+    }
+    metrics.put("topCoauthors", coauthorViews);
+    metrics.put("coauthorLimit", COAUTHOR_LIMIT);
+    metrics.put("citations", citationMetricsOf(scholarId));
+    metrics.put(
+        "basis", "仅统计参与关系为「自动建立」或「本人确认」、且成果公开、生效、未被合并的记录；" + "待核验与存在争议的关系不计入，年份未知的成果单列而不折算到任一年份");
+    metrics.put(
+        "note", "这里只有可核对的计数，没有 h-index、影响因子或任何综合评分：引用量本身来自单一来源且常常缺失，" + "用它派生评级等于把来源没提供的结论说成平台的结论");
+    return metrics;
+  }
+
+  /**
+   * 引用量区块：累计、篇均、按发表年份的分布、来源分布。
+   *
+   * <p><b>三条不能含糊的事实，界面上必须原样说出来：</b>
+   *
+   * <ol>
+   *   <li><b>缺失不是 0。</b>来源没有提供引用量的成果，既不补 0 也不算进分母。篇均的分母是
+   *       「确有引用量记录的成果数」，页面同时给出缺失条数——否则一个「篇均 3.2」会被读成
+   *       「平均每篇被引 3.2 次」，而它其实只是「有数据的那部分平均 3.2 次」。
+   *   <li><b>这不是「每年新增引用」。</b>平台只有一个随时间滚动的当前累计值，没有按年份的
+   *       引用增长历史。按发表年份分组得到的是「各年发表的成果如今累计被引多少」，把它读成
+   *       「引用量逐年增长/衰退」是错的，因此字段名、图表标题与说明都用「按发表年份」而不是
+   *       「引用趋势」。
+   *   <li><b>跨来源不可严格相加。</b>Crossref 与 OpenAlex 的计数口径不同，平台每篇只取一个
+   *       来源的值；把它们加起来得到的数只能作为量级参考，页面必须给出每个来源各覆盖多少篇。
+   * </ol>
+   *
+   * <p>刻意不派生 h-index、影响因子或任何综合评分：这些指标需要完整、可比的引用数据集，
+   * 而这里的覆盖是有缺失的、来源是混杂的。缺数据时算出来的「高水平指标」不是观察，是编造。
+   */
+  private Map<String, Object> citationMetricsOf(String scholarId) {
+    ContributionRepository.CitationSummary summary = contributions.citationSummaryOf(scholarId);
+    List<ContributionRepository.CitationYear> years = contributions.citationByYearOf(scholarId);
+    List<ContributionRepository.CitationSourceCount> sources =
+        contributions.citationSourcesOf(scholarId);
+
+    long works = Math.max(0L, summary.works());
+    long withCitation = Math.max(0L, summary.withCitation());
+    // 缺失 = 总数 - 有引用量记录数。其中一部分是类型上就没有引用量的（专利/项目/获奖），
+    // 分开说清楚：把它们混成一个「缺失 570 篇」，读者会以为数据质量有大问题。
+    long missing = Math.max(0L, works - withCitation);
+    long nonPaper = Math.min(missing, Math.max(0L, summary.nonPaperWorks()));
+
+    Map<String, Object> block = new LinkedHashMap<>();
+    block.put("worksTotal", works);
+    block.put("worksWithCitation", withCitation);
+    block.put("worksMissingCitation", missing);
+    block.put("worksNotCitable", nonPaper);
+    block.put("worksPaperMissingCitation", missing - nonPaper);
+    block.put("totalCitations", Math.max(0L, summary.totalCitations()));
+    block.put("maxWorkCitations", Math.max(0L, summary.maxCitations()));
+    // 篇均只对有数据的成果求平均；一条数据都没有时给 null 而不是 0——0 会被读成「平均没人引用」。
+    block.put(
+        "averagePerWork",
+        withCitation == 0
+            ? null
+            : BigDecimal.valueOf(summary.totalCitations())
+                .divide(BigDecimal.valueOf(withCitation), 2, RoundingMode.HALF_UP)
+                .doubleValue());
+    block.put(
+        "coveragePercent",
+        works == 0
+            ? null
+            : BigDecimal.valueOf(withCitation * 100L)
+                .divide(BigDecimal.valueOf(works), 1, RoundingMode.HALF_UP)
+                .doubleValue());
+    // 服务端统一按 non_null 序列化，null 字段会整个消失。因此凡是用「null 表示不可计算」的
+    // 地方，都配一条永不缺失的说明：前端看到字段不在时才知道那是「没有数据可算」，
+    // 而不是「后端忘了返回」。
+    block.put(
+        "averageNote",
+        withCitation == 0 ? "暂无任何引用量记录，篇均无法计算；不按 0 计入" : "篇均只除以确有引用量记录的成果数，缺失的成果不进分母");
+
+    List<Map<String, Object>> byYear = new ArrayList<>();
+    for (ContributionRepository.CitationYear row : years) {
+      Map<String, Object> bucket = new LinkedHashMap<>();
+      bucket.put("year", row.year());
+      bucket.put("works", row.works());
+      bucket.put("worksWithCitation", row.withCitation());
+      bucket.put("citations", row.citations());
+      // 该年的篇均，同样只除以有数据的篇数；该年一条数据都没有则给 null。
+      bucket.put(
+          "averagePerWork",
+          row.withCitation() == 0
+              ? null
+              : BigDecimal.valueOf(row.citations())
+                  .divide(BigDecimal.valueOf(row.withCitation()), 2, RoundingMode.HALF_UP)
+                  .doubleValue());
+      byYear.add(bucket);
+    }
+    block.put("byYear", byYear);
+
+    List<Map<String, Object>> sourceViews = new ArrayList<>();
+    for (ContributionRepository.CitationSourceCount row : sources) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("source", row.source());
+      item.put("works", row.works());
+      sourceViews.add(item);
+    }
+    block.put("sources", sourceViews);
+
+    block.put(
+        "basis", "只统计参与关系为「自动建立」或「本人确认」、成果公开生效且未被合并的记录；" + "引用量取每篇论文的单一来源当前累计值，来源未提供的不补 0、不计入篇均分母");
+    block.put(
+        "trendNote",
+        "按发表年份分组展示的是「各年发表的成果如今累计被引多少」，不是「每年新增引用」：" + "平台没有按年份的引用增长历史，把这条曲线读成逐年走势会得到错误结论");
+    block.put(
+        "sourceNote",
+        "Crossref 与 OpenAlex 的计数口径不同，同一篇论文在两个来源下可以是两个数字；" + "平台每篇只取一个来源，因此跨来源求和只能作为量级参考");
+    block.put(
+        "metricNote",
+        "不提供 h-index、影响因子或任何综合评分：这些指标要求完整可比的引用数据集，" + "而这里的覆盖有缺失、来源不一致，据此算出的评级不是平台观察到的事实");
+    return block;
   }
 
   private Map<String, Object> baseView(Achievement achievement) {
@@ -254,6 +456,62 @@ public class PublicCatalogQueryService {
         scholar.claimedStatus() == Scholar.ClaimedStatus.CLAIMED
             ? "门户已有管理者；认领仅授予管理权，不代表成果真实性背书"
             : null);
+
+    // 自述区块（简介 / 主页 / 头像）与置顶代表作。
+    // 为什么放在 baseView 里：合并重定向后的响应要「与直接打开终点完全同构」，
+    // 若只在非重定向分支加这两块，旧链接打开的页面就会缺简介与置顶。
+    ScholarProfile profile =
+        scholars.findProfile(scholar.id()).orElse(ScholarProfile.empty(scholar.id()));
+    Map<String, Object> profileView = new LinkedHashMap<>();
+    profileView.put("homepageUrl", profile.homepageUrl());
+    profileView.put("avatarUrl", profile.avatarUrl());
+    profileView.put(
+        "profileUpdatedAt",
+        profile.profileUpdatedAt() == null ? null : profile.profileUpdatedAt().toString());
+    profileView.put("note", "简介、主页与头像由本人填写，平台不代学者背书；显示名与机构经审核后变更");
+    view.put("profile", profileView);
+    view.put("featured", featuredViewOf(scholar.id()));
+    return view;
+  }
+
+  /**
+   * 公开页的置顶代表作。
+   *
+   * <p>逐条过 {@link #requirePublicTarget}：置顶是一条指向成果的边，成果本身可能事后被撤下或合并。
+   * 不做这一步，档案页就会给出一个点进去 404 的链接——而且不会有人报错，只会觉得平台坏了。
+   * 已被隐藏的条目计数上报，让「我明明置顶了三条」有处可查。
+   */
+  private Map<String, Object> featuredViewOf(String scholarId) {
+    List<Map<String, Object>> items = new ArrayList<>();
+    int unavailable = 0;
+    for (String achievementId : scholars.listFeatured(scholarId)) {
+      Achievement achievement;
+      try {
+        achievement = requirePublicTarget(achievementId).achievement();
+      } catch (BusinessException ex) {
+        unavailable++;
+        continue;
+      }
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("id", achievement.id());
+      item.put("type", achievement.type().name());
+      item.put("typeLabel", achievement.type().label());
+      item.put("title", achievement.title());
+      item.put("publicationYear", achievement.publicationYear().year());
+      achievements
+          .findPaper(achievement.id())
+          .ifPresent(
+              (AchievementDetails.Paper paper) -> {
+                item.put("venue", paper.venue());
+                item.put("citationCount", paper.citationCount());
+                item.put("citationSource", paper.citationSource());
+              });
+      items.add(item);
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("items", items);
+    view.put("unavailableCount", unavailable);
+    view.put("note", "由本人置顶的代表作；已不可公开或已被合并的条目自动隐藏并计入 unavailableCount");
     return view;
   }
 

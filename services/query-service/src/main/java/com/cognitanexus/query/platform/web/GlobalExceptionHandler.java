@@ -2,11 +2,15 @@ package com.cognitanexus.query.platform.web;
 
 import com.cognitanexus.sharedkernel.BusinessException;
 import com.cognitanexus.sharedkernel.ErrorCode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -17,22 +21,29 @@ import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
- * 业务异常到 HTTP 的映射。
+ * 全局异常到 HTTP 状态的转换。
  *
- * <p>依据：架构 V0.2 §10.3、编码规范 §4.6。只向调用方暴露业务异常携带的、已明确的公开参数；
- * 未预期异常一律折叠为 500 并只给出 traceId，不把异常类名、SQL 或堆栈放回响应。
+ * <p>依据：架构 V0.2 §10.3、编码规范 §4.6。错误响应不含 SQL、堆栈、文件路径或凭据。
  *
- * <p>可重试错误（VIEW_UPDATING、GRAPH_TIMEOUT、DEPENDENCY_UNAVAILABLE）按
- * {@link ErrorCode#retryable()} 判定，前端据此保留条件并提供重试，而不是把一次短暂的视图更新
- * 呈现成「没有结果」。
+ * <p><b>错误报文直接写出，不走内容协商。</b>本服务有下载类接口（检索结果 CSV，客户端会带
+ * {@code Accept: text/csv}）。若让 Spring 按 Accept 选转换器，拒绝时没有任何转换器能产出
+ * {@code text/csv} 的 {@code ApiResponse}，于是抛 406 并触发一次 ERROR 派发——最终调用方看到的是
+ * 一个与真实原因无关的状态码，而真实原因（例如「命中超过导出上限，请缩小条件」）恰恰是它最需要
+ * 读到的那句话。直接写也保证：无论 Accept 是什么，失败时总能拿到同一种结构的报文。
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
   private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+  private final ObjectMapper objectMapper;
+
+  public GlobalExceptionHandler(ObjectMapper objectMapper) {
+    this.objectMapper = objectMapper;
+  }
+
   @ExceptionHandler(BusinessException.class)
-  public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException ex) {
+  public void handleBusiness(BusinessException ex, HttpServletResponse response) {
     ErrorCode code = ex.errorCode();
     if (code == ErrorCode.INTERNAL_ERROR) {
       log.error("业务异常被标记为内部错误 code={}", code, ex);
@@ -41,19 +52,17 @@ public class GlobalExceptionHandler {
     } else {
       log.info("请求被业务规则拒绝 code={} message={}", code, ex.getMessage());
     }
-    return ResponseEntity.status(code.httpStatus())
-        .body(ApiResponse.failure(code, ex.getMessage(), TraceIdHolder.current()));
+    write(response, code, ex.getMessage());
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
-  public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
+  public void handleValidation(MethodArgumentNotValidException ex, HttpServletResponse response) {
     List<String> fields =
         ex.getBindingResult().getFieldErrors().stream()
             .map(error -> error.getField() + ": " + error.getDefaultMessage())
             .toList();
     String message = fields.isEmpty() ? "请求参数不合法" : String.join("；", fields);
-    return ResponseEntity.status(ErrorCode.INVALID_ARGUMENT.httpStatus())
-        .body(ApiResponse.failure(ErrorCode.INVALID_ARGUMENT, message, TraceIdHolder.current()));
+    write(response, ErrorCode.INVALID_ARGUMENT, message);
   }
 
   @ExceptionHandler({
@@ -62,12 +71,9 @@ public class GlobalExceptionHandler {
     MissingServletRequestParameterException.class,
     IllegalArgumentException.class
   })
-  public ResponseEntity<ApiResponse<Void>> handleMalformed(Exception ex) {
+  public void handleMalformed(Exception ex, HttpServletResponse response) {
     log.info("请求格式不合法 message={}", ex.getMessage());
-    return ResponseEntity.status(ErrorCode.INVALID_ARGUMENT.httpStatus())
-        .body(
-            ApiResponse.failure(
-                ErrorCode.INVALID_ARGUMENT, "请求格式不合法，请检查字段与取值", TraceIdHolder.current()));
+    write(response, ErrorCode.INVALID_ARGUMENT, "请求格式不合法，请检查字段与取值");
   }
 
   /**
@@ -78,30 +84,39 @@ public class GlobalExceptionHandler {
    * 坏了」，排查方向从一开始就是错的；每次探测还会在日志里留下一条 ERROR 堆栈，把真正的故障淹没。
    */
   @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
-  public ResponseEntity<ApiResponse<Void>> handleNotFound(Exception ex) {
+  public void handleNotFound(Exception ex, HttpServletResponse response) {
     log.debug("路径不存在 message={}", ex.getMessage());
-    return ResponseEntity.status(ErrorCode.NOT_FOUND.httpStatus())
-        .body(
-            ApiResponse.failure(
-                ErrorCode.NOT_FOUND, "请求的路径不存在，请检查接口地址与版本前缀", TraceIdHolder.current()));
+    write(response, ErrorCode.NOT_FOUND, "请求的路径不存在，请检查接口地址与版本前缀");
   }
 
   @ExceptionHandler(DuplicateKeyException.class)
-  public ResponseEntity<ApiResponse<Void>> handleDuplicate(DuplicateKeyException ex) {
+  public void handleDuplicate(DuplicateKeyException ex, HttpServletResponse response) {
     log.warn("唯一约束冲突 message={}", ex.getMostSpecificCause().getMessage());
-    return ResponseEntity.status(ErrorCode.VERSION_CONFLICT.httpStatus())
-        .body(
-            ApiResponse.failure(
-                ErrorCode.VERSION_CONFLICT, "该对象已被并发修改或已存在，请刷新后重试", TraceIdHolder.current()));
+    write(response, ErrorCode.VERSION_CONFLICT, "该对象已被并发修改或已存在，请刷新后重试");
   }
 
   @ExceptionHandler(Exception.class)
-  public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception ex) {
+  public void handleUnexpected(Exception ex, HttpServletResponse response) {
     String traceId = TraceIdHolder.current();
     log.error("未预期异常 traceId={}", traceId, ex);
-    return ResponseEntity.status(ErrorCode.INTERNAL_ERROR.httpStatus())
-        .body(
-            ApiResponse.failure(
-                ErrorCode.INTERNAL_ERROR, "服务内部错误，请稍后重试或联系管理员（traceId=" + traceId + "）", traceId));
+    write(response, ErrorCode.INTERNAL_ERROR, "服务内部错误，请稍后重试或联系管理员（traceId=" + traceId + "）");
+  }
+
+  /** 直接写出错误报文，绕过内容协商（原因见类注释）。 */
+  private void write(HttpServletResponse response, ErrorCode code, String message) {
+    if (response.isCommitted()) {
+      log.warn("响应已提交，错误报文未能写出 code={} message={}", code, message);
+      return;
+    }
+    response.setStatus(code.httpStatus());
+    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+    response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+    try {
+      objectMapper.writeValue(
+          response.getOutputStream(), ApiResponse.failure(code, message, TraceIdHolder.current()));
+      response.flushBuffer();
+    } catch (IOException e) {
+      log.warn("错误报文写出失败 code={} message={}", code, message, e);
+    }
   }
 }

@@ -9,13 +9,14 @@
  * 条件，判断已经做完了。因此它常驻，但只用一条 3px 竖线着色——需要一直在视野里，不等于
  * 需要每次都抢注意力。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useSessionStore } from '@/stores/session'
 import { useScopeStore } from '@/stores/scope'
-import { queryApi } from '@/api'
+import { notificationApi, queryApi } from '@/api'
 import type { DataNature } from '@/api/types'
 import NatureBadge from '@/components/NatureBadge.vue'
+import SearchSuggest from '@/components/SearchSuggest.vue'
 
 const session = useSessionStore()
 const scope = useScopeStore()
@@ -68,9 +69,24 @@ async function onScopeChange(event: Event) {
   await loadConsistency()
 }
 
-function quickSearch() {
-  const q = quickKeyword.value.trim()
+function quickSearch(keyword?: string) {
+  const q = (keyword ?? quickKeyword.value).trim()
   router.push({ name: 'search', query: q ? { q } : {} })
+}
+
+/**
+ * 选中一条建议。
+ *
+ * 成果直接进详情、学者直接进档案：用户已经在建议里认出了目标，再把他送到检索结果页去
+ * 二次挑选，等于把他刚做完的判断再问一遍。学者档案的入口保留，是因为同名学者只能在
+ * 档案里按机构核对，这一步不该被省掉。
+ */
+function onPickSuggestion(payload: { kind: 'achievement' | 'scholar'; id: string }) {
+  if (payload.kind === 'scholar') {
+    router.push({ name: 'scholar', params: { id: payload.id } })
+    return
+  }
+  router.push({ name: 'achievement', params: { id: payload.id } })
 }
 
 function logout() {
@@ -79,7 +95,35 @@ function logout() {
 
 const showScopeStrip = computed(() => scope.isDemo || serving.value === false || serving.value === null)
 
-onMounted(loadConsistency)
+// ---------------------------------------------------------------------------
+// 站内通知未读徽标（ADR-003）：登录期间每 30 秒拉一次未读数。
+// 读不到就保持 null（导航上显示「通知」但不带数字），不猜成 0——「没有未读」和「读不到」
+// 是两件事，把后者显示成 0 会让人错过该看的通知。
+// ---------------------------------------------------------------------------
+const unreadNotifications = ref<number | null>(null)
+let pollTimer: number | null = null
+
+async function pollUnread() {
+  if (!session.authenticated) {
+    unreadNotifications.value = null
+    return
+  }
+  try {
+    unreadNotifications.value = (await notificationApi.unreadCount()).unreadCount
+  } catch {
+    unreadNotifications.value = null
+  }
+}
+
+onMounted(() => {
+  loadConsistency()
+  pollUnread()
+  pollTimer = window.setInterval(pollUnread, 30_000)
+})
+
+onUnmounted(() => {
+  if (pollTimer !== null) window.clearInterval(pollTimer)
+})
 </script>
 
 <template>
@@ -98,15 +142,14 @@ onMounted(loadConsistency)
           <span class="brand-sub">学术成果分享平台 · 工程实例</span>
         </RouterLink>
 
-        <form class="quick-search" @submit.prevent="quickSearch">
-          <input
-            v-model="quickKeyword"
-            type="search"
-            aria-label="检索成果"
-            placeholder="按题名、发表载体或 DOI 检索成果"
-          />
-          <button type="submit">检索</button>
-        </form>
+        <SearchSuggest
+          v-model="quickKeyword"
+          :data-nature="scope.nature"
+          aria-label="检索成果"
+          placeholder="按题名、作者、摘要、载体或 DOI 检索"
+          @submit="quickSearch"
+          @pick="onPickSuggestion"
+        />
 
         <div class="topbar-right">
           <label class="tiny faint nowrap" for="scope-select">数据口径</label>
@@ -141,19 +184,38 @@ onMounted(loadConsistency)
           <RouterLink to="/network">合作网络</RouterLink>
           <RouterLink to="/ops">一致性与投递</RouterLink>
           <template v-if="session.authenticated">
+            <RouterLink class="notif-link" to="/notifications">
+              通知<span v-if="unreadNotifications !== null && unreadNotifications > 0" class="notif-badge">{{
+                unreadNotifications > 99 ? '99+' : unreadNotifications
+              }}</span>
+            </RouterLink>
             <span class="nav-sep"></span>
             <RouterLink to="/portal">我的门户</RouterLink>
             <RouterLink to="/portal/contributions">我的成果</RouterLink>
+            <RouterLink to="/portal/account">账号设置</RouterLink>
+            <RouterLink to="/favorites">我的收藏</RouterLink>
+            <RouterLink to="/portal/submissions">提交成果</RouterLink>
             <RouterLink to="/todos">待办</RouterLink>
             <RouterLink to="/review">审核</RouterLink>
             <RouterLink to="/review/relations">关系争议</RouterLink>
             <RouterLink to="/governance">治理</RouterLink>
+            <RouterLink to="/governance/submissions">待审成果</RouterLink>
             <RouterLink to="/ingestion">采集</RouterLink>
+            <RouterLink to="/governance/citations">引用网络</RouterLink>
             <RouterLink to="/audit">审计</RouterLink>
+            <RouterLink to="/announcements">系统公告</RouterLink>
           </template>
         </nav>
       </div>
     </header>
+
+    <!-- 一次性口令提示：不阻断登录，但必须一直在，直到本人改密。 -->
+    <div v-if="session.session?.mustChangePassword" class="scope-strip">
+      <div class="strip warn">
+        <strong>当前口令是管理员重置的一次性口令。</strong>
+        为账号安全，请<RouterLink to="/portal/account">立即修改口令</RouterLink>。
+      </div>
+    </div>
 
     <!-- 口径条常驻：它改变的是屏幕上所有数字的含义。 -->
     <div v-if="showScopeStrip" class="scope-strip">

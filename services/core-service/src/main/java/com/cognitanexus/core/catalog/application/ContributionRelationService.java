@@ -4,12 +4,15 @@ import com.cognitanexus.core.catalog.application.CatalogRepositories.Achievement
 import com.cognitanexus.core.catalog.application.CatalogRepositories.ContributionRepository;
 import com.cognitanexus.core.catalog.domain.Achievement;
 import com.cognitanexus.core.catalog.domain.Contribution;
+import com.cognitanexus.core.notification.application.NotificationService;
+import com.cognitanexus.core.notification.domain.Notification;
 import com.cognitanexus.core.platform.audit.AuditRecorder;
 import com.cognitanexus.core.platform.security.ActorContext;
 import com.cognitanexus.core.platform.security.Capabilities;
 import com.cognitanexus.core.platform.security.RoleNames;
 import com.cognitanexus.core.portal.application.PortalService;
 import com.cognitanexus.sharedkernel.BusinessException;
+import com.cognitanexus.sharedkernel.Csv;
 import com.cognitanexus.sharedkernel.RelationState;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -46,23 +49,34 @@ public class ContributionRelationService {
 
   private static final int DEFAULT_LIST_SIZE = 50;
 
+  /**
+   * 单次导出的行数上限。
+   *
+   * <p>上限的作用不是「防大文件」，而是让「导出不完整」这件事必须显式发生：超限时抛错要求改用
+   * 后台导出，而不是悄悄只给前 N 行。
+   */
+  private static final int MAX_EXPORT_ROWS = 5000;
+
   private final ContributionRepository contributions;
   private final AchievementRepository achievements;
   private final PortalService portal;
   private final CatalogChangePublisher catalogChanges;
   private final AuditRecorder audit;
+  private final NotificationService notifications;
 
   public ContributionRelationService(
       ContributionRepository contributions,
       AchievementRepository achievements,
       PortalService portal,
       CatalogChangePublisher catalogChanges,
-      AuditRecorder audit) {
+      AuditRecorder audit,
+      NotificationService notifications) {
     this.contributions = contributions;
     this.achievements = achievements;
     this.portal = portal;
     this.catalogChanges = catalogChanges;
     this.audit = audit;
+    this.notifications = notifications;
   }
 
   /**
@@ -83,6 +97,55 @@ public class ContributionRelationService {
       items.add(view(contribution, achievements.findById(contribution.achievementId())));
     }
     return items;
+  }
+
+  /**
+   * 导出「我的成果」为 CSV。
+   *
+   * <p>与列表接口的分工：列表有分页上限（界面上一次只显示一屏），导出必须是完整的——研究者拿
+   * 这份文件去做年度考核或职称材料，缺行比报错更难发现。因此这里不分页，但设一个明确的硬上限：
+   * 超过就**拒绝并说明**，不静默截断。一份少了一半的成果清单，当事人可能一年后才发现。
+   *
+   * <p>权限与列表完全相同（能力 + 门户归属），并且只导出本人可见的关系行——包括待核验与争议行。
+   * 它们带 {@code 计入合作网络=否} 列：导出的是「我与这条成果的关系记录」，不是「我确认的成果」，
+   * 把未确认的行悄悄剔掉，等于让本人看不到自己需要处理的那部分。
+   */
+  @Transactional(readOnly = true)
+  public byte[] exportOwnedContributionsCsv(ActorContext actor, String scholarId) {
+    Capabilities.require(actor, RoleNames.CAP_PORTAL_MAINTAIN);
+    portal.requirePortalAuthority(actor, scholarId);
+    List<Contribution> rows = contributions.listByScholar(scholarId);
+    if (rows.size() > MAX_EXPORT_ROWS) {
+      throw BusinessException.invalidArgument(
+          "该门户下参与关系共 "
+              + rows.size()
+              + " 条，超过单次导出上限 "
+              + MAX_EXPORT_ROWS
+              + " 条。这是数据规模提示，不是可忽略的警告——请联系平台管理员改用后台导出，"
+              + "而不是接受一份被截断的清单");
+    }
+    StringBuilder csv = Csv.begin();
+    Csv.appendRow(
+        csv, "关系标识", "成果标识", "成果类型", "题名", "发表年份", "数据性质", "生效状态", "本人角色", "署名序", "关系状态", "计入合作网络");
+    for (Contribution contribution : rows) {
+      Achievement achievement = achievements.findById(contribution.achievementId()).orElse(null);
+      Csv.appendRow(
+          csv,
+          contribution.id(),
+          contribution.achievementId(),
+          achievement == null ? "" : achievement.type().label(),
+          achievement == null ? "" : achievement.title(),
+          achievement == null || achievement.publicationYear().year() == null
+              ? ""
+              : String.valueOf(achievement.publicationYear().year()),
+          achievement == null ? "" : achievement.dataNature().name(),
+          achievement == null ? "" : achievement.effectiveStatus().name(),
+          contribution.role(),
+          contribution.authorOrder() == null ? "" : String.valueOf(contribution.authorOrder()),
+          contribution.relationState().name(),
+          contribution.qualifiedForGraph() ? "是" : "否");
+    }
+    return Csv.toBytes(csv);
   }
 
   /** 本人确认参与关系：AUTO → SELF_CONFIRMED。重复确认返回当前状态，不报错也不重复写审计。 */
@@ -216,7 +279,39 @@ public class ContributionRelationService {
             Map.of("relationState", current.name()),
             Map.of("relationState", target.name(), "decision", target.name()),
             note));
+    // 通知该学者的认领账号（若有）：关系处置直接影响「本人确认 / 待核验 / 已排除」的公开语义，
+    // 当事人不该靠刷新列表发现（ADR-003 §3 第四行）。
+    notifications.sendToScholarClaimants(
+        List.of(contribution.scholarId()),
+        Notification.KIND_RELATION_DECIDED,
+        "参与关系已裁决",
+        "你管理的学者档案与成果「"
+            + achievementTitle(contribution.achievementId())
+            + "」的参与关系已由治理端裁决："
+            + relationStateLabel(current)
+            + " → "
+            + relationStateLabel(target)
+            + "。理由："
+            + note,
+        "ACHIEVEMENT",
+        contribution.achievementId());
     return finish(contribution, current, target, "裁决已生效：" + target.name());
+  }
+
+  /** 关系状态的用户可读措辞。 */
+  private static String relationStateLabel(RelationState state) {
+    return switch (state) {
+      case AUTO -> "自动关联";
+      case SELF_CONFIRMED -> "本人确认";
+      case PENDING_VERIFY -> "待核验";
+      case DISPUTED -> "争议中";
+      case EXCLUDED -> "已排除";
+    };
+  }
+
+  /** 成果标题的宽松取值：标题缺失（如测试替身没建实体）时退回成果 id，不因此让裁决失败。 */
+  private String achievementTitle(String achievementId) {
+    return achievements.findById(achievementId).map(Achievement::title).orElse(achievementId);
   }
 
   /** 治理端：当前处于争议状态的关系，按最近变化排序。 */

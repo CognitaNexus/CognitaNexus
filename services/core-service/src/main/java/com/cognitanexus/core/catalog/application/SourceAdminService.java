@@ -3,6 +3,8 @@ package com.cognitanexus.core.catalog.application;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.AchievementRepository;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.SourceConfigRepository;
 import com.cognitanexus.core.catalog.infrastructure.SourceRevocationMapper;
+import com.cognitanexus.core.notification.application.NotificationService;
+import com.cognitanexus.core.notification.domain.Notification;
 import com.cognitanexus.core.platform.audit.AuditRecorder;
 import com.cognitanexus.core.platform.event.EventTypes;
 import com.cognitanexus.core.platform.event.OutboxEvent;
@@ -72,6 +74,7 @@ public class SourceAdminService {
   private final OutboxStore outbox;
   private final AuditRecorder audit;
   private final TransactionTemplate tx;
+  private final NotificationService notifications;
 
   public SourceAdminService(
       SourceConfigRepository sourceConfigs,
@@ -79,12 +82,14 @@ public class SourceAdminService {
       SourceRevocationMapper revocations,
       OutboxStore outbox,
       AuditRecorder audit,
+      NotificationService notifications,
       PlatformTransactionManager transactionManager) {
     this.sourceConfigs = sourceConfigs;
     this.achievements = achievements;
     this.revocations = revocations;
     this.outbox = outbox;
     this.audit = audit;
+    this.notifications = notifications;
     this.tx = new TransactionTemplate(transactionManager);
   }
 
@@ -474,6 +479,10 @@ public class SourceAdminService {
    */
   private DisplayLicenseOutcome drain(
       String sourceId, String sourceCode, Accepted accepted, boolean restoreDirection) {
+    // 恢复方向必须先取受影响学者集合：restoreBatchForSource 会把 display_restriction_source_id
+    // 清掉，跑完之后再查就找不到「这次恢复放开了谁」了（ADR-003 §3 第五行）。
+    List<String> affectedScholarIds =
+        restoreDirection ? achievements.listScholarIdsByRestrictionSource(sourceId) : List.of();
     long processed = 0;
     String failure = null;
     for (int batch = 0; batch < MAX_BATCHES_PER_CALL; batch++) {
@@ -487,6 +496,27 @@ public class SourceAdminService {
                           : achievements.tightenBatchForSource(sourceId, BATCH_SIZE);
                   if (!ids.isEmpty()) {
                     revocations.addProcessed(accepted.jobId(), ids.size());
+                    // 逐批事件（ADR-001 §4 与事件契约的补全）：受理事件只有来源与目标数，
+                    // 拿不到成果列表——那时逐批收紧还没跑。query 的投影靠这批带成果 id 的
+                    // 事件逐条撤下/恢复；事件与批次数据在同一个事务里，不会出现「批已提交
+                    // 但 query 永远不知道这批撤了谁」。
+                    if (restoreDirection) {
+                      outbox.append(
+                          OutboxEvent.builder(
+                                  EventTypes.PUBLIC_VISIBILITY_RESTORED, "Source", sourceId)
+                              .put("sourceId", sourceId)
+                              .put("change", "DISPLAY_LICENSE_RESTORED")
+                              .put("revocationJobId", accepted.jobId())
+                              .put("restoredAchievementIds", ids));
+                    } else {
+                      outbox.append(
+                          OutboxEvent.builder(
+                                  EventTypes.PUBLIC_VISIBILITY_TIGHTENED, "Source", sourceId)
+                              .put("sourceId", sourceId)
+                              .put("change", "DISPLAY_LICENSE_REVOKED")
+                              .put("revocationJobId", accepted.jobId())
+                              .put("tightenedAchievementIds", ids));
+                    }
                   }
                   return ids.size();
                 });
@@ -516,13 +546,44 @@ public class SourceAdminService {
 
     final long finalProcessed = processed;
     tx.executeWithoutResult(
-        status ->
-            revocations.setStatus(
-                accepted.jobId(),
-                complete
-                    ? SourceRevocationMapper.STATUS_SUCCEEDED
-                    : SourceRevocationMapper.STATUS_FAILED,
-                note));
+        status -> {
+          revocations.setStatus(
+              accepted.jobId(),
+              complete
+                  ? SourceRevocationMapper.STATUS_SUCCEEDED
+                  : SourceRevocationMapper.STATUS_FAILED,
+              note);
+          if (!complete) {
+            return;
+          }
+          // 完成通知与作业终态在同一个事务里落库（ADR-003 §2：发送跟随业务事务）。
+          if (restoreDirection) {
+            notifications.sendToScholarClaimants(
+                affectedScholarIds,
+                Notification.KIND_SOURCE_LICENSE_RESTORED,
+                "来源展示许可已恢复",
+                "来源「"
+                    + sourceCode
+                    + "」的展示许可已恢复，此前因该来源撤权而下线的成果已按治理状态逐条重新评估并恢复公开（"
+                    + finalProcessed
+                    + " 条）。请在门户核对成果清单。",
+                "SOURCE",
+                sourceId);
+          } else {
+            List<String> scholarIds = achievements.listScholarIdsByRestrictionSource(sourceId);
+            notifications.sendToScholarClaimants(
+                scholarIds,
+                Notification.KIND_SOURCE_LICENSE_REVOKED,
+                "有成果因来源撤权不再公开",
+                "来源「"
+                    + sourceCode
+                    + "」的展示许可被撤销，依赖该来源的公开成果已不再公开展示（本次收紧 "
+                    + finalProcessed
+                    + " 条）。你的学者档案若涉及其中成果，检索与门户中将不再出现；元数据与采集记录仍保留，恢复许可后会重新评估公开。",
+                "SOURCE",
+                sourceId);
+          }
+        });
 
     SourceRevocationMapper.RevocationRow job = revocations.findById(accepted.jobId()).orElseThrow();
     return new DisplayLicenseOutcome(

@@ -32,12 +32,13 @@ public interface AccountMapper {
       String status,
       long authVersion,
       int failedLoginAttempts,
-      Instant lockedUntil) {}
+      Instant lockedUntil,
+      boolean mustChangePassword) {}
 
   @Select(
       """
       SELECT id, username, username_norm, password_hash, display_name, status, auth_version,
-             failed_login_attempts, locked_until
+             failed_login_attempts, locked_until, must_change_password
       FROM iam_account WHERE id = #{id}
       """)
   Optional<AccountRow> findById(@Param("id") String id);
@@ -45,7 +46,7 @@ public interface AccountMapper {
   @Select(
       """
       SELECT id, username, username_norm, password_hash, display_name, status, auth_version,
-             failed_login_attempts, locked_until
+             failed_login_attempts, locked_until, must_change_password
       FROM iam_account WHERE username_norm = #{usernameNorm}
       """)
   Optional<AccountRow> findByUsernameNorm(@Param("usernameNorm") String usernameNorm);
@@ -53,10 +54,22 @@ public interface AccountMapper {
   @Select(
       """
       SELECT id, username, username_norm, password_hash, display_name, status, auth_version,
-             failed_login_attempts, locked_until
+             failed_login_attempts, locked_until, must_change_password
       FROM iam_account ORDER BY created_at, id LIMIT #{limit}
       """)
   List<AccountRow> listAll(@Param("limit") int limit);
+
+  /**
+   * 启用账号的 ID 列表。
+   *
+   * <p>只取 ACTIVE：停用账号登录不了，给它写通知既浪费又会造成「这个账号还在接收消息」的错觉。
+   * 带 limit 不是分页，是防呆——公告广播一次写 N 条通知，N 必须有界。
+   */
+  @Select(
+      """
+      SELECT id FROM iam_account WHERE status = 'ACTIVE' ORDER BY created_at, id LIMIT #{limit}
+      """)
+  List<String> listActiveAccountIds(@Param("limit") int limit);
 
   @Insert(
       """
@@ -110,6 +123,30 @@ public interface AccountMapper {
       WHERE id = #{accountId}
       """)
   int bumpAuthVersion(@Param("accountId") String accountId);
+
+  /**
+   * 改口令：同时提升认证版本，使本人其他会话与管理员重置前的会话全部失效。
+   *
+   * <p>为什么要在这里 +1 而不是由调用方再调一次 bumpAuthVersion：两条语句之间若进程退出，
+   * 会留下「已换口令但旧会话仍可用」的窗口。会话有效性以 auth_version 为唯一判据（架构 §10.2），
+   * 所以必须与口令写在同一条 UPDATE 里。
+   *
+   * <p>条件 status = 'ACTIVE'：停用账号不接受改密，管理员应先恢复账号。
+   */
+  @Update(
+      """
+      UPDATE iam_account
+         SET password_hash = #{passwordHash},
+             must_change_password = #{mustChangePassword},
+             password_changed_at = now(),
+             updated_at = now(),
+             auth_version = auth_version + 1
+       WHERE id = #{accountId} AND status = 'ACTIVE'
+      """)
+  int updatePassword(
+      @Param("accountId") String accountId,
+      @Param("passwordHash") String passwordHash,
+      @Param("mustChangePassword") boolean mustChangePassword);
 
   @Select("SELECT role FROM iam_account_role WHERE account_id = #{accountId} ORDER BY role")
   Set<String> findRoles(@Param("accountId") String accountId);
@@ -184,6 +221,7 @@ public interface AccountMapper {
         row.authVersion(),
         roles,
         row.failedLoginAttempts(),
-        row.lockedUntil());
+        row.lockedUntil(),
+        row.mustChangePassword());
   }
 }

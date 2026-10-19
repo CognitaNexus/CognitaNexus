@@ -22,7 +22,7 @@ import AsyncBlock from '@/components/AsyncBlock.vue'
 /** 后端 PortalChangeRequest.Field 的取值；这里硬编码字面量而不从接口拉取，
  *  原因是接口列表只返回中文说明，字段名本身是契约的一部分，写死能让不一致在类型检查时暴露。 */
 const FIELD_OPTIONS: { value: string; label: string; requiresReview: boolean }[] = [
-  { value: 'RESEARCH_SUMMARY', label: '研究简介', requiresReview: true },
+  { value: 'RESEARCH_SUMMARY', label: '研究简介', requiresReview: false },
   { value: 'ORGANIZATION_NAME', label: '所属机构', requiresReview: true },
   { value: 'DISPLAY_ORDER', label: '署名顺序', requiresReview: false },
   { value: 'TOPIC_SET', label: '领域标注', requiresReview: false },

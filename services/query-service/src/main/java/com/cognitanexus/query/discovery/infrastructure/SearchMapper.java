@@ -29,6 +29,7 @@ public interface SearchMapper {
       String dataNature,
       String visibility,
       String effectiveStatus,
+      String integrityStatus,
       Integer publicationYear,
       String doi,
       String venue,
@@ -85,7 +86,15 @@ public interface SearchMapper {
         <if test="criteria.keywordNorm != null">
           AND (a.title_norm LIKE '%' || #{criteria.keywordLike} || '%'
                OR lower(coalesce(a.venue, '')) LIKE '%' || #{criteria.keywordLike} || '%'
-               OR lower(coalesce(a.doi, '')) = #{criteria.keywordNorm})
+               OR lower(coalesce(a.abstract_text, '')) LIKE '%' || #{criteria.keywordLike} || '%'
+               OR lower(coalesce(a.doi, '')) = #{criteria.keywordNorm}
+               OR EXISTS (
+                 SELECT 1 FROM qry_contribution k
+                 WHERE k.generation = a.generation
+                   AND k.achievement_id = a.achievement_id
+                   AND k.relation_state IN ('AUTO', 'SELF_CONFIRMED')
+                   AND lower(coalesce(k.scholar_name, ''))
+                       LIKE '%' || #{criteria.keywordLike} || '%'))
         </if>
         <if test="criteria.organization != null">
           AND EXISTS (
@@ -102,8 +111,8 @@ public interface SearchMapper {
       """
       <script>
       SELECT a.achievement_id, a.type, a.title, a.title_norm, a.data_nature, a.visibility,
-             a.effective_status, a.publication_year, a.doi, a.venue, a.citation_count,
-             a.citation_source, a.updated_at,
+             a.effective_status, a.integrity_status, a.publication_year, a.doi, a.venue,
+             a.citation_count, a.citation_source, a.updated_at,
              <choose>
                <when test="criteria.keywordNorm != null">
                  similarity(a.title_norm, #{criteria.keywordNorm})
@@ -129,7 +138,15 @@ public interface SearchMapper {
         <if test="criteria.keywordNorm != null">
           AND (a.title_norm LIKE '%' || #{criteria.keywordLike} || '%'
                OR lower(coalesce(a.venue, '')) LIKE '%' || #{criteria.keywordLike} || '%'
-               OR lower(coalesce(a.doi, '')) = #{criteria.keywordNorm})
+               OR lower(coalesce(a.abstract_text, '')) LIKE '%' || #{criteria.keywordLike} || '%'
+               OR lower(coalesce(a.doi, '')) = #{criteria.keywordNorm}
+               OR EXISTS (
+                 SELECT 1 FROM qry_contribution k
+                 WHERE k.generation = a.generation
+                   AND k.achievement_id = a.achievement_id
+                   AND k.relation_state IN ('AUTO', 'SELF_CONFIRMED')
+                   AND lower(coalesce(k.scholar_name, ''))
+                       LIKE '%' || #{criteria.keywordLike} || '%'))
         </if>
         <if test="criteria.organization != null">
           AND EXISTS (
@@ -218,7 +235,7 @@ public interface SearchMapper {
           AND a.data_nature = #{criteria.dataNature}
         </if>
         <if test="criteria.keywordNorm != null">
-          AND lower(coalesce(c.scholar_name, '')) LIKE '%' || #{criteria.keywordNorm} || '%'
+          AND lower(coalesce(c.scholar_name, '')) LIKE '%' || #{criteria.keywordLike} || '%'
         </if>
       GROUP BY c.scholar_id
       ORDER BY achievement_count DESC, c.scholar_id
@@ -303,6 +320,77 @@ public interface SearchMapper {
       """)
   List<Map<String, Object>> listOrganizationFacets(
       @Param("generation") String generation,
+      @Param("dataNature") String dataNature,
+      @Param("limit") int limit);
+
+  record TitleSuggestion(
+      String achievementId, String title, String type, Integer publicationYear) {}
+
+  record ScholarSuggestion(String scholarId, String scholarName, long achievementCount) {}
+
+  /**
+   * 检索框的题名建议。
+   *
+   * <p>只取题名维度：作者建议由 {@link #suggestScholars} 单独给出，两类结果在界面上分组显示，
+   * 不能混成一个列表——把「某位学者的名字」和「某篇论文的标题」排在一起，用户点错是必然的。
+   *
+   * <p>排序刻意分两档：前缀命中优先于中间命中，再按相似度。纯按相似度排会让「深度学习」排在
+   * 「基于深度学习的……」之前，而后者显然才是用户在敲的那一条。
+   */
+  @Select(
+      """
+      <script>
+      SELECT a.achievement_id, a.title, a.type, a.publication_year
+      FROM qry_achievement a
+      WHERE a.generation = #{generation}
+        AND a.effective_status = 'EFFECTIVE'
+        AND a.visibility = 'PUBLIC'
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+        AND (a.title_norm LIKE '%' || #{keywordLike} || '%'
+             OR similarity(a.title_norm, #{keywordNorm}) &gt; 0.08)
+      ORDER BY (a.title_norm LIKE #{keywordLike} || '%') DESC,
+               similarity(a.title_norm, #{keywordNorm}) DESC,
+               a.publication_year DESC NULLS LAST,
+               a.achievement_id
+      LIMIT #{limit}
+      </script>
+      """)
+  List<TitleSuggestion> suggestTitles(
+      @Param("generation") String generation,
+      @Param("keywordNorm") String keywordNorm,
+      @Param("keywordLike") String keywordLike,
+      @Param("dataNature") String dataNature,
+      @Param("limit") int limit);
+
+  /**
+   * 检索框的学者建议。
+   *
+   * <p>只统计合格关系（AUTO / SELF_CONFIRMED）：待核验与已排除的关系不能借「建议」这个入口
+   * 重新出现在页面上，否则 BR-IMP-08 在检索页就形同虚设。
+   */
+  @Select(
+      """
+      <script>
+      SELECT c.scholar_id,
+             max(c.scholar_name) AS scholar_name,
+             count(DISTINCT c.achievement_id) AS achievement_count
+      FROM qry_contribution c
+      JOIN qry_achievement a
+        ON a.generation = c.generation AND a.achievement_id = c.achievement_id
+      WHERE c.generation = #{generation}
+        AND a.effective_status = 'EFFECTIVE'
+        AND a.visibility = 'PUBLIC'
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+        AND c.relation_state IN ('AUTO', 'SELF_CONFIRMED')
+        AND lower(coalesce(c.scholar_name, '')) LIKE '%' || #{keywordLike} || '%'
+      GROUP BY c.scholar_id
+      ORDER BY achievement_count DESC, c.scholar_id
+      LIMIT #{limit}
+      </script>
+      """)
+  List<ScholarSuggestion> suggestScholars(
+      @Param("generation") String generation,
+      @Param("keywordLike") String keywordLike,
       @Param("dataNature") String dataNature,
       @Param("limit") int limit);
 }

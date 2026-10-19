@@ -6,6 +6,8 @@ import com.cognitanexus.core.catalog.domain.FieldProvenance;
 import com.cognitanexus.core.catalog.domain.Scholar;
 import com.cognitanexus.core.identity.application.IdentityRepositories.PortalAuthorityRepository;
 import com.cognitanexus.core.identity.domain.PortalAuthority;
+import com.cognitanexus.core.notification.application.NotificationService;
+import com.cognitanexus.core.notification.domain.Notification;
 import com.cognitanexus.core.platform.audit.AuditRecorder;
 import com.cognitanexus.core.platform.event.EventTypes;
 import com.cognitanexus.core.platform.event.OutboxEvent;
@@ -59,6 +61,7 @@ public class PortalService {
   private final IdempotencyGuard idempotency;
   private final OutboxStore outbox;
   private final AuditRecorder audit;
+  private final NotificationService notifications;
 
   public PortalService(
       PortalRepositories.ClaimRequestRepository claims,
@@ -69,7 +72,8 @@ public class PortalService {
       EvidenceStorage evidenceStorage,
       IdempotencyGuard idempotency,
       OutboxStore outbox,
-      AuditRecorder audit) {
+      AuditRecorder audit,
+      NotificationService notifications) {
     this.claims = claims;
     this.changes = changes;
     this.authorities = authorities;
@@ -79,6 +83,7 @@ public class PortalService {
     this.idempotency = idempotency;
     this.outbox = outbox;
     this.audit = audit;
+    this.notifications = notifications;
   }
 
   // ===========================================================================
@@ -230,6 +235,14 @@ public class PortalService {
                 null,
                 null,
                 normalizedReason));
+        notifyApplicant(
+            claim,
+            "认领申请需补充材料",
+            "你认领学者档案（"
+                + claim.scholarId()
+                + "）的申请需要补充材料："
+                + normalizedReason
+                + "。请在「我的门户 → 我的申请」补充材料后重新提交。");
         return new DecisionResult("NEED_MORE_EVIDENCE", null, "已要求申请人补充材料");
       }
       case "REJECT" -> {
@@ -241,6 +254,10 @@ public class PortalService {
         audit.record(
             AuditRecorder.AuditEntry.of(
                 actor, "CLAIM_REJECTED", "CLAIM_REQUEST", claimId, null, null, normalizedReason));
+        notifyApplicant(
+            claim,
+            "认领申请未通过",
+            "你认领学者档案（" + claim.scholarId() + "）的申请未通过审核：" + normalizedReason + "。");
         return new DecisionResult("REJECTED", null, "认领申请已驳回");
       }
       case "DISPUTE" -> {
@@ -248,6 +265,14 @@ public class PortalService {
         audit.record(
             AuditRecorder.AuditEntry.of(
                 actor, "CLAIM_DISPUTED", "CLAIM_REQUEST", claimId, null, null, normalizedReason));
+        notifyApplicant(
+            claim,
+            "认领申请进入争议",
+            "你认领学者档案（"
+                + claim.scholarId()
+                + "）的申请被标记为争议："
+                + normalizedReason
+                + "。平台会进一步核实，请留意站内通知。");
         return new DecisionResult("DISPUTED", null, "已标记争议，等待进一步证据");
       }
       case "APPROVE" -> {
@@ -267,10 +292,16 @@ public class PortalService {
       if (holder.accountId().equals(claim.accountId())) {
         // 同一账号已是该门户管理者：批准是幂等的，不产生第二条授权
         transition(claim, ClaimRequest.Status.APPROVED, actor, reason, now);
+        notifyApplicant(
+            claim, "认领已通过", "你认领学者档案（" + claim.scholarId() + "）的申请已通过。该账号此前已持有本门户管理权，未产生新授权。");
         return new DecisionResult("APPROVED", holder.id(), "该账号已持有本门户管理权，本次批准不新增授权");
       }
       // 竞争认领：不转移原授权，保留申请并标记争议（AC-IMPL-FR05-03）
       transition(claim, ClaimRequest.Status.DISPUTED, actor, "竞争认领：" + reason, now);
+      notifyApplicant(
+          claim,
+          "认领申请进入争议",
+          "你认领学者档案（" + claim.scholarId() + "）的申请被标记为争议：该门户已有生效管理者，平台按规则不转移原授权（" + reason + "）。");
       audit.record(
           AuditRecorder.AuditEntry.of(
               actor,
@@ -300,6 +331,14 @@ public class PortalService {
       // 这条路径没有「先查到的持有者」可写进证据，但同样要留审计：只留下「申请变成 DISPUTED」
       // 这一个结果，事后无法区分「当时确有并发」与「有人手工改判」，也无法解释为什么没有第二条授权。
       transition(claim, ClaimRequest.Status.DISPUTED, actor, "并发竞争认领：" + reason, now);
+      notifyApplicant(
+          claim,
+          "认领申请进入争议",
+          "你认领学者档案（"
+              + claim.scholarId()
+              + "）的申请在审核时与其他账号的认领同时到达，按规则标记为争议（"
+              + reason
+              + "）。平台会进一步核实，请留意站内通知。");
       audit.record(
           AuditRecorder.AuditEntry.of(
               actor,
@@ -354,7 +393,22 @@ public class PortalService {
             .put("claimId", claim.id()));
 
     log.info("认领批准 authorityId={} scholarId={}", authorityId, claim.scholarId());
+    notifyApplicant(
+        claim,
+        "认领已通过",
+        "你认领学者档案（" + claim.scholarId() + "）的申请已通过，你现在是该学者门户的管理者：" + reason + "。请在「我的门户」查看。");
     return new DecisionResult("APPROVED", authorityId, "已批准并授予门户管理权");
+  }
+
+  /** 通知申请人裁决结果（ADR-003 §3 第一行）。在业务事务内调用。 */
+  private void notifyApplicant(ClaimRequest claim, String title, String body) {
+    notifications.send(
+        claim.accountId(),
+        Notification.KIND_CLAIM_DECIDED,
+        title,
+        body,
+        "SCHOLAR",
+        claim.scholarId());
   }
 
   private void transition(
@@ -599,6 +653,20 @@ public class PortalService {
                 "proposedValue",
                 String.valueOf(request.proposedValue())),
             normalizedReason));
+    notifications.send(
+        request.accountId(),
+        Notification.KIND_PORTAL_CHANGE_DECIDED,
+        approve ? "门户变更已通过" : "门户变更未通过",
+        "你对学者档案（"
+            + request.scholarId()
+            + "）的「"
+            + request.field().label()
+            + "」变更"
+            + (approve ? "已通过审核并生效" : "未通过审核")
+            + "："
+            + normalizedReason,
+        "SCHOLAR",
+        request.scholarId());
     return changes.findChangeById(changeId).orElseThrow();
   }
 

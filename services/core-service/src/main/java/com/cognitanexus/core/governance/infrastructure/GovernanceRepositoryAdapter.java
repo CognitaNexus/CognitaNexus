@@ -173,19 +173,19 @@ public class GovernanceRepositoryAdapter
 
   @Override
   public List<GovernanceAnomaly> listOpenAnomalies(int limit, int offset) {
-    return mapper.listAnomalies("OPEN", limit, offset).stream()
-        .map(
-            row ->
-                new GovernanceAnomaly(
-                    row.id(),
-                    row.kind(),
-                    row.sourceRecordId(),
-                    row.entityId(),
-                    json.readMap(row.detailJson()),
-                    row.status(),
-                    row.createdAt(),
-                    row.resolvedAt()))
-        .toList();
+    return mapper.listAnomalies("OPEN", limit, offset).stream().map(this::toAnomaly).toList();
+  }
+
+  private GovernanceAnomaly toAnomaly(GovernanceMapper.AnomalyRow row) {
+    return new GovernanceAnomaly(
+        row.id(),
+        row.kind(),
+        row.sourceRecordId(),
+        row.entityId(),
+        json.readMap(row.detailJson()),
+        row.status(),
+        row.createdAt(),
+        row.resolvedAt());
   }
 
   @Override
@@ -201,6 +201,16 @@ public class GovernanceRepositoryAdapter
   @Override
   public Optional<String> findOpenIdByDedupeKey(String kind, String dedupeKey) {
     return Optional.ofNullable(mapper.findOpenAnomalyId(kind, dedupeKey));
+  }
+
+  @Override
+  public Optional<GovernanceAnomaly> findOpenByDedupeKey(String kind, String dedupeKey) {
+    return Optional.ofNullable(mapper.findAnomalyByDedupeKey(kind, dedupeKey)).map(this::toAnomaly);
+  }
+
+  @Override
+  public long countOpenOfKind(String kind) {
+    return mapper.countOpenAnomaliesOfKind(kind);
   }
 
   @Override
@@ -392,6 +402,11 @@ public class GovernanceRepositoryAdapter
   @Override
   public List<String> snapshotContributions(String achievementId) {
     return mapper.snapshotContributions(achievementId);
+  }
+
+  @Override
+  public List<String> listScholarIdsOfAchievement(String achievementId) {
+    return mapper.listScholarIdsOfAchievement(achievementId);
   }
 
   @Override

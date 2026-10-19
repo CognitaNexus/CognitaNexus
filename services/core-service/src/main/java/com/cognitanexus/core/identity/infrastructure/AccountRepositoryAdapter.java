@@ -37,6 +37,13 @@ public class AccountRepositoryAdapter implements AccountRepository {
   }
 
   @Override
+  public Optional<AccountCredentials> findCredentialsById(String accountId) {
+    return mapper
+        .findById(accountId)
+        .map(row -> mapper.toCredentials(row, mapper.findRoles(row.id())));
+  }
+
+  @Override
   public void insert(Account account, String rawPasswordHash) {
     mapper.insert(
         account.id(),
@@ -75,6 +82,11 @@ public class AccountRepositoryAdapter implements AccountRepository {
   }
 
   @Override
+  public int updatePassword(String accountId, String passwordHash, boolean mustChangePassword) {
+    return mapper.updatePassword(accountId, passwordHash, mustChangePassword);
+  }
+
+  @Override
   public long countActiveByRole(String role) {
     return mapper.countActiveByRole(role);
   }
@@ -84,6 +96,11 @@ public class AccountRepositoryAdapter implements AccountRepository {
     return mapper.listAll(limit).stream()
         .map(row -> mapper.toDomain(row, mapper.findRoles(row.id())))
         .toList();
+  }
+
+  @Override
+  public List<String> listActiveAccountIds(int limit) {
+    return mapper.listActiveAccountIds(limit);
   }
 
   @Override

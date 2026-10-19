@@ -69,11 +69,25 @@ public record GovernanceAnomaly(
    */
   public static final String KIND_METADATA_CONFLICT = "METADATA_CONFLICT";
 
+  /**
+   * 公众纠错报告：站外访客在成果详情页指出「这条记录有错」。
+   *
+   * <p>为什么它必须进待办而不是直接改数据：报告来自匿名访客，它提供的是「线索」而不是「结论」。
+   * 本平台的红线是来源原值不可被人工修订覆盖、自动更新不得覆盖人工审核值，若让一条匿名请求直接
+   * 改写字段，就等于开了一个绕过全部溯源与审核的写入通道。因此这条只登记为待办，由治理人员核实
+   * 后再走既有的修订与裁决路径。
+   *
+   * <p>为什么用逐条登记（不是聚合）：每一条报告指向一处具体错误，处置动作也是逐条核实，
+   * 聚合只会变成「一类一条」，丢掉具体是哪条成果、错在哪。
+   */
+  public static final String KIND_PUBLIC_CORRECTION_REPORT = "PUBLIC_CORRECTION_REPORT";
+
   private static final Map<String, String> LABELS =
       Map.ofEntries(
           Map.entry(KIND_STRUCTURE_INVALID, "结构不合法"),
           Map.entry(KIND_IDENTIFIER_CONFLICT, "稳定标识冲突"),
           Map.entry(KIND_METADATA_CONFLICT, "标识一致但证据矛盾"),
+          Map.entry(KIND_PUBLIC_CORRECTION_REPORT, "公众纠错报告"),
           Map.entry(KIND_MISSING_REQUIRED_FIELD, "缺少必填字段"),
           Map.entry(KIND_SOURCE_DISABLED, "来源已停用"),
           Map.entry(KIND_UNMAPPED_CATEGORY, "来源分类无法映射"),

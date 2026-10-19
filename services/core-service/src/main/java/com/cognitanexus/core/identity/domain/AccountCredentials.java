@@ -22,7 +22,8 @@ public record AccountCredentials(
     long authVersion,
     Set<String> roles,
     int failedLoginAttempts,
-    Instant lockedUntil) {
+    Instant lockedUntil,
+    boolean mustChangePassword) {
 
   public AccountCredentials {
     roles = roles == null ? Set.of() : Set.copyOf(roles);

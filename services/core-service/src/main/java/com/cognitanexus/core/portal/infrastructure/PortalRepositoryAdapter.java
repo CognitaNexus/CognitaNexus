@@ -4,6 +4,7 @@ import com.cognitanexus.core.portal.application.PortalRepositories;
 import com.cognitanexus.core.portal.domain.ClaimEvidence;
 import com.cognitanexus.core.portal.domain.ClaimRequest;
 import com.cognitanexus.core.portal.domain.PortalChangeRequest;
+import com.cognitanexus.core.portal.domain.Submission;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -13,7 +14,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class PortalRepositoryAdapter
     implements PortalRepositories.ClaimRequestRepository,
-        PortalRepositories.PortalChangeRequestRepository {
+        PortalRepositories.PortalChangeRequestRepository,
+        PortalRepositories.SubmissionRepository {
 
   private final PortalMapper mapper;
 
@@ -205,5 +207,118 @@ public class PortalRepositoryAdapter
         row.decidedBy(),
         row.decisionReason(),
         row.version());
+  }
+
+  // ---------------------------------------------------------------------------
+  // 成果自助提交
+  // ---------------------------------------------------------------------------
+
+  @Override
+  public void insert(Submission submission) {
+    mapper.insertSubmission(
+        submission.id(),
+        submission.accountId(),
+        submission.scholarId(),
+        submission.type().name(),
+        submission.title(),
+        submission.titleNorm(),
+        submission.doi(),
+        submission.doiNorm(),
+        submission.venue(),
+        submission.publicationYear(),
+        submission.abstractText(),
+        submission.authorsRaw(),
+        submission.status().name(),
+        submission.duplicateOf(),
+        submission.duplicateKind() == null ? null : submission.duplicateKind().name(),
+        submission.duplicateNote(),
+        submission.idempotencyKey());
+  }
+
+  @Override
+  public Optional<Submission> findById(String id) {
+    return mapper.findSubmissionById(id).map(this::toSubmission);
+  }
+
+  @Override
+  public Optional<Submission> findByIdempotencyKey(String accountId, String idempotencyKey) {
+    return mapper.findSubmissionByIdempotencyKey(accountId, idempotencyKey).map(this::toSubmission);
+  }
+
+  @Override
+  public List<Submission> listByAccount(String accountId, int limit) {
+    return mapper.listSubmissionsByAccount(accountId, limit).stream()
+        .map(this::toSubmission)
+        .toList();
+  }
+
+  @Override
+  public List<Submission> listOpen(int limit, int offset) {
+    return mapper.listOpenSubmissions(limit, offset).stream().map(this::toSubmission).toList();
+  }
+
+  @Override
+  public long countOpen() {
+    return mapper.countOpenSubmissions();
+  }
+
+  @Override
+  public int decide(
+      String id,
+      String status,
+      String decidedBy,
+      String reason,
+      Instant decidedAt,
+      String achievementId,
+      long expectedVersion) {
+    return mapper.decideSubmission(
+        id, status, decidedBy, reason, decidedAt, achievementId, expectedVersion);
+  }
+
+  @Override
+  public int withdraw(String id, String accountId, long expectedVersion) {
+    return mapper.withdrawSubmission(id, accountId, expectedVersion);
+  }
+
+  @Override
+  public Optional<String> findAchievementIdByDoi(String doiNorm) {
+    return mapper
+        .findAchievementByDoi(doiNorm)
+        .map(PortalMapper.DuplicateCandidateRow::achievementId);
+  }
+
+  @Override
+  public Optional<SimilarAchievement> findMostSimilarTitle(String titleNorm) {
+    return mapper
+        .findAchievementByTitle(titleNorm)
+        .map(row -> new SimilarAchievement(row.achievementId(), row.score()));
+  }
+
+  private Submission toSubmission(PortalMapper.SubmissionRow row) {
+    return new Submission(
+        row.id(),
+        row.accountId(),
+        row.scholarId(),
+        com.cognitanexus.sharedkernel.AchievementType.valueOf(row.type()),
+        row.title(),
+        row.titleNorm(),
+        row.doi(),
+        row.doiNorm(),
+        row.venue(),
+        row.publicationYear(),
+        row.abstractText(),
+        row.authorsRaw(),
+        Submission.Status.of(row.status()),
+        row.duplicateOf(),
+        Submission.DuplicateKind.of(row.duplicateKind()),
+        row.duplicateNote(),
+        row.decisionReason(),
+        row.decidedBy(),
+        row.decidedAt(),
+        row.achievementId(),
+        row.idempotencyKey(),
+        row.version(),
+        row.createdAt(),
+        row.updatedAt());
   }
 }

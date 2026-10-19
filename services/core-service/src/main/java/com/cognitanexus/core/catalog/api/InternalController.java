@@ -1,6 +1,7 @@
 package com.cognitanexus.core.catalog.api;
 
 import com.cognitanexus.core.catalog.application.AdminCatalogService;
+import com.cognitanexus.core.catalog.application.CitationNetworkService;
 import com.cognitanexus.core.catalog.application.SourceIntakeCommands.BatchReceipt;
 import com.cognitanexus.core.catalog.application.SourceIntakeCommands.SourceBatch;
 import com.cognitanexus.core.catalog.application.SourceIntakeService;
@@ -43,12 +44,53 @@ public class InternalController {
   private final SourceIntakeService sourceIntake;
   private final AdminCatalogService adminCatalog;
   private final OutboxStore outbox;
+  private final CitationNetworkService citationNetwork;
 
   public InternalController(
-      SourceIntakeService sourceIntake, AdminCatalogService adminCatalog, OutboxStore outbox) {
+      SourceIntakeService sourceIntake,
+      AdminCatalogService adminCatalog,
+      OutboxStore outbox,
+      CitationNetworkService citationNetwork) {
     this.sourceIntake = sourceIntake;
     this.adminCatalog = adminCatalog;
     this.outbox = outbox;
+    this.citationNetwork = citationNetwork;
+  }
+
+  /**
+   * 接收参考文献观测。
+   *
+   * <p>依据：SRS FR06。采集服务按 DOI 批量取回参考文献列表后投到这里；core 负责把「被引标识」
+   * 解析成本平台成果。解析不到不报错——来源收录了本平台没有的工作是常态，落成 EXTERNAL 只计数。
+   *
+   * <p>为什么单独一条通道而不是搭来源批次的车：来源批次是按内容指纹版本化的，同一篇记录内容没变
+   * 就不会重放；而参考文献是要重采的（列表会随来源补齐），两者生命周期不同，混在一起会让「补采
+   * 引用」变成「伪造一次内容变更」。
+   */
+  @PostMapping("/citation-observations")
+  public ResponseEntity<ApiResponse<CitationNetworkService.ObservationReceipt>>
+      receiveCitationObservations(@RequestBody CitationNetworkService.ObservationBatch batch) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            citationNetwork.recordObservations(
+                batch == null ? null : batch.observations(), systemActor()),
+            TraceIdHolder.current()));
+  }
+
+  /**
+   * 待补参考文献的成果清单。
+   *
+   * <p>由 core 给出而不是让采集侧自己从公开检索里挑：可见性、合并重定向与「是否已采过」这三件事
+   * 的权威都在 core，采集侧的检索视图天然看不到受限成果，也看不出哪些采过。
+   */
+  @GetMapping("/citations/pending")
+  public ResponseEntity<ApiResponse<CitationNetworkService.PendingPage>> pendingCitations(
+      @RequestParam(defaultValue = "50") int limit,
+      @RequestParam(required = false) String search,
+      @RequestParam(required = false) String topicId) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            citationNetwork.pendingWorks(limit, search, topicId), TraceIdHolder.current()));
   }
 
   /**

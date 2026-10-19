@@ -1,10 +1,12 @@
 package com.cognitanexus.core.catalog.infrastructure;
 
 import com.cognitanexus.core.catalog.domain.Scholar;
+import com.cognitanexus.core.catalog.domain.ScholarProfile;
 import com.cognitanexus.sharedkernel.DataNature;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -150,6 +152,83 @@ public interface ScholarMapper {
   @Select("SELECT merged_into_id FROM core_scholar WHERE id = #{id}")
   Optional<String> findMergedIntoId(@Param("id") String id);
 
+  // ===========================================================================
+  // 门户自助维护：主页链接、头像、代表作置顶
+  // ===========================================================================
+
+  /** 自述字段行。与 ScholarRow 分开，避免把「自述」混进来源事实的读取路径。 */
+  record ProfileRow(
+      String scholarId,
+      String homepageUrl,
+      String avatarRef,
+      String avatarMediaType,
+      Instant profileUpdatedAt) {}
+
+  @Select(
+      """
+      SELECT id AS scholarId, homepage_url AS homepageUrl, avatar_ref AS avatarRef,
+             avatar_media_type AS avatarMediaType, profile_updated_at AS profileUpdatedAt
+      FROM core_scholar WHERE id = #{id}
+      """)
+  Optional<ProfileRow> findProfile(@Param("id") String id);
+
+  /**
+   * 写入主页地址。
+   *
+   * <p>传 null 表示清空。这里不校验 URL 形式——格式校验在服务层做，SQL 层只负责落库，
+   * 否则同一个规则会被写两遍，改一处忘一处。
+   */
+  @Update(
+      """
+      UPDATE core_scholar
+      SET homepage_url = #{homepageUrl}, profile_updated_at = now(), updated_at = now()
+      WHERE id = #{scholarId}
+      """)
+  int updateHomepageUrl(
+      @Param("scholarId") String scholarId, @Param("homepageUrl") String homepageUrl);
+
+  @Update(
+      """
+      UPDATE core_scholar
+      SET avatar_ref = #{avatarRef}, avatar_media_type = #{avatarMediaType},
+          profile_updated_at = now(), updated_at = now()
+      WHERE id = #{scholarId}
+      """)
+  int updateAvatar(
+      @Param("scholarId") String scholarId,
+      @Param("avatarRef") String avatarRef,
+      @Param("avatarMediaType") String avatarMediaType);
+
+  @Update(
+      """
+      UPDATE core_scholar
+      SET avatar_ref = NULL, avatar_media_type = NULL,
+          profile_updated_at = now(), updated_at = now()
+      WHERE id = #{scholarId}
+      """)
+  int clearAvatar(@Param("scholarId") String scholarId);
+
+  @Select(
+      """
+      SELECT achievement_id FROM core_scholar_featured
+      WHERE scholar_id = #{scholarId}
+      ORDER BY rank
+      """)
+  List<String> listFeatured(@Param("scholarId") String scholarId);
+
+  @Delete("DELETE FROM core_scholar_featured WHERE scholar_id = #{scholarId}")
+  int deleteFeatured(@Param("scholarId") String scholarId);
+
+  @Insert(
+      """
+      INSERT INTO core_scholar_featured (scholar_id, achievement_id, rank)
+      VALUES (#{scholarId}, #{achievementId}, #{rank})
+      """)
+  int insertFeatured(
+      @Param("scholarId") String scholarId,
+      @Param("achievementId") String achievementId,
+      @Param("rank") int rank);
+
   @Select("SELECT count(*) FROM core_scholar WHERE merged_into_id IS NULL")
   long countAll();
 
@@ -174,5 +253,14 @@ public interface ScholarMapper {
         row.version(),
         row.createdAt(),
         row.updatedAt());
+  }
+
+  default ScholarProfile toProfile(ProfileRow row) {
+    return new ScholarProfile(
+        row.scholarId(),
+        row.homepageUrl(),
+        row.avatarRef(),
+        row.avatarMediaType(),
+        row.profileUpdatedAt());
   }
 }

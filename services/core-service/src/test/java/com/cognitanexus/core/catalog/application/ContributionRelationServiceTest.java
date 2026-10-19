@@ -56,6 +56,7 @@ class ContributionRelationServiceTest {
   @Mock PortalService portal;
   @Mock CatalogChangePublisher catalogChanges;
   @Mock AuditRecorder audit;
+  @Mock com.cognitanexus.core.notification.application.NotificationService notifications;
 
   private ContributionRelationService service;
   private ActorContext owner;
@@ -65,7 +66,8 @@ class ContributionRelationServiceTest {
   @BeforeEach
   void setUp() {
     service =
-        new ContributionRelationService(contributions, achievements, portal, catalogChanges, audit);
+        new ContributionRelationService(
+            contributions, achievements, portal, catalogChanges, audit, notifications);
     owner = new ActorContext(new AccountId("acc_owner"), "owner", "本人", Set.of(RoleNames.USER), 1L);
     stranger =
         new ActorContext(new AccountId("acc_other"), "other", "路人", Set.of(RoleNames.USER), 1L);

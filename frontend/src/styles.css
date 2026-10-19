@@ -246,6 +246,26 @@ code,
   margin: 6px 10px;
 }
 
+/* 站内通知徽标（ADR-003）：数字贴在「通知」链接右下角，未读为 0 时不渲染。 */
+.notif-link {
+  position: relative;
+}
+
+.notif-badge {
+  display: inline-block;
+  min-width: 16px;
+  padding: 0 4px;
+  margin-left: 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  vertical-align: text-top;
+}
+
 .page {
   max-width: 1180px;
   width: 100%;
@@ -491,6 +511,51 @@ code,
   font-weight: 650;
 }
 
+/*
+ * 引用告警清单。
+ *
+ * 单独一套而不是复用 .notice：一条引用可能同时缺年份、缺刊名、还带着撤稿声明，三四个 .notice
+ * 块叠起来会把引用文本挤出视野；而这条清单必须与文本同屏——读者复制走的正是那段可能缺项的文字。
+ * 用左侧色条区分严重度，撤稿红、更正/关注橙、信息不全灰。
+ */
+.warn-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.warn-item {
+  border-left: 3px solid var(--rule-strong);
+  background: var(--panel-alt);
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-dim);
+}
+
+.warn-item.info {
+  border-left-color: var(--accent);
+}
+
+.warn-item.warn {
+  border-left-color: var(--warn);
+  background: var(--warn-soft);
+  color: #6a4506;
+}
+
+.warn-item.danger {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+  color: #7f1a14;
+}
+
+.warn-text {
+  color: var(--warn);
+}
+
 /* ------------------------------- 表单与按钮 ------------------------------- */
 
 .field {
@@ -668,6 +733,30 @@ table.data td.num {
 
 .result-title a {
   color: var(--text);
+}
+
+/*
+ * 结果条目前的勾选框。
+ *
+ * 单独写样式而不是沿用 .btn：勾选框要的是「可点区域够大、不与标题基线错位」。默认的
+ * inline-block input 在 16px 的衬线标题里会贴到上沿，看起来像标题的一部分而不是一个选择器。
+ */
+.pick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 8px;
+  vertical-align: -3px;
+  cursor: pointer;
+}
+
+.pick input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  cursor: pointer;
 }
 
 .result-title a:hover {
@@ -1304,8 +1393,72 @@ main.page:focus {
   }
 
   .btn {
-    /* 触控目标不矮于 32px；原本 26px 的 small 按钮在手机上是误触高发区。 */
+    /* 触控目标：主按钮 36px、小按钮 32px。44px 的规范值在密集列表里会把一屏压到只剩
+       三四行，36/32 是「不误触」与「不浪费垂直空间」的折中。 */
+    min-height: 36px;
+  }
+
+  .btn.small {
     min-height: 32px;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  /* 按钮组换行：三个按钮挤在一行时最后一个会被裁掉（治理台实测）。 */
+  .btn-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /*
+   * 宽表格横向滚动时把首列钉在左边。
+   * 没有这一条时，滚过第三列就看不到「这是哪一条成果」——首列往往就是题名，
+   * 而它正是横向滚动过程中最需要一直可见的那一列。固定宽度 560px 是为了让列不被
+   * 压成逐字换行；真正的滚动发生在 .panel-body（860px 断点已设 overflow-x）。
+   */
+  table.data {
+    min-width: 560px;
+  }
+
+  table.data th:first-child,
+  table.data td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--panel);
+    /* 用阴影代替右边框：边框会随滚动留在原地，阴影贴着单元格一起移动。 */
+    box-shadow: 1px 0 0 var(--rule);
+  }
+
+  /*
+   * 表单控件占满整行。手机上一行两个字段只剩 150px，填 DOI 时看不见已输入的后半段，
+   * 而 DOI 恰恰是最容易输错的字段。file 输入由浏览器渲染，强设 100% 会撑破容器。
+   */
+  .panel-body input:not([type='checkbox']):not([type='radio']):not([type='file']),
+  .panel-body select,
+  .panel-body textarea {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* 面板内边距收紧，把宽度让给内容。 */
+  .panel-body {
+    padding: 12px;
+  }
+
+  /* 分页条在窄屏换行，不要挤成一行溢出。 */
+  .pager {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  /* 通知工具栏：筛选项与按钮在手机上各占一行，不互相挤压。 */
+  .notif-toolbar {
+    gap: 8px;
+  }
+
+  .notif-kind {
+    width: 100%;
   }
 }
 

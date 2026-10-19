@@ -64,6 +64,19 @@ public interface PortalAuthorityMapper {
       """)
   Optional<AuthorityRow> findById(@Param("id") String id);
 
+  @Select(
+      """
+      <script>
+      SELECT DISTINCT account_id
+      FROM iam_portal_authority
+      WHERE status = 'ACTIVE'
+        AND scholar_id IN
+        <foreach collection="scholarIds" item="item" open="(" separator="," close=")">#{item}</foreach>
+      </script>
+      """)
+  List<String> listActiveAccountIdsByScholars(
+      @Param("scholarIds") java.util.Collection<String> scholarIds);
+
   /**
    * 插入生效授权。
    *

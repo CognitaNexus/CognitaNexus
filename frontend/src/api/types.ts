@@ -66,6 +66,18 @@ export interface SearchItem {
   authors: string[]
   topics: TopicView[]
   relevance: number
+  /**
+   * 学术诚信标记。三个字段**始终存在**（服务端给的是「无诚信声明」这个值，而不是省略字段），
+   * 所以这里不写成可选——写成可选会让模板里的 `item.integrity.noticed` 在类型上就不可靠。
+   */
+  integrity: IntegrityBadge
+}
+
+export interface IntegrityBadge {
+  status: 'NONE' | 'CONCERN' | 'CORRECTION' | 'RETRACTION'
+  /** 中文标签，如「已撤稿」。 */
+  label: string
+  noticed: boolean
 }
 
 export interface SearchPage extends ScopeEnvelope {
@@ -272,6 +284,9 @@ export interface SessionView {
   displayName: string
   roles: string[]
   capabilities: string[]
+  /** 管理员重置口令后为 true；仅用于页面提示，不阻断登录（平台没有邮件找回通道）。 */
+  mustChangePassword?: boolean
+  authVersion?: number
 }
 
 export interface PublicAchievementDetail {
@@ -340,4 +355,175 @@ export interface ClaimEvidence {
   contentHash: string
   createdAt: string
   downloadUrl: string
+}
+
+/**
+ * 引用导出的一条局限说明。
+ *
+ * code 给程序（按码决定展示样式、脚本按码断言），message 给人。两个字段都由服务端保证存在：
+ * 后端三个服务都配了 non_null 序列化，缺字段会让界面渲染成空白而不是报错，所以这里声明为非可选。
+ */
+export interface CitationWarning {
+  code: string
+  message: string
+}
+
+/**
+ * 单一引用格式的渲染结果。
+ *
+ * text 就是最终文本，界面不再二次加工：格式的规范细节（国标作者超过三位加「等」、APA 的
+ * & 连接、BibTeX 转义）只在服务端实现一处，前端再拼一遍必然与它漂移。
+ */
+export interface CitationFormatEntry {
+  code: string
+  label: string
+  text: string
+  fileName: string
+  mediaType: string
+  machineReadable: boolean
+  downloadUrl: string
+  warnings: CitationWarning[]
+}
+
+/**
+ * 一份成果的全部引用视图。
+ *
+ * provenance 与 exportedOn 刻意不在 text 里：引用会被粘进论文的参考文献表，任何非书目信息
+ * 都会跟着进那张表。出处与生成时刻属于界面说明。
+ */
+export interface CitationBundle {
+  achievementId: string
+  citeKey: string
+  defaultFormat: string
+  provenance: string
+  exportedOn: string
+  warnings: CitationWarning[]
+  formats: CitationFormatEntry[]
+  note: string
+}
+
+/**
+ * 批量导出文件里的一条条目。
+ *
+ * text 是**未编号**的单条正文，与单条端点逐字一致：编号属于「文件里的第几条」，
+ * 由服务端在装配整份文件时统一加，因此这里不带 [1]。
+ */
+export interface CitationBatchEntry {
+  achievementId: string
+  citeKey: string
+  text: string
+  warnings: CitationWarning[]
+}
+
+/**
+ * 一条没能写进文件的成果。
+ *
+ * reason 只有两个值：NOT_AVAILABLE（存在性与公开资格在批量入口上合并成同一个原因，否则这个接口
+ * 就成了探测受限成果的通道）与 DUPLICATE_TARGET（合并重定向后与已选中的另一条指向同一条记录）。
+ */
+export interface CitationBatchSkipped {
+  achievementId: string
+  reason: string
+  message: string
+}
+
+/**
+ * 批量导出结果。
+ *
+ * text 与下载得到的字节逐字一致——界面上的「先看再下」必须是真的同一份内容。
+ */
+export interface CitationBatch {
+  format: string
+  formatLabel: string
+  mediaType: string
+  machineReadable: boolean
+  fileName: string
+  requested: number
+  exported: number
+  skippedCount: number
+  entries: CitationBatchEntry[]
+  skipped: CitationBatchSkipped[]
+  warnings: CitationWarning[]
+  text: string
+  provenance: string
+  exportedOn: string
+  downloadUrl: string
+  note: string
+}
+
+/**
+ * 检索建议（输入框下拉）。
+ *
+ * 两组结果分开返回而不是混排：学者名与论文题名排在一个列表里，用户点错是必然的。
+ * achievements 只含题名与年份，够渲染建议项即可——点进去之后详情页会给出完整信息。
+ */
+export interface SearchSuggestionAchievement {
+  id: string
+  title: string
+  type: string
+  publicationYear: number | null
+}
+
+export interface SearchSuggestionScholar {
+  scholarId: string
+  scholarName: string
+  qualifiedAchievementCount: number
+}
+
+export interface SearchSuggestions {
+  keyword: string | null
+  dataNatureScope: string
+  achievements: SearchSuggestionAchievement[]
+  scholars: SearchSuggestionScholar[]
+  note: string
+}
+
+/**
+ * 引用网络。
+ *
+ * 三个块缺一不可：coverage 回答「这几条边是怎么来的」，references/citedBy 回答「有哪些边」，
+ * platform 回答「整个平台覆盖了多少」——只给边数，读者会把它当成「全世界的被引数」。
+ */
+export interface CitationNetworkView {
+  achievementId: string
+  redirectedFrom?: string | null
+  redirectNote?: string
+  coverage: {
+    observed: boolean
+    /** OBSERVED=采到了；NOT_FOUND=来源查不到这一篇；NONE=还没采过。三者含义不同。 */
+    outcome: string
+    provider?: string | null
+    providerWorkId?: string | null
+    fetchedAt?: string | null
+    referencesTotal?: number | null
+    referencesListed?: number | null
+    resolvedInPlatform?: number
+    external?: number
+    selfCitations?: number
+    unidentified?: number
+    listingGap?: number | null
+    listingNote?: string
+  }
+  references: { count: number; items: CitedWorkView[]; note: string }
+  citedBy: { count: number; items: CitedWorkView[]; note: string }
+  platform: {
+    observedWorks: number
+    notFoundWorks?: number
+    publicPapers: number
+    coveragePercent: number | null
+    note: string
+  }
+  reportedCitationCountNote?: string
+}
+
+/** 引用网络里的一篇成果。 */
+export interface CitedWorkView {
+  id: string
+  title: string
+  type?: string | null
+  typeLabel: string
+  publicationYear?: number | null
+  yearKnown: boolean
+  venue?: string | null
+  doi?: string | null
 }

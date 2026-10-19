@@ -34,6 +34,7 @@ public final class Capabilities {
     if (actor.hasRole(RoleNames.USER)) {
       capabilities.add(RoleNames.CAP_CLAIM_SUBMIT);
       capabilities.add(RoleNames.CAP_PORTAL_MAINTAIN);
+      capabilities.add(RoleNames.CAP_SUBMISSION_SUBMIT);
     }
     if (actor.hasRole(RoleNames.REVIEWER)) {
       capabilities.add(RoleNames.CAP_CLAIM_REVIEW);
@@ -41,6 +42,7 @@ public final class Capabilities {
       capabilities.add(RoleNames.CAP_GOVERNANCE_MANAGE);
       capabilities.add(RoleNames.CAP_AUDIT_READ);
       capabilities.add(RoleNames.CAP_ACHIEVEMENT_CONFIRM);
+      capabilities.add(RoleNames.CAP_SUBMISSION_REVIEW);
     }
     if (actor.hasRole(RoleNames.PLATFORM_ADMIN)) {
       for (String capability : all()) {
@@ -61,6 +63,8 @@ public final class Capabilities {
     all.add(RoleNames.CAP_AUDIT_READ);
     all.add(RoleNames.CAP_ACCOUNT_MANAGE);
     all.add(RoleNames.CAP_ACHIEVEMENT_CONFIRM);
+    all.add(RoleNames.CAP_SUBMISSION_SUBMIT);
+    all.add(RoleNames.CAP_SUBMISSION_REVIEW);
     return Set.copyOf(all);
   }
 

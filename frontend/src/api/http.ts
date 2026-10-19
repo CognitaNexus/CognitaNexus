@@ -20,6 +20,22 @@ const PREFIX: Record<ServiceKey, string> = {
   ingest: '/ingest',
 }
 
+/**
+ * 把服务端返回的「服务内路径」补上网关前缀。
+ *
+ * <p>服务端只知道自己的路径（`/api/v1/...`），不知道浏览器前面挂了几层前缀——生产环境可能是
+ * 根路径，开发代理则是 `/core`。把前缀写进后端返回值，等于让后端猜测部署形状。因此约定：
+ * 后端返回服务内路径，<b>由前端在这一处补前缀</b>。
+ *
+ * <p>头像是最容易踩到的地方：`<img src>` 不经过 {@link request}，没人替它补前缀。漏补的表现
+ * 不是 404，而是「200 但 content-type 是 text/html」——代理没命中，dev server 把 index.html
+ * 当成静态资源返回了，图片静默显示为裂图。
+ */
+export function serviceUrl(service: ServiceKey, path: string): string {
+  if (/^(https?:)?\/\//.test(path)) return path
+  return `${PREFIX[service]}${path}`
+}
+
 /** 业务异常：带业务码与追踪号，便于界面直接展示可操作的信息。 */
 export class ApiError extends Error {
   readonly code: string
@@ -122,10 +138,28 @@ function serializeWrite<T>(task: () => Promise<T>): Promise<T> {
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
-  query?: Record<string, string | number | boolean | undefined | null>
+  /**
+   * 查询参数。数组表示同名参数重复出现（`ids=a&ids=b`），用于批量导出这类「一次带一组成果」的读接口：
+   * 拼成逗号串依赖「值里不会有逗号」这个不由我们保证的约定。
+   */
+  query?: Record<string, string | number | boolean | string[] | undefined | null>
   body?: unknown
+  /**
+   * 以 multipart 提交。
+   *
+   * <p>与 {@link body} 互斥：给了 form 就不再 JSON 序列化，也不设 Content-Type——
+   * 边界串由浏览器自己生成，手写一个必然对不上，表现为后端读不到文件而报「请选择文件」。
+   */
+  form?: FormData
   /** 期望的响应类型。默认 JSON；下载类接口用 blob。 */
   responseType?: 'json' | 'blob'
+  /**
+   * 额外的请求头。
+   *
+   * <p>目前只有幂等键用得上（`Idempotency-Key`）：它必须由调用方给，值是业务语义的一部分，
+   * 不能由客户端库自己生成一个每次都不同的串——那样重试就会建出两条一样的记录。
+   */
+  headers?: Record<string, string>
   /** 关闭自动 CSRF 头。仅用于确实不需要的场合；默认对所有非 GET 都带上。 */
   csrf?: boolean
 }
@@ -135,6 +169,12 @@ function buildUrl(service: ServiceKey, path: string, query?: RequestOptions['que
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value === undefined || value === null || value === '') continue
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (item !== undefined && item !== null && item !== '') url.searchParams.append(key, String(item))
+        }
+        continue
+      }
       url.searchParams.set(key, String(value))
     }
   }
@@ -184,11 +224,13 @@ async function send<T>(
   csrfToken: string,
 ): Promise<Envelope<T>> {
   const method = options.method ?? 'GET'
-  const headers: Record<string, string> = { Accept: 'application/json' }
+  const headers: Record<string, string> = { Accept: 'application/json', ...(options.headers ?? {}) }
   if (csrfToken) {
     headers['X-XSRF-TOKEN'] = csrfToken
   }
-  if (options.body !== undefined) {
+  if (options.form) {
+    // 完全不设 Content-Type：浏览器要自己补 multipart 边界。
+  } else if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json'
   }
 
@@ -199,7 +241,11 @@ async function send<T>(
       headers,
       // 会话走 Cookie，必须带上；代理是同源的，无需处理 CORS 凭据问题。
       credentials: 'same-origin',
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body: options.form
+        ? options.form
+        : options.body === undefined
+          ? undefined
+          : JSON.stringify(options.body),
     })
   } catch (cause) {
     // 网络层失败与业务失败必须区分：前者说明目标服务没起来，后者说明它回答了「不行」。
@@ -214,7 +260,16 @@ async function send<T>(
 
   if (options.responseType === 'blob') {
     if (!response.ok) {
-      throw new ApiError('HTTP_' + response.status, `下载失败：HTTP ${response.status}`, '', response.status)
+      // 下载类接口的业务错误仍是 JSON 信封（如导出超限的 400），把 message 解出来给用户，
+      // 否则「导出失败：HTTP 400」会掩盖真正的原因。
+      let message = `下载失败：HTTP ${response.status}`
+      try {
+        const body = await response.json()
+        if (body && typeof body.message === 'string' && body.message) message = body.message
+      } catch {
+        // 响应体不是 JSON：保留默认文案
+      }
+      throw new ApiError('HTTP_' + response.status, message, '', response.status)
     }
     const blob = (await response.blob()) as unknown as T
     return { code: 'OK', message: '', data: blob }

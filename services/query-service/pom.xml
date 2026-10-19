@@ -33,6 +33,11 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
+    <!-- OpenAPI 文档：/v3/api-docs 与 /swagger-ui/index.html。核心服务的文档需要登录后访问。 -->
+    <dependency>
+      <groupId>org.springdoc</groupId>
+      <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-redis</artifactId>
@@ -112,6 +117,41 @@
                   <element>PACKAGE</element>
                   <includes>
                     <include>com.cognitanexus.query.analytics*</include>
+                  </includes>
+                  <limits>
+                    <limit>
+                      <counter>LINE</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>${jacoco.line.coverage.minimum}</minimum>
+                    </limit>
+                  </limits>
+                </rule>
+              </rules>
+            </configuration>
+          </execution>
+          <!--
+            第三个核心模块：query/discovery（检索、学者检索、分面、导出）。
+
+            这条门禁此前缺失，实测 discovery.api 行覆盖为 0%、application 为 38.36%，
+            而「三个核心模块行覆盖率 ≥80%」是本项目自己写在编码规范里的要求——一条不存在的
+            门禁不会报失败，只会让「已达标」变成一句没有依据的话。
+
+            与 analytics 那条保持同一写法（PACKAGE + 包名*），原因见上面的注释。
+          -->
+          <execution>
+            <id>jacoco-check-discovery</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <configuration>
+              <skip>${jacoco.check.skip}</skip>
+              <dataFile>${project.build.directory}/jacoco.exec</dataFile>
+              <rules>
+                <rule>
+                  <element>PACKAGE</element>
+                  <includes>
+                    <include>com.cognitanexus.query.discovery*</include>
                   </includes>
                   <limits>
                     <limit>

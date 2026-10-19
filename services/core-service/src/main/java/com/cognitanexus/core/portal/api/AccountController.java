@@ -184,6 +184,24 @@ public class AccountController {
             TraceIdHolder.current()));
   }
 
+  /**
+   * 导出「我的成果」为 CSV。
+   *
+   * <p>返回文件本体而不是 JSON 信封，与公开检索导出保持一致：下载类接口把 CSV 包进 JSON 再让前端
+   * 解码，等于让每个客户端各写一遍解码逻辑。
+   *
+   * <p>超出行数上限时返回 400 且 message 说明原因（不静默截断）；前端把 message 直接展示出来。
+   */
+  @GetMapping("/contributions/export")
+  public ResponseEntity<byte[]> exportContributions(@RequestParam String scholarId) {
+    byte[] csv =
+        relations.exportOwnedContributionsCsv(ActorContextHolder.currentOrNull(), scholarId);
+    return ResponseEntity.ok()
+        .header("Content-Disposition", "attachment; filename=my-contributions.csv")
+        .header("Content-Type", "text/csv; charset=UTF-8")
+        .body(csv);
+  }
+
   /** 本人确认参与关系。确认只改状态，不删除关系、不覆盖来源事实。 */
   @PostMapping("/contributions/{contributionId}/confirm")
   public ResponseEntity<ApiResponse<Map<String, Object>>> confirmContribution(

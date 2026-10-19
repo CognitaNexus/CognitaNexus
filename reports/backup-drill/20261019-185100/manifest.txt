@@ -1,0 +1,25 @@
+# 备份恢复演练
+time=20261019-185100
+source=core_db@127.0.0.1:5432
+target=core_drill@127.0.0.1:55432
+dump_bytes=67313030
+dump_seconds=9
+restore_seconds=24
+
+table                                  source     restored result
+core_achievement                        23301        23301 OK
+core_scholar                            72773        72773 OK
+core_contribution                      108335       108335 OK
+core_achievement_source                 29385        29385 OK
+core_identifier_registry               107508       107508 OK
+core_submission                            40           40 OK
+core_citation_observation                1464         1464 OK
+core_citation_reference                136672       136672 OK
+core_scholar_name_variant                   0            0 OK
+iam_account                               127          127 OK
+aud_audit_event                          5488         5488 OK
+
+# 结构核对（恢复库）
+indexes=95
+constraints=181
+flyway_version=18

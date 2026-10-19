@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.cognitanexus.core.catalog.application.CatalogRepositories;
 import com.cognitanexus.core.identity.application.IdentityRepositories;
+import com.cognitanexus.core.notification.application.NotificationService;
 import com.cognitanexus.core.platform.audit.AuditRecorder;
 import com.cognitanexus.core.platform.event.OutboxStore;
 import com.cognitanexus.core.platform.idempotency.IdempotencyGuard;
@@ -64,6 +65,7 @@ class PortalEvidenceAccessTest {
   @Mock IdempotencyGuard idempotency;
   @Mock OutboxStore outbox;
   @Mock AuditRecorder audit;
+  @Mock NotificationService notifications;
 
   private PortalService service;
 
@@ -79,7 +81,8 @@ class PortalEvidenceAccessTest {
             evidenceStorage,
             idempotency,
             outbox,
-            audit);
+            audit,
+            notifications);
   }
 
   private static ActorContext actor(String id, String... roles) {

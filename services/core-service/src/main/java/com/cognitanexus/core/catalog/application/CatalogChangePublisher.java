@@ -45,14 +45,17 @@ public class CatalogChangePublisher {
   private final AchievementRepository achievements;
   private final PublicProjectionAssembler projections;
   private final OutboxStore outbox;
+  private final AchievementIntegrityPort integrity;
 
   public CatalogChangePublisher(
       AchievementRepository achievements,
       PublicProjectionAssembler projections,
-      OutboxStore outbox) {
+      OutboxStore outbox,
+      AchievementIntegrityPort integrity) {
     this.achievements = achievements;
     this.projections = projections;
     this.outbox = outbox;
+    this.integrity = integrity;
   }
 
   /**
@@ -103,6 +106,9 @@ public class CatalogChangePublisher {
               payload.put("abstractText", p.abstractText());
             });
 
+    // 诚信状态：登记撤稿/更正后必须让投影知道，否则检索列表仍显示成干净的一条。
+    // 只带状态码，理由与声明主体留在详情接口里。
+    payload.put("integrityStatus", integrity.statusOf(achievementId));
     payload.put("contributions", projections.contributionsOf(achievementId));
     payload.put("topics", projections.topicIdsOf(achievementId));
     payload.put("topicViews", projections.topicsOf(achievementId));

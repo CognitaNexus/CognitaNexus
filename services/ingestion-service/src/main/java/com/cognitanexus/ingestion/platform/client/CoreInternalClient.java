@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -155,6 +156,62 @@ public class CoreInternalClient {
         body.toString());
   }
 
+  /**
+   * 待补参考文献的成果清单。
+   *
+   * <p>为什么由 core 决定「补哪些」：可见性、合并重定向与「是否已采过」的权威都在 core。采集侧
+   * 自己挑的话，会挑到受限成果（采集侧看不到可见性，只知道有条记录），也会重复采已采过的。
+   */
+  public PendingCitations pendingCitations(int limit, String search, String topicId) {
+    StringBuilder path = new StringBuilder("/internal/v1/citations/pending?limit=").append(limit);
+    if (search != null && !search.isBlank()) {
+      path.append("&search=").append(urlEncodePath(search));
+    }
+    if (topicId != null && !topicId.isBlank()) {
+      path.append("&topicId=").append(urlEncodePath(topicId));
+    }
+    JsonNode body = exchange(HttpMethod.GET, path.toString(), null, null, null);
+    if (body == null) {
+      return new PendingCitations(List.of(), 0);
+    }
+    JsonNode data = body.path("data");
+    List<PendingCitation> items = new ArrayList<>();
+    for (JsonNode item : data.path("items")) {
+      items.add(
+          new PendingCitation(
+              item.path("achievementId").asText(null),
+              item.path("doi").asText(null),
+              item.path("citationCount").isNumber() ? item.path("citationCount").asInt() : null));
+    }
+    return new PendingCitations(items, data.path("remaining").asInt(0));
+  }
+
+  /**
+   * 投递参考文献观测。
+   *
+   * <p>core 的接收是幂等的（每篇先删旧条目再插），因此超时重投是安全的；这里不做本地重试，
+   * 由调用方按批重投并记录回执——重试逻辑放在一处，才不会出现「批内重试 + 批间重试」叠成两层。
+   */
+  public CitationReceipt postCitationObservations(List<Map<String, Object>> observations) {
+    JsonNode body =
+        exchange(
+            HttpMethod.POST,
+            "/internal/v1/citation-observations",
+            null,
+            null,
+            Map.of("observations", observations));
+    if (body == null) {
+      throw new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE, "core 未返回引用观测回执，本批结果未知");
+    }
+    JsonNode data = body.path("data");
+    return new CitationReceipt(
+        data.path("received").asInt(0),
+        data.path("matched").asInt(0),
+        data.path("referencesWritten").asInt(0),
+        data.path("resolved").asInt(0),
+        data.path("external").asInt(0));
+  }
+
   private JsonNode exchange(
       HttpMethod method, String path, String cookieHeader, String csrfHeader, Object requestBody) {
     String url = properties.baseUrl() + path;
@@ -248,6 +305,16 @@ public class CoreInternalClient {
       long catalogRevision,
       Map<String, String> receiptStatuses,
       String rawBody) {}
+
+  /** 待补参考文献的成果。 */
+  public record PendingCitation(String achievementId, String doi, Integer citationCount) {}
+
+  /** 待补清单与剩余规模。 */
+  public record PendingCitations(List<PendingCitation> items, int remaining) {}
+
+  /** 引用观测入库回执。 */
+  public record CitationReceipt(
+      int received, int matched, int referencesWritten, int resolved, int external) {}
 
   /** core 调用配置。 */
   @ConfigurationProperties(prefix = "cn.core")

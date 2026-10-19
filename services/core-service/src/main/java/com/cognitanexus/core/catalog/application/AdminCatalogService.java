@@ -61,6 +61,7 @@ public class AdminCatalogService {
   private final AuditRecorder audit;
   private final PublicProjectionAssembler projections;
   private final CatalogChangePublisher catalogChanges;
+  private final AchievementIntegrityPort integrity;
 
   public AdminCatalogService(
       AchievementRepository achievements,
@@ -76,7 +77,8 @@ public class AdminCatalogService {
       OutboxStore outbox,
       AuditRecorder audit,
       PublicProjectionAssembler projections,
-      CatalogChangePublisher catalogChanges) {
+      CatalogChangePublisher catalogChanges,
+      AchievementIntegrityPort integrity) {
     this.achievements = achievements;
     this.scholars = scholars;
     this.contributions = contributions;
@@ -91,6 +93,7 @@ public class AdminCatalogService {
     this.audit = audit;
     this.projections = projections;
     this.catalogChanges = catalogChanges;
+    this.integrity = integrity;
   }
 
   /** 运行概览：权威计数 + 事件积压 + 治理待办。 */
@@ -127,6 +130,9 @@ public class AdminCatalogService {
     view.put("sourceRecords", sourceRecords.countAll());
     view.put("dedupCandidatesOpen", governance.countOpenCandidates(actor));
     view.put("anomaliesOpen", governance.countOpenAnomalies(actor));
+    // 公众纠错是 anomaliesOpen 的子集，单独列出是为了让「外部有人指出数据错了」这件事有一个
+    // 独立的数字——它对外有承诺，处置节奏与巡检发现的口径问题不同。
+    view.put("correctionsOpen", governance.countOpenCorrections(actor));
     view.put("catalogRevision", outbox.currentRevision());
     view.put("requiredPublicRevision", outbox.requiredPublicRevision());
 
@@ -520,6 +526,7 @@ public class AdminCatalogService {
                   "publishedDate", p.publishedDate() == null ? null : p.publishedDate().toString());
               view.put("abstractText", p.abstractText());
             });
+    view.put("integrityStatus", integrity.statusOf(achievement.id()));
     view.put("contributions", projections.contributionsOf(achievement.id()));
     view.put("topics", projections.topicIdsOf(achievement.id()));
     view.put("topicViews", projections.topicsOf(achievement.id()));

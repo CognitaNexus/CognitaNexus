@@ -59,10 +59,28 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '我的门户', requiresAuth: true },
   },
   {
+    path: '/portal/account',
+    name: 'portal-account',
+    component: () => import('@/views/AccountSettingsView.vue'),
+    meta: { title: '账号设置', requiresAuth: true },
+  },
+  {
     path: '/portal/contributions',
     name: 'portal-contributions',
     component: () => import('@/views/PortalContributionsView.vue'),
     meta: { title: '我的成果', requiresAuth: true },
+  },
+  {
+    path: '/portal/submissions',
+    name: 'portal-submissions',
+    component: () => import('@/views/PortalSubmissionsView.vue'),
+    meta: { title: '提交成果', requiresAuth: true },
+  },
+  {
+    path: '/governance/submissions',
+    name: 'submission-queue',
+    component: () => import('@/views/SubmissionQueueView.vue'),
+    meta: { title: '待审成果', requiresAuth: true },
   },
   {
     path: '/review/relations',
@@ -77,6 +95,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '待办', requiresAuth: true },
   },
   {
+    path: '/notifications',
+    name: 'notifications',
+    component: () => import('@/views/NotificationsView.vue'),
+    meta: { title: '通知', requiresAuth: true },
+  },
+  {
     path: '/review',
     name: 'review',
     component: () => import('@/views/ReviewView.vue'),
@@ -89,6 +113,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '治理与去重', requiresAuth: true },
   },
   {
+    path: '/governance/citations',
+    name: 'citation-ops',
+    component: () => import('@/views/CitationOpsView.vue'),
+    meta: { title: '引用网络采集', requiresAuth: true },
+  },
+  {
     path: '/ingestion',
     name: 'ingestion',
     component: () => import('@/views/IngestionView.vue'),
@@ -99,6 +129,18 @@ const routes: RouteRecordRaw[] = [
     name: 'audit',
     component: () => import('@/views/AuditView.vue'),
     meta: { title: '审计查询', requiresAuth: true },
+  },
+  {
+    path: '/announcements',
+    name: 'announcements',
+    component: () => import('@/views/AnnouncementView.vue'),
+    meta: { title: '系统公告', requiresAuth: true },
+  },
+  {
+    path: '/favorites',
+    name: 'favorites',
+    component: () => import('@/views/FavoritesView.vue'),
+    meta: { title: '我的收藏', requiresAuth: true },
   },
   {
     path: '/ops',

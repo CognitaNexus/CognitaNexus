@@ -1,6 +1,7 @@
 package com.cognitanexus.ingestion.collect.api;
 
 import com.cognitanexus.ingestion.collect.adapter.SourceAdapterRegistry;
+import com.cognitanexus.ingestion.collect.application.CitationHydrationService;
 import com.cognitanexus.ingestion.collect.application.CollectExecutionService;
 import com.cognitanexus.ingestion.collect.application.CollectJobService;
 import com.cognitanexus.ingestion.collect.application.CollectProperties;
@@ -50,6 +51,7 @@ public class AdminIngestionController {
   private final CollectProperties properties;
   private final CollectRepositories.JobRepository jobRepository;
   private final ImportService imports;
+  private final CitationHydrationService citationHydration;
 
   public AdminIngestionController(
       SourceRunConfigService sources,
@@ -58,7 +60,8 @@ public class AdminIngestionController {
       SourceAdapterRegistry adapters,
       CollectProperties properties,
       CollectRepositories.JobRepository jobRepository,
-      ImportService imports) {
+      ImportService imports,
+      CitationHydrationService citationHydration) {
     this.sources = sources;
     this.jobs = jobs;
     this.execution = execution;
@@ -66,6 +69,52 @@ public class AdminIngestionController {
     this.properties = properties;
     this.jobRepository = jobRepository;
     this.imports = imports;
+    this.citationHydration = citationHydration;
+  }
+
+  /**
+   * 参考文献补水。
+   *
+   * <p>依据：SRS FR06。按 core 的待补清单，向外网来源批量取参考文献列表并投给 core 建边。
+   * 返回值里必须看三个东西：{@code worksFetched}（这次真取到多少篇）、{@code creditsRemaining}
+   * （来源还剩多少配额）、{@code stoppedReason}（为什么停）。只有「补完了」和「配额用完了」
+   * 两种停止原因是正常结束，其余都应视为需要人工判断的异常。
+   *
+   * <p>不自动定时跑：一次补水会消耗来源配额，而配额是全站共享的；定时任务把「配额用光了」变成
+   * 一件没人看见的事，需要时手动触发、看回执更可控。
+   */
+  @PostMapping("/citations/hydrate")
+  public ApiResponse<CitationHydrationService.HydrationReport> hydrateCitations(
+      @RequestParam(defaultValue = "200") int limit,
+      @RequestParam(required = false) String search,
+      @RequestParam(required = false) String topicId,
+      @RequestParam(defaultValue = "AUTO") String provider) {
+    return ApiResponse.ok(
+        citationHydration.hydrate(limit, search, topicId, providerOf(provider)),
+        TraceIdHolder.current());
+  }
+
+  /** 指定 DOI 的定向补水：排障与验收用，不改变待补清单的推进顺序。 */
+  @PostMapping("/citations/hydrate-dois")
+  public ApiResponse<CitationHydrationService.HydrationReport> hydrateCitationDois(
+      @RequestBody List<String> dois, @RequestParam(defaultValue = "AUTO") String provider) {
+    return ApiResponse.ok(
+        citationHydration.hydrateDois(dois, providerOf(provider)), TraceIdHolder.current());
+  }
+
+  /**
+   * 解析补水来源参数。
+   *
+   * <p>非法取值直接 400 而不是回落到 AUTO：把 {@code crossreff} 静默当成 OPENALEX 跑一轮，会用掉
+   * 本已紧张的额度却得到一个「我明明指定了 Crossref」的结果。
+   */
+  private static CitationHydrationService.Provider providerOf(String raw) {
+    try {
+      return CitationHydrationService.Provider.valueOf(
+          raw == null || raw.isBlank() ? "AUTO" : raw.trim().toUpperCase(java.util.Locale.ROOT));
+    } catch (IllegalArgumentException ex) {
+      throw BusinessException.invalidArgument("不支持的补水来源：" + raw + "（可选 AUTO|OPENALEX|CROSSREF）");
+    }
   }
 
   // ---------------------------------------------------------------------------

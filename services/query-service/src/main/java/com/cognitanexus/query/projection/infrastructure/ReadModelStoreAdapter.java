@@ -42,6 +42,11 @@ public class ReadModelStoreAdapter implements ReadModelStore {
   }
 
   @Override
+  public int restoreAchievement(String generation, String achievementId, long revision) {
+    return mapper.restoreAchievement(generation, achievementId, revision);
+  }
+
+  @Override
   public void replaceContributions(
       String generation, String achievementId, List<ProjectedContribution> contributions) {
     // 先清空：事件载荷给的是该成果参与关系的完整集合，不清空就会把两批数据叠加，
@@ -199,6 +204,7 @@ public class ReadModelStoreAdapter implements ReadModelStore {
         achievement.dataNature(),
         achievement.visibility(),
         achievement.effectiveStatus(),
+        achievement.integrityStatus(),
         year,
         achievement.doi(),
         achievement.venue(),
@@ -219,6 +225,7 @@ public class ReadModelStoreAdapter implements ReadModelStore {
         row.dataNature(),
         row.visibility(),
         row.effectiveStatus(),
+        row.integrityStatus(),
         row.publicationYear(),
         row.doi(),
         row.venue(),

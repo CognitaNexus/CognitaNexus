@@ -36,6 +36,7 @@ public interface ReadModelMapper {
       String dataNature,
       String visibility,
       String effectiveStatus,
+      String integrityStatus,
       Integer publicationYear,
       String doi,
       String venue,
@@ -79,11 +80,12 @@ public interface ReadModelMapper {
       """
       INSERT INTO qry_achievement
         (generation, achievement_id, type, title, title_norm, data_nature, visibility,
-         effective_status, publication_year, doi, venue, citation_count, citation_source,
-         published_date, abstract_text, aggregate_version, revision, updated_at)
+         effective_status, integrity_status, publication_year, doi, venue, citation_count,
+         citation_source, published_date, abstract_text, aggregate_version, revision, updated_at)
       VALUES
         (#{generation}, #{row.achievementId}, #{row.type}, #{row.title}, #{row.titleNorm},
-         #{row.dataNature}, #{row.visibility}, #{row.effectiveStatus}, #{row.publicationYear},
+         #{row.dataNature}, #{row.visibility}, #{row.effectiveStatus}, #{row.integrityStatus},
+         #{row.publicationYear},
          #{row.doi}, #{row.venue}, #{row.citationCount}, #{row.citationSource},
          #{row.publishedDate}, #{row.abstractText}, #{row.aggregateVersion}, #{row.revision}, now())
       ON CONFLICT (generation, achievement_id) DO UPDATE SET
@@ -93,6 +95,7 @@ public interface ReadModelMapper {
         data_nature = EXCLUDED.data_nature,
         visibility = EXCLUDED.visibility,
         effective_status = EXCLUDED.effective_status,
+        integrity_status = EXCLUDED.integrity_status,
         publication_year = EXCLUDED.publication_year,
         doi = EXCLUDED.doi,
         venue = EXCLUDED.venue,
@@ -133,6 +136,22 @@ public interface ReadModelMapper {
       @Param("achievementId") String achievementId,
       @Param("revision") long revision);
 
+  /**
+   * 恢复可见性：只翻回「收紧时落下的」RESTRICTED（ADR-001 恢复语义：恢复只放开因撤权被收紧的）。
+   * 参与关系在收紧时保留，恢复后由应用层据此重建合作边。
+   */
+  @Update(
+      """
+      UPDATE qry_achievement
+      SET visibility = 'PUBLIC', revision = GREATEST(revision, #{revision}), updated_at = now()
+      WHERE generation = #{generation} AND achievement_id = #{achievementId}
+        AND visibility = 'RESTRICTED'
+      """)
+  int restoreAchievement(
+      @Param("generation") String generation,
+      @Param("achievementId") String achievementId,
+      @Param("revision") long revision);
+
   @Select(
       """
       WITH del_ach AS (DELETE FROM qry_achievement
@@ -160,8 +179,8 @@ public interface ReadModelMapper {
   @Select(
       """
       SELECT achievement_id, type, title, title_norm, data_nature, visibility, effective_status,
-             publication_year, doi, venue, citation_count, citation_source, published_date,
-             abstract_text, aggregate_version, revision
+             integrity_status, publication_year, doi, venue, citation_count, citation_source,
+             published_date, abstract_text, aggregate_version, revision
       FROM qry_achievement
       WHERE generation = #{generation} AND achievement_id = #{achievementId}
       """)

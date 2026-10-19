@@ -63,6 +63,9 @@ final class EventPayloadReader {
             dataNature,
             firstNonBlank(asString(payload.get("visibility")), "RESTRICTED"),
             firstNonBlank(asString(payload.get("effectiveStatus")), "PENDING_GOVERNANCE"),
+            // 诚信状态缺失按 NONE 处理：它是后加的附加字段，老事件里本来就没有，
+            // 且「没有声明」是安全默认——它不会把内容放出去，只影响是否显示标记。
+            firstNonBlank(asString(payload.get("integrityStatus")), "NONE"),
             asInteger(payload.get("publicationYear")),
             asString(payload.get("doi")),
             asString(payload.get("venue")),
@@ -113,6 +116,9 @@ final class EventPayloadReader {
             dataNature,
             visibility,
             effectiveStatus,
+            // 导出路径同样按 NONE 兜底：可见性缺失在这里是错误（见方法注释），但诚信状态缺失
+            // 只意味着 core 侧尚未升级或该成果没有声明，不构成「公开视图被清空」的风险。
+            firstNonBlank(asString(view.get("integrityStatus")), "NONE"),
             asInteger(view.get("publicationYear")),
             asString(view.get("doi")),
             asString(view.get("venue")),

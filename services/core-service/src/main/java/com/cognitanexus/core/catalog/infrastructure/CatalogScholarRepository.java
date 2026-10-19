@@ -2,6 +2,7 @@ package com.cognitanexus.core.catalog.infrastructure;
 
 import com.cognitanexus.core.catalog.application.CatalogRepositories.ScholarRepository;
 import com.cognitanexus.core.catalog.domain.Scholar;
+import com.cognitanexus.core.catalog.domain.ScholarProfile;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
@@ -82,6 +83,40 @@ public class CatalogScholarRepository implements ScholarRepository {
   @Override
   public int updateOrganizationName(String scholarId, String organizationName) {
     return mapper.updateOrganizationName(scholarId, organizationName);
+  }
+
+  @Override
+  public Optional<ScholarProfile> findProfile(String scholarId) {
+    return mapper.findProfile(scholarId).map(mapper::toProfile);
+  }
+
+  @Override
+  public int updateHomepageUrl(String scholarId, String homepageUrl) {
+    return mapper.updateHomepageUrl(scholarId, homepageUrl);
+  }
+
+  @Override
+  public int updateAvatar(String scholarId, String avatarRef, String avatarMediaType) {
+    return mapper.updateAvatar(scholarId, avatarRef, avatarMediaType);
+  }
+
+  @Override
+  public int clearAvatar(String scholarId) {
+    return mapper.clearAvatar(scholarId);
+  }
+
+  @Override
+  public List<String> listFeatured(String scholarId) {
+    return mapper.listFeatured(scholarId);
+  }
+
+  @Override
+  public void replaceFeatured(String scholarId, List<String> achievementIds) {
+    mapper.deleteFeatured(scholarId);
+    int rank = 1;
+    for (String achievementId : achievementIds) {
+      mapper.insertFeatured(scholarId, achievementId, rank++);
+    }
   }
 
   @Override

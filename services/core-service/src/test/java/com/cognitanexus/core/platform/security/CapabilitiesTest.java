@@ -34,10 +34,13 @@ class CapabilitiesTest {
   }
 
   @Test
-  @DisplayName("普通用户只有提交认领与维护自己门户两项能力")
+  @DisplayName("普通用户有提交认领、维护自己门户、自助提交成果三项能力")
   void userCapabilities() {
     assertThat(Capabilities.of(actor(RoleNames.USER)))
-        .containsExactlyInAnyOrder(RoleNames.CAP_CLAIM_SUBMIT, RoleNames.CAP_PORTAL_MAINTAIN);
+        .containsExactlyInAnyOrder(
+            RoleNames.CAP_CLAIM_SUBMIT,
+            RoleNames.CAP_PORTAL_MAINTAIN,
+            RoleNames.CAP_SUBMISSION_SUBMIT);
   }
 
   @Test
@@ -48,6 +51,8 @@ class CapabilitiesTest {
     assertThat(Capabilities.has(user, RoleNames.CAP_SOURCE_MANAGE)).isFalse();
     assertThat(Capabilities.has(user, RoleNames.CAP_ACCOUNT_MANAGE)).isFalse();
     assertThat(Capabilities.has(user, RoleNames.CAP_GOVERNANCE_MANAGE)).isFalse();
+    // 自助提交与审核分开：能提交的人不能自己批自己，否则「审核」就只是一句提示语。
+    assertThat(Capabilities.has(user, RoleNames.CAP_SUBMISSION_REVIEW)).isFalse();
   }
 
   @Test
@@ -59,7 +64,8 @@ class CapabilitiesTest {
             RoleNames.CAP_CHANGE_REVIEW,
             RoleNames.CAP_GOVERNANCE_MANAGE,
             RoleNames.CAP_AUDIT_READ,
-            RoleNames.CAP_ACHIEVEMENT_CONFIRM);
+            RoleNames.CAP_ACHIEVEMENT_CONFIRM,
+            RoleNames.CAP_SUBMISSION_REVIEW);
   }
 
   @Test
@@ -71,11 +77,12 @@ class CapabilitiesTest {
   }
 
   @Test
-  @DisplayName("平台管理员拥有全部九项能力")
+  @DisplayName("平台管理员拥有全部十一项能力")
   void adminHasAll() {
     assertThat(Capabilities.of(actor(RoleNames.PLATFORM_ADMIN)))
         .containsExactlyInAnyOrderElementsOf(Capabilities.all());
-    assertThat(Capabilities.all()).hasSize(9);
+    // 这条数字断言是刻意的：新增能力时它会失败，逼着人来确认「这个能力该给谁」。
+    assertThat(Capabilities.all()).hasSize(11);
   }
 
   @Test
@@ -89,7 +96,9 @@ class CapabilitiesTest {
             RoleNames.CAP_CHANGE_REVIEW,
             RoleNames.CAP_GOVERNANCE_MANAGE,
             RoleNames.CAP_AUDIT_READ,
-            RoleNames.CAP_ACHIEVEMENT_CONFIRM);
+            RoleNames.CAP_ACHIEVEMENT_CONFIRM,
+            RoleNames.CAP_SUBMISSION_SUBMIT,
+            RoleNames.CAP_SUBMISSION_REVIEW);
   }
 
   @Test
@@ -148,6 +157,8 @@ class CapabilitiesTest {
             RoleNames.CAP_GOVERNANCE_MANAGE,
             RoleNames.CAP_AUDIT_READ,
             RoleNames.CAP_ACCOUNT_MANAGE,
-            RoleNames.CAP_ACHIEVEMENT_CONFIRM);
+            RoleNames.CAP_ACHIEVEMENT_CONFIRM,
+            RoleNames.CAP_SUBMISSION_SUBMIT,
+            RoleNames.CAP_SUBMISSION_REVIEW);
   }
 }

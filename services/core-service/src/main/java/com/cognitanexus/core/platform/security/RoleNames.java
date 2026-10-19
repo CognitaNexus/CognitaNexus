@@ -21,5 +21,11 @@ public final class RoleNames {
   public static final String CAP_ACCOUNT_MANAGE = "account:manage";
   public static final String CAP_ACHIEVEMENT_CONFIRM = "achievement:confirm";
 
+  /** 自助提交成果：任何登录用户都有，但提交件在审核通过前不是成果。 */
+  public static final String CAP_SUBMISSION_SUBMIT = "submission:submit";
+
+  /** 审核他人提交的成果：与「认领审核」分开，因为它决定一条新记录会不会进入公开目录。 */
+  public static final String CAP_SUBMISSION_REVIEW = "submission:review";
+
   private RoleNames() {}
 }

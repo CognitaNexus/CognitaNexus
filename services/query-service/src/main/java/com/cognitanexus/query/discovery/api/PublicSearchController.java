@@ -67,6 +67,45 @@ public class PublicSearchController {
     return ResponseEntity.ok(ApiResponse.ok(data, TraceIdHolder.current()));
   }
 
+  /**
+   * 检索结果导出（CSV）。与在线检索共用同一套公开资格条件、排序与口径归一。
+   *
+   * <p>响应不是 ApiResponse 信封而是文件本体：导出的消费者是电子表格软件，不是本平台的
+   * 前端——包一层信封只会让「另存为 csv」得到一个 JSON。口径与版本经响应头携带，
+   * 供审计时回答「这份文件是什么口径、哪个水位导出的」。
+   */
+  @GetMapping("/achievements/export")
+  public ResponseEntity<byte[]> exportAchievements(
+      @RequestParam(required = false) String q,
+      @RequestParam(required = false) String type,
+      @RequestParam(required = false) Integer yearFrom,
+      @RequestParam(required = false) Integer yearTo,
+      @RequestParam(required = false) String topic,
+      @RequestParam(required = false) String organization,
+      @RequestParam(required = false) String dataNature,
+      @RequestParam(required = false) String sort) {
+    SearchQuery query =
+        new SearchQuery(
+            q,
+            SearchQuery.normalizeKeyword(q),
+            normalizeType(type),
+            yearFrom,
+            yearTo,
+            blankToNull(topic),
+            blankToNull(organization),
+            blankToNull(dataNature),
+            blankToNull(sort),
+            1,
+            1,
+            null);
+    byte[] csv = searchService.exportCsv(query);
+    log.info("检索导出 bytes={} nature={} q={}", csv.length, dataNature, q);
+    return ResponseEntity.ok()
+        .header("Content-Disposition", "attachment; filename=achievements-export.csv")
+        .header("Content-Type", "text/csv; charset=UTF-8")
+        .body(csv);
+  }
+
   @GetMapping("/scholars")
   public ResponseEntity<ApiResponse<Map<String, Object>>> scholars(
       @RequestParam(required = false) String q,
@@ -114,6 +153,22 @@ public class PublicSearchController {
     data.put("ruleVersion", SearchService.RULE_VERSION);
     data.put("note", "ALL 表示不限数据性质（演示口径）；默认 REAL 只含真实数据。交互式深翻页上限为 maxOffset 条。");
     return ResponseEntity.ok(ApiResponse.ok(data, TraceIdHolder.current()));
+  }
+
+  /**
+   * 检索框建议。
+   *
+   * <p>与检索共用同一道公开资格屏障：建议若绕过它，未公开成果的标题会从输入框下方漏出来。
+   * 关键词为空时返回空两组，不报错——用户清空输入框不该收到一个错误提示。
+   */
+  @GetMapping("/suggest")
+  public ResponseEntity<ApiResponse<Map<String, Object>>> suggest(
+      @RequestParam(required = false) String q,
+      @RequestParam(required = false) String dataNature,
+      @RequestParam(defaultValue = "6") int limit) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            searchService.suggest(q, blankToNull(dataNature), limit), TraceIdHolder.current()));
   }
 
   private static String blankToNull(String value) {

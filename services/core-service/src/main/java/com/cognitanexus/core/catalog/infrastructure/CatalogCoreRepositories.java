@@ -278,6 +278,11 @@ public class CatalogCoreRepositories
   }
 
   @Override
+  public List<String> listScholarIdsByRestrictionSource(String sourceId) {
+    return achievementMapper.listScholarIdsByRestrictionSource(sourceId);
+  }
+
+  @Override
   public List<String> restoreBatchForSource(String sourceId, int limit) {
     return achievementMapper.restoreBatchForSource(sourceId, limit);
   }
@@ -356,6 +361,64 @@ public class CatalogCoreRepositories
   public List<Contribution> listByScholar(String scholarId) {
     return relationshipMapper.listByScholar(scholarId).stream()
         .map(relationshipMapper::toDomain)
+        .toList();
+  }
+
+  @Override
+  public List<YearAmount> yearDistributionOf(String scholarId) {
+    return relationshipMapper.yearDistributionOf(scholarId).stream()
+        .map(row -> new YearAmount(row.year() == null ? 0 : row.year(), row.amount()))
+        .toList();
+  }
+
+  @Override
+  public long countUndatedWorksOf(String scholarId) {
+    return relationshipMapper.countUndatedWorksOf(scholarId);
+  }
+
+  @Override
+  public long countRetractedWorksOf(String scholarId) {
+    return relationshipMapper.countRetractedWorksOf(scholarId);
+  }
+
+  @Override
+  public List<CoauthorCount> topCoauthorsOf(String scholarId, int limit) {
+    return relationshipMapper.topCoauthorsOf(scholarId, limit).stream()
+        .map(
+            row ->
+                new CoauthorCount(
+                    row.scholarId(), row.displayName(), row.organizationName(), row.shared()))
+        .toList();
+  }
+
+  @Override
+  public CitationSummary citationSummaryOf(String scholarId) {
+    var row = relationshipMapper.citationSummaryOf(scholarId);
+    return new CitationSummary(
+        row.works(),
+        row.withCitation(),
+        row.nonPaperWorks(),
+        row.totalCitations(),
+        row.maxCitations());
+  }
+
+  @Override
+  public List<CitationYear> citationByYearOf(String scholarId) {
+    return relationshipMapper.citationByYearOf(scholarId).stream()
+        .map(
+            row ->
+                new CitationYear(
+                    row.year() == null ? null : row.year(),
+                    row.works(),
+                    row.withCitation(),
+                    row.citations()))
+        .toList();
+  }
+
+  @Override
+  public List<CitationSourceCount> citationSourcesOf(String scholarId) {
+    return relationshipMapper.citationSourcesOf(scholarId).stream()
+        .map(row -> new CitationSourceCount(row.source(), row.works()))
         .toList();
   }
 

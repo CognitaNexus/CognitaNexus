@@ -22,9 +22,12 @@ import { queryApi } from '@/api'
 import { ApiError } from '@/api/http'
 import type { AchievementKind, Facets, ScholarPage, SearchOptions, SearchPage, TopicView } from '@/api/types'
 import { useAsync } from '@/composables/useAsync'
+import { downloadHref, warningTone } from '@/composables/citationView'
+import { useCitationBatch } from '@/composables/useCitationBatch'
 import { useScopeStore } from '@/stores/scope'
 import AsyncBlock from '@/components/AsyncBlock.vue'
 import Pager from '@/components/Pager.vue'
+import SearchSuggest from '@/components/SearchSuggest.vue'
 
 type Scope = 'achievements' | 'scholars'
 
@@ -133,6 +136,60 @@ async function syncUrl() {
   await router.replace({ path: '/search', query: buildQuery() })
 }
 
+// ---------------------------------------------------------------------------
+// 批量引用导出：勾选本页若干成果 → 一份可直接导入文献管理软件的文件。
+//
+// 勾选只在当前结果页内有效：跨页累计会让「已选 5 条」里有几条根本看不见，用户点导出时无法在
+// 同屏核对将要得到什么。因此每次检索/翻页后都会把已不可见的勾选剪掉。
+// ---------------------------------------------------------------------------
+const bulk = useCitationBatch()
+
+const FORMAT_OPTIONS = [
+  { code: 'bibtex', label: 'BibTeX' },
+  { code: 'ris', label: 'RIS' },
+  { code: 'gb_t_7714', label: 'GB/T 7714' },
+  { code: 'apa', label: 'APA' },
+]
+
+const visibleIds = computed(() => (achievementData.value?.items ?? []).map((item) => item.id))
+
+// ---------------------------------------------------------------------------
+// 导出 CSV：按当前条件与口径拉文件并存为下载。与在线检索共用同一套资格条件，
+// 导出的每一行都能在检索页翻到（上限内）；超限的错误原因由服务端给出并直接展示。
+// ---------------------------------------------------------------------------
+const exporting = ref(false)
+const exportError = ref('')
+
+async function exportCsv() {
+  if (!achievementData.value || exporting.value) return
+  exporting.value = true
+  exportError.value = ''
+  try {
+    const envelope = await queryApi.exportAchievementsCsv({
+      q: keyword.value || undefined,
+      type: (type.value || undefined) as AchievementKind | undefined,
+      yearFrom: yearFrom.value ? Number(yearFrom.value) : undefined,
+      yearTo: yearTo.value ? Number(yearTo.value) : undefined,
+      organization: organization.value || undefined,
+      topic: topic.value || undefined,
+      dataNature: scope.nature,
+      sort: sort.value === 'relevance' ? undefined : sort.value,
+    })
+    const url = URL.createObjectURL(envelope.data)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `achievements-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (cause) {
+    exportError.value = cause instanceof Error ? cause.message : String(cause)
+  } finally {
+    exporting.value = false
+  }
+}
+
 /**
  * 执行检索。
  *
@@ -177,6 +234,8 @@ async function search(resetVersion = false) {
       if (mine !== requestSeq) return
       achievementData.value = pageData
       scholarData.value = null
+      // 结果集变了：屏幕上已经没有的成果不能再算「已选」。
+      bulk.prune(pageData.items.map((item) => item.id))
       if (pinnedVersion.value === null) pinnedVersion.value = pageData.queryVersion
       scope.observe(pageData)
     }
@@ -217,6 +276,20 @@ function applyFilters() {
   page.value = 1
   versionNotice.value = ''
   syncUrl().then(() => search(true))
+}
+
+/**
+ * 选中一条建议：成果直接进详情，学者直接进档案。
+ *
+ * 检索结果页存在的意义是「筛选与比较」，不是「确认某一条」。用户已经在建议里认出目标，
+ * 再把他送到列表里挑一次，只会多一次点击。
+ */
+function onPickSuggestion(payload: { kind: 'achievement' | 'scholar'; id: string }) {
+  if (payload.kind === 'scholar') {
+    router.push({ name: 'scholar', params: { id: payload.id } })
+    return
+  }
+  router.push({ name: 'achievement', params: { id: payload.id } })
 }
 
 function changePage(target: number) {
@@ -295,6 +368,12 @@ function positiveInt(value: unknown): number {
   return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 1
 }
 
+/** 格式下拉的切换。用显式方法而不是 v-model 直连 ref：切换格式必须作废上一份预览。 */
+function onBatchFormatChange(event: Event) {
+  const target = event.target as HTMLSelectElement
+  bulk.setFormat(target.value)
+}
+
 onMounted(() => {
   facets.run()
   options.run()
@@ -356,21 +435,24 @@ watch(
           <span class="tiny faint" style="align-self: center">
             {{
               searchScope === 'achievements'
-                ? '按题名、发表载体或 DOI 查找成果'
+                ? '按题名、作者、摘要、载体或 DOI 查找成果'
                 : '按姓名查找学者；同名者请进档案按机构核对，系统不替你做身份合并'
             }}
           </span>
         </div>
 
         <form class="btn-row" @submit.prevent="applyFilters">
-          <input
+          <SearchSuggest
             v-model="keyword"
-            type="search"
+            hide-button
+            :data-nature="scope.nature"
             :placeholder="
-              searchScope === 'achievements' ? '题名关键词、发表载体或 DOI' : '学者姓名'
+              searchScope === 'achievements' ? '题名、作者、摘要、载体或 DOI' : '学者姓名'
             "
-            style="flex: 1; min-width: 260px; height: 34px"
+            style="flex: 1; min-width: 260px"
             aria-label="检索关键词"
+            @submit="applyFilters()"
+            @pick="onPickSuggestion"
           />
           <select
             v-if="searchScope === 'achievements'"
@@ -482,11 +564,73 @@ watch(
             <span class="tiny faint mono">
               快照 {{ achievementData.queryVersion }} · 规则 {{ achievementData.ruleVersion }} · 排序
               {{ sortLabel(achievementData.appliedSort) }}
+              <button
+                class="btn small"
+                style="margin-left: 10px"
+                :disabled="exporting"
+                title="按当前条件与口径导出全部命中（上限 5000 条）"
+                @click="exportCsv"
+              >
+                {{ exporting ? '正在导出…' : '导出 CSV' }}
+              </button>
+              <span v-if="exportError" class="tiny" style="color: var(--danger, #b00); margin-left: 8px">{{
+                exportError
+              }}</span>
             </span>
+
+            <!-- 批量引用导出：勾选在本页内有效，计数就写在按钮旁边，避免「选了但不知道选了几条」。 -->
+            <div class="btn-row no-print" style="margin-left: auto">
+              <span class="tiny dim" style="align-self: center">已选 {{ bulk.count.value }} 条</span>
+              <button
+                class="btn small"
+                type="button"
+                :disabled="!visibleIds.length"
+                @click="bulk.selectAll(visibleIds)"
+              >
+                {{
+                  visibleIds.length && bulk.count.value === visibleIds.length ? '取消全选' : '全选本页'
+                }}
+              </button>
+              <button
+                class="btn small"
+                type="button"
+                :disabled="!bulk.count.value"
+                @click="bulk.clear()"
+              >
+                清空
+              </button>
+              <select
+                style="width: auto; height: 28px"
+                aria-label="批量导出的引用格式"
+                :value="bulk.format.value"
+                @change="onBatchFormatChange"
+              >
+                <option v-for="item in FORMAT_OPTIONS" :key="item.code" :value="item.code">
+                  {{ item.label }}
+                </option>
+              </select>
+              <button
+                class="btn small primary"
+                type="button"
+                :disabled="!bulk.count.value || bulk.loading.value"
+                title="把勾选的成果拼成一份文献库文件（一次最多 100 条）"
+                @click="bulk.run()"
+              >
+                {{ bulk.loading.value ? '正在生成…' : '导出引用' }}
+              </button>
+            </div>
           </div>
 
           <article v-for="item in achievementData.items" :key="item.id" class="result-item">
             <h3 class="result-title">
+              <label class="pick no-print" :title="`勾选「${item.title}」用于批量导出引用`">
+                <input
+                  type="checkbox"
+                  :checked="bulk.isSelected(item.id)"
+                  :aria-label="`选择「${item.title}」用于批量导出引用`"
+                  @change="bulk.toggle(item.id)"
+                />
+              </label>
               <RouterLink :to="`/achievements/${item.id}`">{{ item.title }}</RouterLink>
             </h3>
 
@@ -505,6 +649,15 @@ watch(
 
             <div class="result-meta" style="margin-top: 5px">
               <span class="badge neutral">{{ typeLabel(item.type) }}</span>
+              <!-- 诚信标记：撤稿必须一眼可见，否则读者会先把它当成一条正常成果。
+                   用可选链读取，是因为「服务端还没升级」与「确实没有声明」都不该让整个列表抛错。 -->
+              <span
+                v-if="item.integrity?.noticed"
+                :class="item.integrity.status === 'RETRACTION' ? 'badge danger' : 'badge warn'"
+                :title="item.integrity.label"
+              >
+                {{ item.integrity.label }}
+              </span>
               <!-- 必须同时挡 null 与 undefined：服务端 Jackson 配了 non_null，null 字段直接从
                    报文里消失，前端拿到的是 undefined。原来只写 !== null，于是「无关键词浏览」
                    命中的项目类成果（本来就没有引用量）会让这里执行 undefined.toLocaleString()，
@@ -542,6 +695,80 @@ watch(
             :disabled="loading"
             @change="changePage"
           />
+        </div>
+
+        <!-- 批量导出的结果面板。刻意与结果列表同屏：读者要能一边看文本一边核对自己勾了哪几条。
+             预览作废逻辑在 useCitationBatch 里：选择或格式一变，这份文本就不再是「将要下载的内容」。 -->
+        <div v-if="bulk.error.value || bulk.batch.value" class="panel no-print">
+          <div class="panel-head">
+            <h2>批量引用导出</h2>
+            <span class="tiny faint">{{ bulk.summary.value }}</span>
+          </div>
+          <div class="panel-body">
+            <p v-if="bulk.error.value" class="notice warn tiny" style="margin: 0">
+              {{ bulk.error.value }}
+            </p>
+            <template v-else-if="bulk.batch.value">
+              <div class="btn-row">
+                <a
+                  class="btn primary"
+                  :href="downloadHref(bulk.batch.value.downloadUrl)"
+                  :download="bulk.batch.value.fileName"
+                >
+                  下载 {{ bulk.batch.value.fileName }}
+                </a>
+                <button class="btn" type="button" @click="bulk.copy()">复制全文</button>
+                <span class="tiny faint" style="align-self: center">
+                  {{ bulk.batch.value.formatLabel }} ·
+                  {{ bulk.batch.value.entries.length }} 条 · 共
+                  {{ bulk.batch.value.text.length }} 字符
+                </span>
+              </div>
+
+              <p class="tiny dim" style="margin: 10px 0 0">
+                {{
+                  bulk.batch.value.machineReadable
+                    ? '该格式供文献管理软件读取（Zotero / EndNote / LaTeX），建议下载文件后导入；下载内容与下面这段逐字一致'
+                    : '该格式用于粘贴进参考文献表，逐条已按规范编号；下载内容与下面这段逐字一致'
+                }}
+              </p>
+
+              <pre class="pre" style="margin-top: 10px" aria-live="polite">{{
+                bulk.batch.value.text
+              }}</pre>
+
+              <p v-if="bulk.copied.value" class="tiny" style="margin: 6px 0 0">
+                {{ bulk.copied.value }}
+              </p>
+
+              <ul v-if="bulk.warnings.value.length" class="warn-list">
+                <li
+                  v-for="warning in bulk.warnings.value"
+                  :key="warning.code"
+                  :class="`warn-item ${warningTone(warning.code)}`"
+                >
+                  {{ warning.message }}
+                </li>
+              </ul>
+
+              <!-- 被跳过的条目必须列出来：少给一条而不说，读者会以为是自己少点了。 -->
+              <ul v-if="bulk.batch.value.skipped.length" class="warn-list">
+                <li
+                  v-for="item in bulk.batch.value.skipped"
+                  :key="item.achievementId"
+                  class="warn-item warn"
+                >
+                  {{ item.message }}（{{ item.achievementId }}）
+                </li>
+              </ul>
+
+              <p class="tiny faint" style="margin: 10px 0 0">
+                文件由 {{ bulk.batch.value.provenance }} 于
+                {{ bulk.batch.value.exportedOn }} 依已登记元数据生成。
+              </p>
+              <p class="tiny faint" style="margin: 6px 0 0">{{ bulk.batch.value.note }}</p>
+            </template>
+          </div>
         </div>
 
         <p class="tiny faint">

@@ -24,6 +24,14 @@ public interface IdentityRepositories {
     /** 认证视图：含口令哈希与锁定状态，仅供认证流程使用。 */
     Optional<AccountCredentials> findCredentialsByUsernameNorm(String usernameNorm);
 
+    /**
+     * 按账号读取认证视图。
+     *
+     * <p>改密需要先校验「当前口令」，而改密的调用方只有 {@code ActorContext}（含账号 ID），
+     * 没有登录名。用账号 ID 取凭据，避免在应用层把 ID 再换回登录名。
+     */
+    Optional<AccountCredentials> findCredentialsById(String accountId);
+
     void insert(Account account, String rawPasswordHash);
 
     /** 停用账号并提升认证版本，使既有会话立即失效。受影响行数须为 1。 */
@@ -40,6 +48,13 @@ public interface IdentityRepositories {
     int bumpAuthVersion(String accountId);
 
     /**
+     * 写入新口令并提升认证版本（同一条 UPDATE）。
+     *
+     * <p>受影响行数为 0 表示账号不存在或已停用，调用方须按冲突处理而不是静默成功。
+     */
+    int updatePassword(String accountId, String passwordHash, boolean mustChangePassword);
+
+    /**
      * 统计处于 ACTIVE 状态且持有指定角色的账号数。
      *
      * <p>供平台引导判定「是否已存在平台管理员」使用，不作为通用统计接口。
@@ -47,6 +62,14 @@ public interface IdentityRepositories {
     long countActiveByRole(String role);
 
     List<Account> listAll(int limit);
+
+    /**
+     * 启用账号的 ID 列表，供系统公告广播使用。
+     *
+     * <p>只返回 ACTIVE：停用账号无法登录，写给它只会造成「还在接收消息」的错觉。
+     * {@code limit} 是硬上限，调用方据此判断是否被截断，不能把它当分页用。
+     */
+    java.util.List<String> listActiveAccountIds(int limit);
 
     /** 登录成功：清零失败计数、解除锁定并记录最近登录时刻。 */
     void recordLoginSuccess(String accountId);

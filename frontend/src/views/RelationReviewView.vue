@@ -81,7 +81,9 @@ onMounted(() => queue.run())
   <div>
     <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
       <h1>关系争议裁决</h1>
-      <button class="btn small" @click="queue.run">刷新</button>
+      <!-- 写成 queue.run() 而不是 queue.run：后者会把点击事件当成参数传进 run()，
+           现在 run 接受 { silent } 选项，事件对象进去后既不是对象形状也不 silent，靠的是运气。 -->
+      <button class="btn small" @click="queue.run()">刷新</button>
     </div>
 
     <div class="notice info">

@@ -14,6 +14,7 @@ public final class QueryEventTypes {
 
   public static final String CATALOG_CHANGE_COMMITTED = "CatalogChangeCommitted";
   public static final String PUBLIC_VISIBILITY_TIGHTENED = "PublicVisibilityTightened";
+  public static final String PUBLIC_VISIBILITY_RESTORED = "PublicVisibilityRestored";
   public static final String PORTAL_AUTHORITY_GRANTED = "PortalAuthorityGranted";
   public static final String PORTAL_AUTHORITY_REVOKED = "PortalAuthorityRevoked";
   public static final String CLAIM_DECIDED = "ClaimDecided";

@@ -22,6 +22,7 @@ public record ProjectedAchievement(
     String dataNature,
     String visibility,
     String effectiveStatus,
+    String integrityStatus,
     Integer publicationYear,
     String doi,
     String venue,
@@ -31,6 +32,20 @@ public record ProjectedAchievement(
     String abstractText,
     long aggregateVersion,
     long revision) {
+
+  /**
+   * 是否有生效的诚信声明（关注 / 更正 / 撤稿）。
+   *
+   * <p>它不影响 {@link #publiclyVisible()}：撤稿成果仍然可检索，学术记录需要可查证。若在这里把它
+   * 判成不可见，撤稿就等于悄悄下架，引用过它的人再也查不到发生了什么。
+   */
+  public boolean hasIntegrityNotice() {
+    return integrityStatus != null && !"NONE".equals(integrityStatus);
+  }
+
+  public boolean retracted() {
+    return "RETRACTION".equals(integrityStatus);
+  }
 
   /** 是否满足默认现实视图的资格：真实、公开、生效。 */
   public boolean eligibleForRealityView() {

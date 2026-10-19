@@ -14,8 +14,19 @@ export function useAsync<T>(loader: () => Promise<T>, initial: T | null = null) 
   const error = ref('')
   const errorCode = ref('')
 
-  async function run(): Promise<void> {
-    loading.value = true
+  /**
+   * 重新读取。
+   *
+   * <p>{@code silent} 用于「写完再读一遍」：这种读取不该把页面切成加载态。默认读取会
+   * 打开 {@code loading}，而外层的三态组件在加载时只渲染一行「正在读取…」，整个内容区
+   * 会被卸载——写操作刚给的确认提示（「资料已保存」）随之消失，用户点了保存却什么都没看到，
+   * 只会再点一次。静默读取只换数据，不换界面。
+   */
+  async function run(options: { silent?: boolean } = {}): Promise<void> {
+    const silent = options.silent === true
+    if (!silent) {
+      loading.value = true
+    }
     error.value = ''
     errorCode.value = ''
     try {
@@ -32,7 +43,9 @@ export function useAsync<T>(loader: () => Promise<T>, initial: T | null = null) 
       // 读者无法判断屏幕上的数字是哪一次的。
       data.value = null
     } finally {
-      loading.value = false
+      if (!silent) {
+        loading.value = false
+      }
     }
   }
 

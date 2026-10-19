@@ -98,6 +98,7 @@ public class AdminCatalogController {
     view.put(
         "todoNote",
         "待办只统计「需要人做决定」的事项：待治理成果、未裁决重复候选、未处理异常、待审核认领、待审门户变更。"
+            + "correctionsOpen（公众纠错）是 anomaliesOpen 的子集，已计入总数，不重复相加；"
             + "采集失败与投递积压属于运行状态，在各自的页面按状态观察，不计入本数；"
             + "为 null 的项表示当前账号没有该类审核能力，不是「没有待办」。");
     return ResponseEntity.ok(ApiResponse.ok(view, TraceIdHolder.current()));

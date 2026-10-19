@@ -105,6 +105,36 @@ function actionsOf(row: Record<string, unknown>): string[] {
   return Array.isArray(value) ? value.map((item) => String(item)) : []
 }
 
+/**
+ * 导出「我的成果」。
+ *
+ * 导出的行数不受列表分页限制，因此按钮旁边要说明这一点：用户会拿这份文件去做考核材料，
+ * 「界面上只有 50 条」和「导出有 137 条」之间的落差必须事先说清，而不是等他自己数出来。
+ */
+const exportBusy = ref(false)
+const exportError = ref('')
+
+async function exportCsv() {
+  if (!selected.value || exportBusy.value) return
+  exportBusy.value = true
+  exportError.value = ''
+  try {
+    const envelope = await accountApi.exportContributionsCsv(selected.value)
+    const url = URL.createObjectURL(envelope.data)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `my-contributions-${selected.value}-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (cause) {
+    exportError.value = describeError(cause).message
+  } finally {
+    exportBusy.value = false
+  }
+}
+
 onMounted(loadPortals)
 </script>
 
@@ -153,7 +183,22 @@ onMounted(loadPortals)
       <div class="panel-head">
         <h2>参与关系</h2>
         <span class="tiny faint">状态由服务端判定，可执行动作随记录一起返回</span>
+        <button
+          v-if="selected"
+          class="btn small"
+          :disabled="exportBusy"
+          @click="exportCsv"
+        >
+          {{ exportBusy ? '导出中…' : '导出 CSV' }}
+        </button>
       </div>
+      <div v-if="exportError" class="notice warn" style="margin: 10px 12px 0">
+        {{ exportError }}
+      </div>
+      <p v-if="selected" class="tiny faint" style="margin: 10px 12px 0">
+        导出不分页，包含该门户下全部参与关系（含待核验与争议行，后者在「计入合作网络」列标为「否」）。
+        列里同时给出数据性质与生效状态：那是判断这行能不能写进对外材料的依据。
+      </p>
       <div class="panel-body tight">
         <AsyncBlock
           :loading="rows.loading.value"

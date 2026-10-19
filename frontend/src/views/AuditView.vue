@@ -9,6 +9,7 @@
  *  2. 字段溯源：每个字段的取值来自哪条来源记录、是原值还是人工值。来源原值不可被人工修订覆盖，
  *     这一点只有在逐字段的层级标注上才能被验证。
  *  3. 账号与角色：封禁与授角同样是有后果的管理动作，因此与审计放在同一页，操作前必须写原因。
+ *  4. 注销申请：执行注销只停用账号、不删数据——这一页同时在解释「为什么没有删除按钮」。
  */
 import { onMounted, reactive, ref } from 'vue'
 import { adminApi } from '@/api'
@@ -20,12 +21,19 @@ type Row = Record<string, unknown>
 const audit = reactive({ items: [] as Row[], loading: false, error: '', errorCode: '', total: null as number | null })
 const provenance = reactive({ items: [] as Row[], loading: false, error: '', errorCode: '' })
 const accounts = reactive({ items: [] as Row[], loading: false, error: '', errorCode: '' })
+const closures = reactive({ items: [] as Row[], loading: false, error: '', errorCode: '', total: null as number | null })
 
 const auditFilter = reactive({ targetType: '', targetId: '', actorAccountId: '' })
 const provenanceId = ref('')
 const accountReasons = reactive<Record<string, string>>({})
+/** 重置口令的理由与一次性结果都按账号分行保存：结果只显示一次，页面不能把它放进全局提示。 */
+const resetReasons = reactive<Record<string, string>>({})
+const resetResults = reactive<Record<string, string>>({})
 const roleDraft = reactive<Record<string, string>>({})
 const roleReason = ref('')
+
+/** 注销裁决按申请分行保存说明：一次处理一条，说明不能串到别的申请上。 */
+const closureNotes = reactive<Record<string, string>>({})
 
 const busy = ref('')
 const actionError = ref('')
@@ -79,8 +87,23 @@ function loadAccounts() {
   return loadSection(accounts, () => adminApi.accounts())
 }
 
+/**
+ * 注销申请队列。
+ *
+ * 只拉 PENDING：已裁决的申请留在库里供追溯，治理台需要的是「现在要处理什么」。
+ * total 用服务端返回的计数而不是 items.length，因为队列是分页的。
+ */
+function loadClosures() {
+  closures.total = null
+  return loadSection(closures, async () => {
+    const result = await adminApi.closureRequests({ limit: 50 })
+    closures.total = result.total
+    return result.items
+  })
+}
+
 function loadAll() {
-  return Promise.all([searchAudit(), loadAccounts()])
+  return Promise.all([searchAudit(), loadAccounts(), loadClosures()])
 }
 
 function resetAction() {
@@ -113,6 +136,35 @@ function disableAccount(row: Row) {
     return
   }
   run(`disable:${id}`, () => adminApi.disableAccount(id, reason), `账号 ${id} 已封禁。`, loadAccounts)
+}
+
+/**
+ * 重置他人口令。
+ *
+ * <p>成功后把一次性口令留在这一行里，而不是弹一个自动消失的提示：管理员需要照着念给本人，
+ * 提示消失了就只能再重置一次，而每次重置都会把对方刚建立的会话再踢掉一遍。
+ */
+async function resetPassword(row: Row) {
+  const id = String(row.id ?? '')
+  const reason = (resetReasons[id] ?? '').trim()
+  if (!reason) {
+    actionError.value = '重置口令必须填写理由。'
+    return
+  }
+  resetAction()
+  busy.value = `reset:${id}`
+  try {
+    const result = await adminApi.resetAccountPassword(id, reason)
+    resetResults[id] = String(result.temporaryPassword ?? '')
+    actionNote.value = `账号 ${id} 的口令已重置，该账号在其他设备上的会话已失效。`
+    await loadAccounts()
+  } catch (cause) {
+    const described = describeError(cause)
+    actionError.value = described.message
+    actionCode.value = described.code
+  } finally {
+    busy.value = ''
+  }
 }
 
 /**
@@ -158,8 +210,51 @@ function grantRole(row: Row) {
   )
 }
 
-/** 溯源值层级：来源原值与人工修订值必须在视觉上区分开，不能只靠文字描述。 */
-function levelBadge(level: unknown) {
+/**
+ * 冷静期结束后才允许执行注销。
+ *
+ * 这里只做界面提示，真正的判定在服务端 SQL 里（now() >= effective_at）。因此按钮不因
+ * 本机时钟判断而禁用——管理员机器时钟偏快时，禁用按钮会让人以为「永远不能批」；
+ * 让服务端拒绝并返回具体原因，比在前端猜时间更可靠。
+ */
+function coolingHint(value: unknown) {
+  const raw = String(value ?? '')
+  const at = Date.parse(raw)
+  if (!raw || Number.isNaN(at)) return '冷静期结束时间未给出'
+  const diff = at - Date.now()
+  if (diff <= 0) return '冷静期已结束，可执行注销'
+  const hours = Math.ceil(diff / 3_600_000)
+  const days = Math.floor(hours / 24)
+  return days >= 1 ? `冷静期内，约剩 ${days} 天` : `冷静期内，约剩 ${hours} 小时`
+}
+
+function coolingBadge(value: unknown) {
+  const raw = String(value ?? '')
+  const at = Date.parse(raw)
+  return !raw || Number.isNaN(at) || at > Date.now() ? 'badge warn' : 'badge ok'
+}
+
+function decideClosure(row: Row, decision: 'APPROVE' | 'REJECT') {
+  const id = String(row.id ?? '')
+  const accountId = String(row.accountId ?? '')
+  const note = (closureNotes[id] ?? '').trim()
+  if (!note) {
+    actionError.value = '裁决注销申请必须填写说明，该操作会写入审计记录。'
+    return
+  }
+  run(
+    `closure:${id}`,
+    () => adminApi.decideClosure(id, decision, note),
+    decision === 'APPROVE'
+      ? `已执行注销：账号 ${accountId} 已停用、角色已撤销、既有会话立即失效。业务数据未删除。`
+      : `已驳回账号 ${accountId} 的注销申请，账号保持可用。`,
+    async () => {
+      await Promise.all([loadClosures(), loadAccounts()])
+    },
+  )
+}
+
+/** 溯源值层级：来源原值与人工修订值必须在视觉上区分开，不能只靠文字描述。 */function levelBadge(level: unknown) {
   const value = String(level ?? '')
   if (value === 'SOURCE_ORIGINAL' || value === 'SOURCE') return 'badge ok'
   if (value === 'HUMAN_REVISED' || value === 'HUMAN') return 'badge warn'
@@ -379,12 +474,107 @@ onMounted(loadAll)
                 封禁
               </button>
             </div>
+
+            <div class="btn-row" style="margin-top: 8px">
+              <input
+                v-model="resetReasons[String(row.id)]"
+                type="text"
+                placeholder="重置口令原因（必填）"
+                style="flex: 1; min-width: 200px"
+              />
+              <button
+                class="btn small"
+                :disabled="busy === `reset:${String(row.id)}`"
+                @click="resetPassword(row)"
+              >
+                重置口令
+              </button>
+            </div>
+
+            <div v-if="resetResults[String(row.id)]" class="strip warn" style="margin-top: 8px">
+              <div>
+                一次性口令：<strong class="mono">{{ resetResults[String(row.id)] }}</strong>
+              </div>
+              <div class="tiny" style="margin-top: 4px">
+                只显示这一次，关闭页面后无法再次查看。请当面或经可信渠道转交本人；
+                对方的所有旧会话已失效，登录后应在「账号设置」中立即修改。
+              </div>
+            </div>
           </div>
         </AsyncBlock>
 
         <p class="tiny faint" style="margin: 10px 0 0">
           角色只决定能力集合，不决定对象级归属。平台管理员不会因此自动获得某个学者门户的维护权，
           门户归属仍需通过认领流程取得。
+        </p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>注销申请</h2>
+        <span class="tiny faint">只停用账号、不删数据；冷静期届满自动执行</span>
+      </div>
+      <div class="panel-body">
+        <AsyncBlock
+          :loading="closures.loading"
+          :error="closures.error"
+          :error-code="closures.errorCode"
+          :empty="closures.items.length === 0"
+          empty-text="没有待处理的注销申请。"
+        >
+          <div v-for="row in closures.items" :key="String(row.id)" class="result-item">
+            <div class="result-meta">
+              <strong>{{ String(row.accountUsername ?? row.accountId ?? '') }}</strong>
+              <span class="mono tiny">{{ String(row.accountId ?? '') }}</span>
+              <span :class="coolingBadge(row.effectiveAt)">{{ coolingHint(row.effectiveAt) }}</span>
+              <span class="tiny faint">申请于 {{ String(row.requestedAt ?? '') }}</span>
+            </div>
+
+            <div class="tiny" style="margin-top: 6px">
+              理由：{{ String(row.reason ?? '—') }}
+            </div>
+            <div class="tiny faint" style="margin-top: 4px">
+              冷静期结束时间 {{ String(row.effectiveAt ?? '') }}（以服务端时钟为准，未到时间执行会被拒绝）
+            </div>
+
+            <div class="btn-row" style="margin-top: 8px">
+              <input
+                v-model="closureNotes[String(row.id)]"
+                type="text"
+                placeholder="裁决说明（必填，写入审计）"
+                style="flex: 1; min-width: 200px"
+              />
+              <button
+                class="btn small danger"
+                :disabled="busy === `closure:${String(row.id)}`"
+                @click="decideClosure(row, 'APPROVE')"
+              >
+                执行注销
+              </button>
+              <button
+                class="btn small"
+                :disabled="busy === `closure:${String(row.id)}`"
+                @click="decideClosure(row, 'REJECT')"
+              >
+                驳回
+              </button>
+            </div>
+          </div>
+          <p v-if="closures.total !== null" class="tiny faint" style="margin: 10px 0 0">
+            共 {{ closures.total }} 条待处理，本页展示 {{ closures.items.length }} 条。
+          </p>
+        </AsyncBlock>
+
+        <p class="tiny faint" style="margin: 10px 0 0">
+          「执行注销」会停用账号、撤销全部角色并提升会话版本，看起来与注销一致；但该账号作为操作者的
+          认领、提交、审计记录全部保留——物理删除会让「这是谁批准的」无从追查，也会让历史上级记录指向空。
+          因此本页没有「删除账号」这一操作。冷静期内的申请由申请人自己在账号设置里撤销，不需要审批。
+        </p>
+        <p class="tiny faint" style="margin: 6px 0 0">
+          冷静期结束时间一到，后台维护任务会自动执行注销（默认每小时扫描一次），
+          所以这里的「执行注销」不是必经步骤。要驳回必须在结束时间<strong>之前</strong>点驳回，
+          过期后申请会被自动处理并从队列消失——页面承诺的是「7 天后生效」，不能变成「7 天后等人点」。
         </p>
       </div>
     </div>

@@ -89,6 +89,33 @@ public class AuthController {
     return ResponseEntity.ok(ApiResponse.ok(authenticated.toView(), TraceIdHolder.current()));
   }
 
+  /**
+   * 本人修改口令。
+   *
+   * <p>改密会使 auth_version +1，因此必须用返回的新版本重写当前会话：不重写的话，
+   * 本次响应之后的下一个请求就会因为「会话版本落后」被判为未登录，用户会以为改密把自己踢了。
+   * 其他设备上的会话仍保持旧版本，下一次请求即失效——这是改密应有的代价。
+   */
+  @PostMapping("/password")
+  public ResponseEntity<ApiResponse<Map<String, Object>>> changePassword(
+      @Valid @RequestBody IdentityRequests.ChangePasswordRequest body, HttpServletRequest request) {
+    ActorContext actor = ActorContextHolder.currentOrNull();
+    long newVersion = authService.changePassword(actor, body.currentPassword(), body.newPassword());
+    HttpSession session = request.getSession(false);
+    if (session != null) {
+      // 轮换会话标识：改密前后沿用同一个会话 ID，等于给会话固定攻击留了一个已认证的入口
+      request.changeSessionId();
+      session.setAttribute(
+          ActorPrincipal.SESSION_ATTRIBUTE, new SessionActor(actor.accountIdValue(), newVersion));
+    }
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("changed", true);
+    data.put("mustChangePassword", false);
+    data.put("authVersion", newVersion);
+    data.put("note", "其他设备上的会话已失效；当前会话已续期");
+    return ResponseEntity.ok(ApiResponse.ok(data, TraceIdHolder.current()));
+  }
+
   @PostMapping("/logout")
   public ResponseEntity<ApiResponse<Map<String, Object>>> logout(HttpServletRequest request) {
     ActorContext actor = ActorContextHolder.currentOrNull();
@@ -116,7 +143,13 @@ public class AuthController {
     view.put("username", actor.username());
     view.put("displayName", actor.displayName());
     view.put("roles", actor.roles().stream().sorted().toList());
+    // 与登录响应用同一份推导（Capabilities.of），不在这里另列一遍能力名。
+    view.put(
+        "capabilities",
+        com.cognitanexus.core.platform.security.Capabilities.of(actor).stream().sorted().toList());
     view.put("authVersion", actor.authVersion());
+    // 与登录响应同源：刷新页面后仍要知道「这是管理员重置的一次性口令，尚未修改」
+    view.put("mustChangePassword", authService.mustChangePassword(actor.accountIdValue()));
     return ResponseEntity.ok(ApiResponse.ok(view, TraceIdHolder.current()));
   }
 }

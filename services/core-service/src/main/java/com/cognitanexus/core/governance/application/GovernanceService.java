@@ -8,6 +8,8 @@ import com.cognitanexus.core.governance.application.GovernanceRepositories.Score
 import com.cognitanexus.core.governance.domain.DedupCandidate;
 import com.cognitanexus.core.governance.domain.GovernanceAnomaly;
 import com.cognitanexus.core.governance.domain.MergeLedgerEntry;
+import com.cognitanexus.core.notification.application.NotificationService;
+import com.cognitanexus.core.notification.domain.Notification;
 import com.cognitanexus.core.platform.audit.AuditRecorder;
 import com.cognitanexus.core.platform.event.EventTypes;
 import com.cognitanexus.core.platform.event.OutboxEvent;
@@ -62,6 +64,7 @@ public class GovernanceService {
   private final ScholarRepository scholars;
   private final OutboxStore outbox;
   private final AuditRecorder audit;
+  private final NotificationService notifications;
 
   public GovernanceService(
       GovernanceRepositories.DedupCandidateRepository candidates,
@@ -72,7 +75,8 @@ public class GovernanceService {
       AchievementRepository achievements,
       ScholarRepository scholars,
       OutboxStore outbox,
-      AuditRecorder audit) {
+      AuditRecorder audit,
+      NotificationService notifications) {
     this.candidates = candidates;
     this.ledger = ledger;
     this.anomalies = anomalies;
@@ -82,6 +86,7 @@ public class GovernanceService {
     this.scholars = scholars;
     this.outbox = outbox;
     this.audit = audit;
+    this.notifications = notifications;
   }
 
   // ---------------------------------------------------------------------------
@@ -368,6 +373,19 @@ public class GovernanceService {
   public long countOpenAnomalies(ActorContext actor) {
     Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
     return anomalies.countOpenAnomalies();
+  }
+
+  /**
+   * 未处理的公众纠错条数。
+   *
+   * <p>单独披露的理由：它已经在 {@code anomaliesOpen} 里，但两类待办的处置节奏完全不同——巡检发现的
+   * 异常是平台自己的口径问题，公众纠错是「有人说你的数据错了」，后者涉及对外承诺，不能被淹没在
+   * 「年份越界 3 条、缺领域 40 条」里。
+   */
+  @Transactional(readOnly = true)
+  public long countOpenCorrections(ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
+    return anomalies.countOpenOfKind(GovernanceAnomaly.KIND_PUBLIC_CORRECTION_REPORT);
   }
 
   @Transactional(readOnly = true)
@@ -1005,6 +1023,13 @@ public class GovernanceService {
         "identifiersBefore",
         identifierViews(mergeTargets.previewIdentifiers("ACHIEVEMENT", mergedId)));
 
+    // 参与学者集合必须在迁移关系之前取（moveContributions 之后 mergedId 就没有关系可查了）。
+    // 通知放事务尾部（迁移与台账都成立之后）发送：回滚时它一起回滚，见 ADR-003 §2。
+    java.util.List<String> mergedContributorScholarIds =
+        new java.util.ArrayList<>(mergeTargets.listScholarIdsOfAchievement(mergedId));
+    java.util.List<String> survivorContributorScholarIds =
+        new java.util.ArrayList<>(mergeTargets.listScholarIdsOfAchievement(survivorId));
+
     GovernanceRepositories.MergeTargetRepository.ContributionMove move =
         mergeTargets.moveContributions(mergedId, survivorId);
     if (move.removed() > MAX_MOVE_ROWS) {
@@ -1065,7 +1090,28 @@ public class GovernanceService {
             .put("survivorTitle", survivor.title())
             .put("mergedId", mergedId)
             .put("changeKind", "MERGE"));
-    log.info("成果合并完成 survivor={} merged={}", survivorId, mergedId);
+
+    // 通知「档案上因此发生变化」的认领账号（ADR-003 §3 第三行）。被并入方与幸存方的认领者
+    // 都需要知道：前者档案少了一条成果，后者档案多了一条。sendToScholarClaimants 按账号去重，
+    // 同一账号同时管理两端时只收到一条。
+    int notified =
+        notifications.sendToScholarClaimants(
+            java.util.stream.Stream.concat(
+                    mergedContributorScholarIds.stream(), survivorContributorScholarIds.stream())
+                .distinct()
+                .toList(),
+            Notification.KIND_ACHIEVEMENT_MERGED,
+            "有成果被合并",
+            "你管理的学者档案涉及一条成果被合并：「"
+                + merged.title()
+                + "」已并入「"
+                + survivor.title()
+                + "」。理由："
+                + resolvedReason
+                + "。合并台账可查（合并前后的参与关系与来源快照已存档）。",
+            "ACHIEVEMENT",
+            survivorId);
+    log.info("成果合并完成 survivor={} merged={} 通知认领账号 {} 个", survivorId, mergedId, notified);
   }
 
   /** 两位学者是否共享同一个稳定标识（按种类 + 作用域 + 归一值比较）。 */

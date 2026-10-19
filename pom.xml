@@ -35,6 +35,12 @@
     <archunit.version>1.4.1</archunit.version>
     <testcontainers.version>1.21.3</testcontainers.version>
     <!--
+      OpenAPI 文档（部署前功能项）。2.3.0 对应 Spring Boot 3.2；升级 Boot 时必须同步核对。
+      本地 ~/.m2 起初没有这个依赖，构建机可访问 Maven 中央仓库，因此是「构建期在线、运行期离线」：
+      打好的 jar 里已含 swagger-ui 静态资源，部署环境不需要外网。
+    -->
+    <springdoc.version>2.3.0</springdoc.version>
+    <!--
       集成测试（*IT，由 failsafe 执行）需要真实 PostgreSQL 实例，默认不随 mvn verify 跑：
       常规构建不应被「本机有没有起测试库」绑死。要跑：
         bash ops/local/test-db.sh start
@@ -57,6 +63,11 @@
         <groupId>org.mybatis.spring.boot</groupId>
         <artifactId>mybatis-spring-boot-starter</artifactId>
         <version>${mybatis-starter.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.springdoc</groupId>
+        <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        <version>${springdoc.version}</version>
       </dependency>
       <dependency>
         <groupId>com.tngtech.archunit</groupId>

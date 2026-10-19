@@ -14,10 +14,13 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { publicApi } from '@/api'
-import type { PublicAchievementDetail } from '@/api/types'
-import { useAsync } from '@/composables/useAsync'
-import { CITATION_FORMATS, type CitationFormatKey } from '@/composables/useCitation'
+import type { CitationNetworkView, PublicAchievementDetail } from '@/api/types'
+import type { RelatedAchievementsView } from '@/api'
+import { describeError, useAsync } from '@/composables/useAsync'
+import { downloadHref, warningTone } from '@/composables/citationView'
+import { useCitation } from '@/composables/useCitation'
 import AsyncBlock from '@/components/AsyncBlock.vue'
+import CitationNetworkPanel from '@/components/CitationNetworkPanel.vue'
 import NatureBadge from '@/components/NatureBadge.vue'
 
 const route = useRoute()
@@ -26,6 +29,24 @@ const id = computed(() => String(route.params.id ?? ''))
 const detail = useAsync<PublicAchievementDetail & Record<string, unknown>>(() =>
   publicApi.achievement(id.value),
 )
+
+/**
+ * 相关成果：与详情并行取，失败只影响这一块。
+ *
+ * 不放进详情响应里：推荐要联结四张表，比详情查询重一个量级；详情首屏不该为了一块
+ * 「你可能也感兴趣」多等一两百毫秒。
+ */
+const related = useAsync<RelatedAchievementsView>(() => publicApi.relatedAchievements(id.value, 8))
+
+/**
+ * 引用网络单独一次请求。
+ *
+ * 不塞进详情接口：详情首屏不该为一张关系图多背几百条引用条目；而且引用网络带一整套口径说明，
+ * 混进详情视图会让「哪些字段是事实、哪些是覆盖率提示」分不清。
+ *
+ * 这一块的失败不影响页面其它内容：引用网络读不到时只是这一块不显示，不发错误横幅。
+ */
+const network = useAsync<CitationNetworkView>(() => publicApi.citationNetwork(id.value))
 
 interface PaperView {
   doi?: string | null
@@ -49,6 +70,59 @@ interface ContributorView {
   qualified?: boolean
   relationNote?: string | null
 }
+
+/**
+ * 学术诚信声明。
+ *
+ * 与参与关系同理：字段缺失不能当成「没有声明」。服务端把「无声明」表达成一个明确的
+ * status=NONE + label，而不是省略字段，所以这里只要读，不需要猜。
+ */
+interface IntegrityNoticeView {
+  id: string
+  type: string
+  typeLabel: string
+  description?: string
+  status: string
+  active: boolean
+  declaredBy: string
+  reason: string
+  sourceUrl?: string | null
+  announcedOn?: string | null
+  recordedAt?: string | null
+  revokedAt?: string | null
+  revokeReason?: string | null
+}
+
+interface IntegritySummaryView {
+  status: string
+  label: string
+  description: string
+  activeTypes: string[]
+  activeCount: number
+  historyCount: number
+  noticed: boolean
+}
+
+const integrity = computed<IntegritySummaryView | null>(() => {
+  const raw = detail.data.value?.integrity
+  if (!raw || typeof raw !== 'object') return null
+  return raw as unknown as IntegritySummaryView
+})
+
+const integrityNotices = computed<IntegrityNoticeView[]>(
+  () => (detail.data.value?.integrityNotices as IntegrityNoticeView[] | undefined) ?? [],
+)
+
+/**
+ * 提示条的样式由状态决定，而不是由「有没有声明」决定。
+ * 撤稿是事实性的否定结论，用危险色；关注与更正是提醒；只有历史声明时用中性提示。
+ */
+const integrityTone = computed(() => {
+  const view = integrity.value
+  if (!view) return 'info'
+  if (view.activeCount === 0) return 'info'
+  return view.status === 'RETRACTION' ? 'danger' : 'warn'
+})
 
 const paper = computed<PaperView | null>(() => {
   const raw = detail.data.value?.paper
@@ -225,51 +299,99 @@ const typeLabel = computed(() => {
   return typeof label === 'string' && label ? label : String(detail.data.value?.type ?? '')
 })
 
-/** 复制引用文本。剪贴板 API 在非安全上下文（http）下不可用，因此要给出失败反馈。 */
-const copied = ref('')
-
-async function copyCitation(text: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-    copied.value = '已复制到剪贴板。'
-  } catch {
-    copied.value = '浏览器拒绝了剪贴板写入（常见于非 HTTPS 页面），请手动选中上面的文本复制。'
-  }
-  window.setTimeout(() => {
-    copied.value = ''
-  }, 6000)
-}
-
 /* ------------------------------- 引用导出 ------------------------------- */
 
-const citationFormat = ref<CitationFormatKey>('gb7714')
+/**
+ * 引用文本与告警都来自服务端。
+ *
+ * 这里曾经有一份前端渲染实现，被判为「够用」很久。真正的问题在它看不到的事实上：被治理排除的
+ * 参与关系、缺失的刊名、当前生效的撤稿声明——前端手里的字段表达不了这些，于是它给所有成果都
+ * 印出一段「看起来一样完整」的引用。服务端能看见这些，所以由它决定文本与告警。
+ */
+const citation = useCitation(id)
+
+/* ------------------------------- 公众纠错 ------------------------------- */
 
 /**
- * 导出用的数据快照。
+ * 数据纠错入口。
  *
- * 作者只取关系合格的那些：署名是断言，把待核验的关系写进引用文本，等于替来源
- * 确认了一件尚未确认的事，而引用会被带出平台、再也看不到那条状态标注。
+ * 三条设计约束，都与「不能让一条匿名请求改写数据」这条红线有关：
+ *
+ *  1. 提交只登记待办，不改任何字段——所以文案里必须说清「核实后由治理人员处理」，不能暗示
+ *     提交即修复；
+ *  2. 字段下拉由服务端给（`/public/correction-fields`），标签只在服务端定义一处；
+ *  3. 说明有下限与上限，前端先挡一次是为了让用户当场看到「太短了」，而不是提交后收 400。
  */
-const citationSource = computed(() => ({
-  achievementId: id.value,
-  type: String(detail.data.value?.type ?? ''),
-  typeLabel: typeLabel.value,
-  title: String(detail.data.value?.title ?? ''),
-  authors: qualifiedContributors.value.map((row) => row.displayName || `（身份未确认 ${row.scholarId}）`),
-  year: (detail.data.value?.publicationYear as number | null) ?? null,
-  venue: paper.value?.venue ?? null,
-  doi: paper.value?.doi ?? null,
-  // 导出日期取本地日期：引用需要说明「什么时候取的」，跨时区偏差一天不影响可追溯性。
-  exportedOn: new Date().toLocaleDateString('sv-SE'),
-}))
+const correctionFields = ref<{ code: string; label: string }[]>([])
+const correctionForm = ref({ field: 'TITLE', message: '', contact: '' })
+const correctionBusy = ref(false)
+const correctionError = ref('')
+const correctionDone = ref<{ reportCount: number; merged: boolean; fieldLabel: string } | null>(null)
 
-const activeCitationFormat = computed(
-  () => CITATION_FORMATS.find((format) => format.key === citationFormat.value) ?? CITATION_FORMATS[0]!,
+/** 说明长度下限，与服务端 PublicCorrectionService.MESSAGE_MIN 一致。 */
+const CORRECTION_MIN = 10
+const CORRECTION_MAX = 1000
+
+const correctionTooShort = computed(
+  () => correctionForm.value.message.trim().length > 0 && correctionForm.value.message.trim().length < CORRECTION_MIN,
 )
 
-const citationText = computed(() => activeCitationFormat.value.build(citationSource.value))
+async function loadCorrectionFields() {
+  try {
+    const fields = await publicApi.correctionFields()
+    if (fields.length) {
+      correctionFields.value = fields
+      if (!fields.some((row) => row.code === correctionForm.value.field)) {
+        correctionForm.value.field = fields[0]!.code
+      }
+    }
+  } catch (cause) {
+    // 字段清单取不到时不能把入口关掉：那份清单只决定下拉的粒度，纠错本身仍然可提交。
+    // 但也不能假装拿到了完整清单，因此退回一个明确的「其它」，让用户照样能描述问题。
+    correctionFields.value = [{ code: 'OTHER', label: '其它' }]
+    correctionForm.value.field = 'OTHER'
+    correctionError.value = `字段清单读取失败（${describeError(cause).message}），已退回「其它」；问题描述仍可正常提交。`
+  }
+}
 
-onMounted(detail.run)
+async function submitCorrection() {
+  if (correctionBusy.value) return
+  const message = correctionForm.value.message.trim()
+  if (message.length < CORRECTION_MIN) {
+    correctionError.value = `请把问题说清楚，至少 ${CORRECTION_MIN} 个字。`
+    return
+  }
+  correctionBusy.value = true
+  correctionError.value = ''
+  try {
+    const result = await publicApi.reportCorrection(id.value, {
+      field: correctionForm.value.field,
+      message,
+      contact: correctionForm.value.contact.trim() || undefined,
+    })
+    correctionDone.value = {
+      reportCount: result.reportCount,
+      merged: result.merged,
+      fieldLabel: result.fieldLabel,
+    }
+    correctionForm.value.message = ''
+    correctionForm.value.contact = ''
+  } catch (cause) {
+    correctionError.value = describeError(cause).message
+  } finally {
+    correctionBusy.value = false
+  }
+}
+
+onMounted(() => {
+  detail.run()
+  // 引用网络的读取与详情并行：它失败时只是这一块不显示，不影响页面其它内容，
+  // 因此这里不 await、也不把它的错误抬到整页的错误横幅上。
+  void network.run()
+  void related.run()
+  void citation.load()
+  void loadCorrectionFields()
+})
 </script>
 
 <template>
@@ -285,6 +407,48 @@ onMounted(detail.run)
         <div v-if="redirectedFrom" class="notice info">
           该成果已被合并到另一个实体（原标识 <span class="mono">{{ redirectedFrom }}</span>），
           本页展示的是合并后的权威记录。旧链接不会指向错误对象，但两者不是两条记录。
+        </div>
+
+        <!-- 诚信声明放在标题之上：读者在读题名之前就应该知道这条成果是否仍然成立。
+             放在页面底部等于让「已撤稿」变成需要滚动才发现的附注。 -->
+        <div
+          v-if="integrity && (integrity.activeCount > 0 || integrity.historyCount > 0)"
+          :class="`notice ${integrityTone}`"
+          style="margin-bottom: 14px"
+        >
+          <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap">
+            <strong>{{ integrity.label }}</strong>
+            <span class="tiny">{{ integrity.description }}</span>
+          </div>
+          <div
+            v-for="notice in integrityNotices.filter((n) => n.active)"
+            :key="notice.id"
+            style="margin-top: 8px"
+          >
+            <div class="small">
+              {{ notice.typeLabel }} · {{ notice.declaredBy }}
+              <template v-if="notice.announcedOn"> · 声明日期 {{ notice.announcedOn }}</template>
+            </div>
+            <div class="small" style="margin-top: 2px">{{ notice.reason }}</div>
+            <div v-if="notice.sourceUrl" class="tiny" style="margin-top: 2px">
+              <a :href="notice.sourceUrl" target="_blank" rel="noopener noreferrer">查看原始声明</a>
+            </div>
+          </div>
+          <details
+            v-if="integrityNotices.some((n) => !n.active)"
+            style="margin-top: 8px"
+          >
+            <summary class="tiny">已撤销的历史声明（{{ integrityNotices.filter((n) => !n.active).length }} 条）</summary>
+            <div
+              v-for="notice in integrityNotices.filter((n) => !n.active)"
+              :key="notice.id"
+              class="tiny"
+              style="margin-top: 4px"
+            >
+              {{ notice.typeLabel }} · {{ notice.declaredBy }} ·
+              {{ notice.revokedAt }} 撤销：{{ notice.revokeReason }}
+            </div>
+          </details>
         </div>
 
         <h1 style="margin-bottom: 8px; font-size: 26px; line-height: 1.35">
@@ -583,6 +747,64 @@ onMounted(detail.run)
           </div>
         </div>
 
+        <CitationNetworkPanel v-if="network.data.value" :network="network.data.value" />
+
+        <!-- 相关成果：每条都带「为什么相关」，不给理由的推荐列表读者无法判断可信度。 -->
+        <div class="panel">
+          <div class="panel-head">
+            <h2>相关成果</h2>
+            <span class="tiny faint">基于平台已收录的作者、引用与主题关系</span>
+          </div>
+          <div class="panel-body">
+            <p v-if="related.loading.value" class="tiny faint">正在计算…</p>
+            <p v-else-if="related.error.value" class="tiny faint">
+              相关成果暂时无法计算。这不影响本页其它内容。
+            </p>
+            <template v-else-if="related.data.value">
+              <div
+                v-if="related.data.value.items.length === 0"
+                class="small faint"
+                style="margin: 0"
+              >
+                {{ related.data.value.emptyReason || '暂无相关成果。' }}
+              </div>
+              <ul v-else style="list-style: none; margin: 0; padding: 0">
+                <li
+                  v-for="item in related.data.value.items"
+                  :key="item.achievementId"
+                  style="border-top: 1px solid var(--rule); padding: 10px 0"
+                >
+                  <RouterLink
+                    :to="`/achievements/${encodeURIComponent(item.achievementId)}`"
+                    class="small"
+                    style="font-weight: 600"
+                  >
+                    {{ item.title }}
+                  </RouterLink>
+                  <div class="tiny faint" style="margin-top: 3px">
+                    <template v-if="item.publicationYear">{{ item.publicationYear }}</template>
+                    <template v-if="item.venue"> · {{ item.venue }}</template>
+                    <template v-if="typeof item.citationCount === 'number'">
+                      · 被引 {{ item.citationCount }}
+                    </template>
+                  </div>
+                  <div class="tiny" style="margin-top: 3px; color: var(--text-dim)">
+                    {{ item.reasons.join('；') }}
+                  </div>
+                </li>
+              </ul>
+              <p
+                v-if="related.data.value.note"
+                class="tiny faint"
+                style="margin: 10px 0 0; max-width: 720px"
+              >
+                {{ related.data.value.note }}
+              </p>
+            </template>
+          </div>
+        </div>
+
+
         <div class="panel">
           <div class="panel-head">
             <h2>引用这条记录</h2>
@@ -591,32 +813,135 @@ onMounted(detail.run)
             </span>
           </div>
           <div class="panel-body">
-            <div class="btn-row" role="tablist" aria-label="引用格式">
-              <button
-                v-for="format in CITATION_FORMATS"
-                :key="format.key"
-                class="btn"
-                :class="{ primary: format.key === citationFormat }"
-                role="tab"
-                :aria-selected="format.key === citationFormat"
-                @click="citationFormat = format.key"
-              >
-                {{ format.label }}
-              </button>
-              <span style="flex: 1"></span>
-              <button class="btn no-print" @click="copyCitation(citationText)">复制</button>
+            <p v-if="citation.loading.value" class="tiny faint">正在生成引用文本…</p>
+            <p v-else-if="citation.error.value" class="tiny warn-text">
+              引用文本暂时无法生成（{{ citation.error.value }}）。这不影响本页其它内容。
+            </p>
+            <template v-else-if="citation.active.value">
+              <div class="btn-row" role="tablist" aria-label="引用格式">
+                <button
+                  v-for="format in citation.bundle.value?.formats ?? []"
+                  :key="format.code"
+                  class="btn"
+                  :class="{ primary: format.code === citation.selectedCode.value }"
+                  role="tab"
+                  :aria-selected="format.code === citation.selectedCode.value"
+                  @click="citation.selectedCode.value = format.code"
+                >
+                  {{ format.label }}
+                </button>
+                <span style="flex: 1"></span>
+                <button class="btn no-print" @click="citation.copy()">复制</button>
+                <a
+                  class="btn no-print"
+                  :href="downloadHref(citation.active.value.downloadUrl)"
+                  :download="citation.active.value.fileName"
+                >
+                  下载 {{ citation.active.value.fileName }}
+                </a>
+              </div>
+
+              <p class="tiny dim" style="margin: 10px 0 0">{{ citation.usageHint.value }}</p>
+
+              <pre class="pre" style="margin-top: 10px" aria-live="polite">{{ citation.active.value.text }}</pre>
+
+              <p v-if="citation.copied.value" class="tiny" style="margin: 6px 0 0">
+                {{ citation.copied.value }}
+              </p>
+
+              <!-- 告警必须与文本同屏：读者复制走的是一段可能缺项的文字，缺项说明留在另一个
+                   折叠区里等于没有说明。 -->
+              <ul v-if="citation.warnings.value.length" class="warn-list">
+                <li
+                  v-for="warning in citation.warnings.value"
+                  :key="warning.code"
+                  :class="`warn-item ${warningTone(warning.code)}`"
+                >
+                  {{ warning.message }}
+                </li>
+              </ul>
+
+              <p class="tiny faint" style="margin: 10px 0 0">
+                引用键 {{ citation.bundle.value?.citeKey }}，由 {{ citation.bundle.value?.provenance }}
+                于 {{ citation.bundle.value?.exportedOn }} 依已登记元数据生成。
+              </p>
+              <p class="tiny faint" style="margin: 6px 0 0">{{ citation.bundle.value?.note }}</p>
+            </template>
+            <p v-else class="tiny faint">本条记录暂未生成可用的引用格式。</p>
+          </div>
+        </div>
+
+        <!-- 公众纠错（FR02 / FR16 的闭环）。入口对匿名访客开放：发现写错的往往是站外读者，
+             要求先注册才能说「这条错了」等于把反馈渠道关掉。 -->
+        <div class="panel">
+          <div class="panel-head">
+            <h2>数据有问题？</h2>
+            <span class="tiny faint">无需登录 · 报告只登记待办，不会自动改动记录</span>
+          </div>
+          <div class="panel-body">
+            <div v-if="correctionDone" class="notice info">
+              已受理：{{ correctionDone.fieldLabel }}
+              <template v-if="correctionDone.merged">
+                ——同一问题已有未处理的报告，本次已并入（累计 {{ correctionDone.reportCount }} 次）。
+              </template>
+              <template v-else>——已登记为治理待办。</template>
+              平台核实后会走既有的修订流程，<strong>不会因为这次提交自动修改上述任何字段</strong>。
             </div>
 
-            <p class="tiny dim" style="margin: 10px 0 0">{{ activeCitationFormat.note }}</p>
+            <div class="grid cols-2">
+              <div class="field">
+                <label for="correction-field">哪里有问题</label>
+                <select id="correction-field" v-model="correctionForm.field">
+                  <option v-for="row in correctionFields" :key="row.code" :value="row.code">
+                    {{ row.label }}
+                  </option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="correction-contact">联系方式（可选）</label>
+                <input
+                  id="correction-contact"
+                  v-model="correctionForm.contact"
+                  maxlength="120"
+                  placeholder="留空也可以，但无法向你反馈核实结果"
+                />
+              </div>
+            </div>
 
-            <pre class="pre" style="margin-top: 10px" aria-live="polite">{{ citationText }}</pre>
+            <div class="field">
+              <label for="correction-message">具体问题</label>
+              <textarea
+                id="correction-message"
+                v-model="correctionForm.message"
+                rows="3"
+                :maxlength="CORRECTION_MAX"
+                placeholder="例如：题目漏了副标题；DOI 与另一篇文献重复；作者单位标错"
+              ></textarea>
+              <div class="tiny faint">
+                {{ correctionForm.message.trim().length }} / {{ CORRECTION_MAX }} 字（至少
+                {{ CORRECTION_MIN }} 字）
+              </div>
+            </div>
 
-            <p v-if="copied" class="tiny" style="margin: 6px 0 0">{{ copied }}</p>
-
-            <p class="tiny faint" style="margin: 10px 0 0">
-              平台未采集卷号、期号与页码，因此这三种格式里都不会出现这三项——
-              这是「不知道」，不是「没有」。需要完整著录信息时，请以来源页面为准。
+            <p v-if="correctionTooShort" class="tiny dim" style="margin: 0 0 8px">
+              说明太短，无法定位到具体错在哪；补齐后再提交。
             </p>
+            <p v-if="correctionError" class="notice warn" style="margin: 0 0 8px">
+              {{ correctionError }}
+            </p>
+
+            <div class="btn-row">
+              <button
+                class="btn primary"
+                :disabled="correctionBusy || correctionTooShort"
+                @click="submitCorrection"
+              >
+                {{ correctionBusy ? '提交中…' : '提交纠错' }}
+              </button>
+              <span class="tiny faint">
+                请勿提交与这条记录无关的内容；同一问题重复提交会并入同一条待办。
+              </span>
+            </div>
           </div>
         </div>
       </template>

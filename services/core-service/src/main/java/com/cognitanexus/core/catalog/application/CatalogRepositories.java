@@ -222,6 +222,9 @@ public interface CatalogRepositories {
     /** 恢复作业的目标条数：因该来源撤权被收紧、当前仍受限的成果数。 */
     long countRestrictedBySource(String sourceId);
 
+    /** 因该来源撤权被收紧的成果的参与学者（去重），供撤权通知定位接收者（ADR-003 §3）。 */
+    java.util.List<String> listScholarIdsByRestrictionSource(String sourceId);
+
     /** 恢复许可时的一批回填：只放开「因该来源撤权被收紧、且现在又有有效依据」的成果。 */
     List<String> restoreBatchForSource(String sourceId, int limit);
 
@@ -281,6 +284,33 @@ public interface CatalogRepositories {
     /** 写入经审核的机构归属。 */
     int updateOrganizationName(String scholarId, String organizationName);
 
+    // -------------------------------------------------------------------------
+    // 门户自助维护（自述字段与代表作置顶）
+    // -------------------------------------------------------------------------
+
+    /** 读取自述字段；学者不存在时返回 empty（与 findById 区分开，避免把「不存在」说成「没填」）。 */
+    Optional<com.cognitanexus.core.catalog.domain.ScholarProfile> findProfile(String scholarId);
+
+    /** 写入主页地址，null 表示清空。 */
+    int updateHomepageUrl(String scholarId, String homepageUrl);
+
+    /** 写入头像引用与媒体类型；两者必须同时给（只有引用没有类型，响应头就无从填写）。 */
+    int updateAvatar(String scholarId, String avatarRef, String avatarMediaType);
+
+    /** 清空头像，公开页退回姓名首字占位。 */
+    int clearAvatar(String scholarId);
+
+    /** 置顶成果的标识，按名次升序。 */
+    List<String> listFeatured(String scholarId);
+
+    /**
+     * 整体替换置顶顺序。
+     *
+     * <p>用「先删后插」而不是逐条 upsert：置顶是一份有序清单，逐条更新在名次互换时会撞上
+     * 唯一索引，只能靠临时负数占位绕过，反而更脆。
+     */
+    void replaceFeatured(String scholarId, List<String> achievementIds);
+
     long countAll();
   }
 
@@ -321,6 +351,73 @@ public interface CatalogRepositories {
     List<String> listOrganizationNames(String contributionId);
 
     long countContributions();
+
+    /**
+     * 学者年份分布：只统计关系合格（AUTO / SELF_CONFIRMED）、成果对公众可见且未被合并的记录。
+     *
+     * <p>这三个条件缺一不可，它们决定这个数字能不能对外说：待核验关系多半是「同名但未必同人」，
+     * 算进来就是把别人的成果记在这位学者名下；下架与被并走的成果算进来，则会让个人指标与公开
+     * 检索页对不上。
+     */
+    List<YearAmount> yearDistributionOf(String scholarId);
+
+    /** 关系合格但年份缺失的成果数：单列披露，不折算到任何一年。 */
+    long countUndatedWorksOf(String scholarId);
+
+    /** 该学者名下已被声明撤稿的公开成果数；只单独计数，不从总数里扣除。 */
+    long countRetractedWorksOf(String scholarId);
+
+    /**
+     * 主要合作者，按共同合格成果数降序，最多 {@code limit} 位。
+     *
+     * <p>两端的参与关系都必须合格。只要求本人这一端合格是不够的：另一端若是待核验关系，
+     * 这次「合作」本身就未被确认，把它排进合作者榜首等于用排行替来源背书。
+     */
+    List<CoauthorCount> topCoauthorsOf(String scholarId, int limit);
+
+    /**
+     * 引用量汇总（口径同上：关系合格、公开、生效、未合并）。
+     *
+     * <p>把「有多少篇有引用量记录」与「总和」放在同一条查询里返回，是因为这两个数字只有
+     * 一起出现才有意义：单独的总和会被读成「全部成果的引用量」，而分母其实是其中一部分。
+     * 缺失的引用量不补 0，单独计数。
+     */
+    CitationSummary citationSummaryOf(String scholarId);
+
+    /** 按发表年份分组的引用量；{@code works} 与年份分布同源，便于两图对齐。 */
+    List<CitationYear> citationByYearOf(String scholarId);
+
+    /** 引用量的来源分布：跨来源求和不可直接比较，页面上必须把分布说出来。 */
+    List<CitationSourceCount> citationSourcesOf(String scholarId);
+
+    /** 年份桶。 */
+    record YearAmount(int year, long amount) {}
+
+    /** 合作者及其共同成果数。 */
+    record CoauthorCount(
+        String scholarId, String displayName, String organizationName, long sharedAchievements) {}
+
+    /**
+     * 引用量汇总。
+     *
+     * @param works 口径内成果数（含没有引用量概念的专利/项目/获奖）
+     * @param withCitation 确有引用量记录的成果数；0 是观测值，与缺失不同
+     * @param nonPaperWorks 类型上没有引用量的成果数
+     * @param totalCitations 上述记录的当前累计引用量之和
+     * @param maxCitations 单篇最高，用于提示分布偏斜
+     */
+    record CitationSummary(
+        long works,
+        long withCitation,
+        long nonPaperWorks,
+        long totalCitations,
+        long maxCitations) {}
+
+    /** 某一年发表成果的引用量：{@code works} 为该年成果数，{@code withCitation} 为其中有引用量记录的数量。 */
+    record CitationYear(Integer year, long works, long withCitation, long citations) {}
+
+    /** 某个来源贡献了多少条引用量记录。 */
+    record CitationSourceCount(String source, long works) {}
   }
 
   /** 领域（分类）仓储。无法可靠映射时标记待分类，不强行归类（SRS 5.3）。 */
@@ -424,4 +521,88 @@ public interface CatalogRepositories {
 
   /** 类型一致性校验：成果类型的扩展是否存在，用于不变量自检。 */
   int countExtensions(String achievementId, AchievementType type);
+
+  /**
+   * 引用网络：参考文献观测与引用条目。
+   *
+   * <p>依据：架构 V0.2 §5.1、SRS FR06。与「引用量」（{@code core_paper.citation_count}）是两件
+   * 不同的事实：引用量是来源给的一个数字，引用网络是「谁引用了谁」的边。前者可以由一个来源
+   * 单独提供，后者必须有实际的参考文献列表；两者都缺时都不能补 0。
+   */
+  interface CitationRepository {
+
+    /** 一篇成果的参考文献采集证据。{@code referencesTotal} 为来源声明的总数，缺失即 null。 */
+    record Observation(
+        String achievementId,
+        String provider,
+        String providerWorkId,
+        Integer referencesTotal,
+        int referencesListed,
+        String outcome,
+        java.time.Instant fetchedAt) {}
+
+    /** 一条参考文献条目。{@code citedAchievementId} 非空即为可显示的边。 */
+    record Reference(
+        String id,
+        String citingAchievementId,
+        String citedKind,
+        String citedValueNorm,
+        String citedAchievementId,
+        String resolution,
+        java.time.Instant observedAt) {}
+
+    /** 引用/被引列表里的一篇成果。 */
+    record CitedWork(
+        String achievementId,
+        String title,
+        AchievementType type,
+        Integer publicationYear,
+        boolean yearKnown,
+        String venue,
+        String doi) {}
+
+    /** 本篇引用条目的解析结果计数：站内、站外、自引三者互不重叠。 */
+    record ResolutionCounts(int resolved, int external, int selfReferences) {}
+
+    /** 外部引用的标识键（重新解析时的输入）。 */
+    record CitedKey(String kind, String valueNorm) {}
+
+    /** 还没有参考文献观测的可见论文。 */
+    record PendingWork(String achievementId, String doi, Integer citationCount) {}
+
+    java.util.Optional<Observation> findObservation(String achievementId);
+
+    void saveObservation(Observation observation);
+
+    /** 重采时整体替换本篇的引用条目；返回删除行数。 */
+    int deleteReferencesOf(String citingAchievementId);
+
+    void insertReference(Reference reference);
+
+    java.util.List<CitedWork> listResolvedReferences(String citingAchievementId);
+
+    java.util.List<CitedWork> listCitedBy(String citedAchievementId);
+
+    ResolutionCounts countReferencesOf(String citingAchievementId);
+
+    java.util.List<CitedKey> listUnresolvedKeys(int limit);
+
+    /**
+     * 把一个标识键下的所有外部引用升级为已解析。
+     *
+     * <p>按标识批量更新而不是逐行：同一篇被引文献通常被多篇引用，逐个更新会把同一件事做很多遍。
+     */
+    int resolveByKey(
+        String kind, String valueNorm, String citedAchievementId, java.time.Instant at);
+
+    int countObservedWorks();
+
+    int countNotFoundWorks();
+
+    int countPublicPapers();
+
+    java.util.List<PendingWork> listPendingWorks(int limit, String search, String topicId);
+
+    int countPendingWorks(String search, String topicId);
+  }
 }

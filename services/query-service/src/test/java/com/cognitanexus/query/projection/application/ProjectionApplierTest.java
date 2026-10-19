@@ -102,6 +102,7 @@ class ProjectionApplierTest {
                     "REAL",
                     "PUBLIC",
                     "EFFECTIVE",
+                    "NONE",
                     2024,
                     null,
                     null,
@@ -135,6 +136,7 @@ class ProjectionApplierTest {
                     "REAL",
                     "PUBLIC",
                     "WITHDRAWN",
+                    "NONE",
                     2024,
                     null,
                     null,
@@ -168,6 +170,7 @@ class ProjectionApplierTest {
                     "REAL",
                     "RESTRICTED",
                     "EFFECTIVE",
+                    "NONE",
                     2024,
                     null,
                     null,
@@ -198,6 +201,7 @@ class ProjectionApplierTest {
                     "SIMULATED",
                     "PUBLIC",
                     "EFFECTIVE",
+                    "NONE",
                     2024,
                     null,
                     null,
@@ -229,5 +233,93 @@ class ProjectionApplierTest {
     assertThat(outcome.shouldIsolate()).isTrue();
     assertThat(outcome.note()).contains("建边上限");
     verify(store, never()).replaceContributions(anyString(), anyString(), any());
+  }
+
+  // ---------------------------------------------------------------------------
+  // 来源许可事件的两个方向（ADR-001 §4 批次事件契约，2026-10-18 补）
+  // ---------------------------------------------------------------------------
+
+  private static InboxEventRecord sourceEvent(String type, Map<String, Object> payload) {
+    return new InboxEventRecord(
+        "inb_2",
+        "query",
+        "evt_2",
+        type,
+        1,
+        "Source",
+        "src_1",
+        0L,
+        43L,
+        Instant.parse("2026-06-01T00:00:00Z"),
+        "trace",
+        payload,
+        0);
+  }
+
+  @Test
+  @DisplayName("撤权受理事件（无成果列表、带 sourceId）不再隔离，按已应用放行")
+  void sourceLevelTightenEventIsAppliedNoOp() {
+    ProjectionApplier.Outcome outcome =
+        applier.apply(
+            "gen0007",
+            sourceEvent(
+                QueryEventTypes.PUBLIC_VISIBILITY_TIGHTENED,
+                Map.of(
+                    "sourceId", "src_1", "change", "DISPLAY_LICENSE_REVOKED", "targetCount", 55)),
+            Optional.empty());
+
+    assertThat(outcome.shouldIsolate()).isFalse();
+    // 没有成果列表可撤，readModel 不应被触碰
+    verify(store, never())
+        .restrictAchievement(anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong());
+  }
+
+  @Test
+  @DisplayName("无成果列表且无 sourceId 的收紧事件仍隔离（保留对未知形状的严格性）")
+  void tightenEventWithoutTargetsStaysIsolated() {
+    ProjectionApplier.Outcome outcome =
+        applier.apply(
+            "gen0007",
+            sourceEvent(QueryEventTypes.PUBLIC_VISIBILITY_TIGHTENED, Map.of("reason", "x")),
+            Optional.empty());
+
+    assertThat(outcome.shouldIsolate()).isTrue();
+  }
+
+  @Test
+  @DisplayName("恢复事件：可见性翻回 PUBLIC，合作边从投影内参与关系重建")
+  void restoreEventRebuildsEdgesFromRetainedContributions() {
+    when(store.restoreAchievement("gen0007", "ach_1", 43L)).thenReturn(1);
+    when(store.listContributions("gen0007", "ach_1")).thenReturn(qualifiedContributions());
+
+    ProjectionApplier.Outcome outcome =
+        applier.apply(
+            "gen0007",
+            sourceEvent(
+                QueryEventTypes.PUBLIC_VISIBILITY_RESTORED,
+                Map.of("sourceId", "src_1", "restoredAchievementIds", List.of("ach_1"))),
+            Optional.empty());
+
+    assertThat(outcome.shouldIsolate()).isFalse();
+    verify(store).restoreAchievement("gen0007", "ach_1", 43L);
+    // 一对合格作者 → 一条边；qualifiedForGraph=false 的作者不得混进来
+    verify(store)
+        .replaceEdges(
+            eq("gen0007"),
+            eq("ach_1"),
+            eq(
+                List.of(
+                    new com.cognitanexus.query.projection.domain.ScholarPair("sch_1", "sch_2"))));
+  }
+
+  private static List<com.cognitanexus.query.projection.domain.ProjectedContribution>
+      qualifiedContributions() {
+    return List.of(
+        new com.cognitanexus.query.projection.domain.ProjectedContribution(
+            "ach_1", "sch_1", "甲", "AUTHOR", 1, "AUTO", List.of()),
+        new com.cognitanexus.query.projection.domain.ProjectedContribution(
+            "ach_1", "sch_2", "乙", "AUTHOR", 2, "SELF_CONFIRMED", List.of()),
+        new com.cognitanexus.query.projection.domain.ProjectedContribution(
+            "ach_1", "sch_3", "丙", "AUTHOR", 3, "EXCLUDED", List.of()));
   }
 }

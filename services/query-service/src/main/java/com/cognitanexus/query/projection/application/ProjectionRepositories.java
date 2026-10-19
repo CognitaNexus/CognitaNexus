@@ -94,6 +94,12 @@ public interface ProjectionRepositories {
     /** 收紧可见性为 RESTRICTED，并移除该成果的合作边；返回受影响行数。 */
     int restrictAchievement(String generation, String achievementId, long revision);
 
+    /**
+     * 恢复许可：把因来源撤权被收紧的成果翻回 PUBLIC（ADR-001 恢复语义）。
+     * 参与关系在收紧时保留；合作边由应用层据此重建。返回受影响行数（0 = 本就不受限或不在投影）。
+     */
+    int restoreAchievement(String generation, String achievementId, long revision);
+
     void replaceContributions(
         String generation, String achievementId, List<ProjectedContribution> contributions);
 

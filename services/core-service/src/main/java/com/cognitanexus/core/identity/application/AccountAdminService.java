@@ -139,6 +139,29 @@ public class AccountAdminService {
     return accounts.findById(accountId).map(this::toView).orElseThrow();
   }
 
+  /**
+   * 管理员重置口令。
+   *
+   * <p>平台没有邮件通道，「忘记口令」只有这一条找回路径，因此这个动作必须可用、可审计、
+   * 且把一次性口令如实交给操作者（只交一次）。返回视图里含明文口令，是本接口与其他管理接口
+   * 最大的不同——它不能写进审计、不能写进日志、也不应被网关缓存。
+   *
+   * <p>重置后该账号 auth_version +1：对方所有既有会话立即失效，必须用新口令重新登录。
+   */
+  @Transactional
+  public Map<String, Object> resetPassword(
+      ActorContext actor, String accountId, String newPassword, String reason) {
+    AuthService.PasswordReset reset =
+        authService.resetPassword(actor, accountId, newPassword, reason);
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("accountId", reset.accountId());
+    view.put("username", reset.username());
+    view.put("temporaryPassword", reset.temporaryPassword());
+    view.put("mustChangePassword", reset.mustChangePassword());
+    view.put("note", "一次性口令只在本响应中出现一次，平台不保存明文；请当面或经可信渠道转交本人。" + "该账号在其他设备上的会话已全部失效，本人登录后应尽快修改口令。");
+    return view;
+  }
+
   private Map<String, Object> toView(Account account) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", account.id());

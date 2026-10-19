@@ -6,6 +6,7 @@ import com.cognitanexus.query.projection.domain.InboxEventRecord;
 import com.cognitanexus.query.projection.domain.ProjectedAchievement;
 import com.cognitanexus.query.projection.domain.ProjectedContribution;
 import com.cognitanexus.query.projection.domain.ProjectedTopic;
+import com.cognitanexus.query.projection.domain.ScholarPair;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -77,6 +78,7 @@ class ProjectionApplier {
       case QueryEventTypes.CATALOG_CHANGE_COMMITTED -> applyCatalogChange(generation, event);
       case QueryEventTypes.PUBLIC_VISIBILITY_TIGHTENED ->
           applyVisibilityTightened(generation, event);
+      case QueryEventTypes.PUBLIC_VISIBILITY_RESTORED -> applyVisibilityRestored(generation, event);
       case QueryEventTypes.ACHIEVEMENT_MERGED ->
           applyAchievementMerged(generation, event, survivorProjection);
       case QueryEventTypes.SCHOLAR_MERGED -> applyScholarMerged(generation, event);
@@ -138,6 +140,13 @@ class ProjectionApplier {
       targets.add(single);
     }
     if (targets.isEmpty()) {
+      // 来源级受理事件（撤权受理时逐批收紧还没跑，事件里只有 sourceId 与目标数，没有成果列表）。
+      // 受理的即时性由公开读屏障保证：公开请求会实时向 core 核实权威水位与许可状态；
+      // 投影里逐条撤下由后续的批次收紧事件（带成果列表）完成。把它隔离会让水位永久停住，
+      // 反而让真正的恢复事件永远无法应用。
+      if (event.stringOf("sourceId") != null) {
+        return Outcome.applied("来源级受理事件（无成果列表），逐批收紧事件随后到达");
+      }
       return Outcome.isolate("隐私收紧事件未指明受影响成果，无法确定应撤下哪些内容");
     }
     int tightened = 0;
@@ -150,6 +159,71 @@ class ProjectionApplier {
     log.info(
         "隐私收紧已应用 revision={} 目标数={} 实际收紧={}", event.catalogRevision(), targets.size(), tightened);
     return Outcome.applied("已撤下 " + tightened + " 项并移除其合作边（目标 " + targets.size() + " 项）");
+  }
+
+  // ---------------------------------------------------------------------------
+  // 隐私恢复
+  // ---------------------------------------------------------------------------
+
+  /**
+   * 应用许可恢复事件。
+   *
+   * <p>core 侧恢复许可时逐条重新判定公开资格（ADR-001 §3），事件里列出的成果都已经重新满足
+   * 公开资格，因此投影端直接把可见性翻回 PUBLIC 即可，不需要重新推断资格。
+   *
+   * <p>被收紧时合作边被删除而参与关系保留（restrictAchievement 只动这两处），恢复时从投影自身
+   * 的参与关系重建该成果的合作边：关系数据没有离开过投影，向 core 重拉一遍既慢又引入第二个
+   * 一致性窗口。若某成果在投影中不存在（未生效、或收紧后又被合并删除），跳过即可——与收紧
+   * 事件同样的「未命中也算已应用」语义。
+   */
+  private Outcome applyVisibilityRestored(String generation, InboxEventRecord event) {
+    List<String> targets =
+        stringList(event.payload().get("restoredAchievementIds"), event.payload().get("restored"));
+    String single = event.stringOf("achievementId");
+    if (single != null) {
+      targets.add(single);
+    }
+    if (targets.isEmpty()) {
+      if (event.stringOf("sourceId") != null) {
+        return Outcome.applied("来源级受理事件（无成果列表），逐批恢复事件随后到达");
+      }
+      return Outcome.isolate("恢复事件未指明受影响成果，无法确定应恢复哪些内容");
+    }
+    int restored = 0;
+    for (String achievementId : targets) {
+      int changed =
+          readModel.restoreAchievement(generation, achievementId, event.catalogRevision());
+      if (changed > 0) {
+        // 边只对仍存在的投影成果重建；listContributions 读的是收紧时保留下来的参与关系。
+        readModel.replaceEdges(generation, achievementId, pairsOf(generation, achievementId));
+      }
+      restored += changed;
+    }
+    log.info(
+        "隐私恢复已应用 revision={} 目标数={} 实际恢复={}", event.catalogRevision(), targets.size(), restored);
+    return Outcome.applied("已恢复 " + restored + " 项并重建其合作边（目标 " + targets.size() + " 项）");
+  }
+
+  /** 从投影自身的参与关系生成该成果的合格作者对（与写入时同一把尺子）。 */
+  private List<ScholarPair> pairsOf(String generation, String achievementId) {
+    List<ProjectedContribution> contributions =
+        readModel.listContributions(generation, achievementId);
+    List<String> scholars = new ArrayList<>();
+    for (ProjectedContribution contribution : contributions) {
+      if (contribution.qualifiedForGraph() && contribution.scholarId() != null) {
+        scholars.add(contribution.scholarId());
+      }
+    }
+    scholars.sort(String::compareTo);
+    List<ScholarPair> pairs = new ArrayList<>();
+    for (int i = 0; i < scholars.size(); i++) {
+      for (int j = i + 1; j < scholars.size(); j++) {
+        if (!scholars.get(i).equals(scholars.get(j))) {
+          pairs.add(new ScholarPair(scholars.get(i), scholars.get(j)));
+        }
+      }
+    }
+    return pairs;
   }
 
   // ---------------------------------------------------------------------------

@@ -26,6 +26,33 @@ function section() {
 const candidates = section()
 const anomalies = section()
 const ledger = section()
+const integrity = section()
+
+/**
+ * 诚信声明登记表单。
+ *
+ * 表单与列表放在同一屏而不是弹窗：登记声明是一件需要对照着「这条成果现在还有什么声明」
+ * 才能下判断的操作，弹窗会把唯一可参照的信息挡住。
+ */
+const integrityForm = reactive({
+  achievementId: '',
+  noticeType: 'RETRACTION',
+  declaredBy: '',
+  reason: '',
+  sourceUrl: '',
+  announcedOn: '',
+})
+const integrityBusy = ref('')
+const integrityError = ref('')
+const integrityNote = ref('')
+const revokeTarget = ref('')
+const revokeReason = ref('')
+
+const INTEGRITY_TYPES = [
+  { value: 'CONCERN', label: '关注声明（结论待定）' },
+  { value: 'CORRECTION', label: '更正（主体仍成立）' },
+  { value: 'RETRACTION', label: '撤稿（不再作为有效研究引用）' },
+]
 
 /**
  * 工作台概览。
@@ -416,7 +443,68 @@ function runScan() {
 }
 
 function loadAll() {
-  return Promise.all([loadCandidates(), loadAnomalies()])
+  return Promise.all([loadCandidates(), loadAnomalies(), loadIntegrity()])
+}
+
+/** 最近的生效声明。撤销历史不在这里显示，避免「看着像还有撤稿标记」的误读。 */
+function loadIntegrity() {
+  return loadSection(integrity, async () => {
+    const data = await adminApi.integrityNotices({ limit: 50, activeOnly: true })
+    return (data.items as Row[] | undefined) ?? []
+  })
+}
+
+async function submitIntegrity() {
+  integrityError.value = ''
+  integrityNote.value = ''
+  const achievementId = integrityForm.achievementId.trim()
+  if (!achievementId) {
+    integrityError.value = '需要填写成果标识：声明必须挂在具体一条成果上。'
+    return
+  }
+  integrityBusy.value = 'register'
+  try {
+    await adminApi.registerIntegrityNotice(achievementId, {
+      noticeType: integrityForm.noticeType,
+      declaredBy: integrityForm.declaredBy.trim(),
+      reason: integrityForm.reason.trim(),
+      sourceUrl: integrityForm.sourceUrl.trim() || null,
+      announcedOn: integrityForm.announcedOn.trim() || null,
+    })
+    integrityNote.value = '声明已登记；公开详情与检索结果会带上对应标记。'
+    integrityForm.reason = ''
+    integrityForm.sourceUrl = ''
+    integrityForm.announcedOn = ''
+    await loadIntegrity()
+  } catch (cause) {
+    const described = describeError(cause)
+    integrityError.value = described.message
+  } finally {
+    integrityBusy.value = ''
+  }
+}
+
+async function revokeIntegrity(noticeId: string) {
+  integrityError.value = ''
+  integrityNote.value = ''
+  const reason = revokeReason.value.trim()
+  if (reason.length < 10) {
+    integrityError.value = '撤销理由至少 10 字：撤销一条撤稿声明本身是需要解释的动作。'
+    return
+  }
+  integrityBusy.value = `revoke:${noticeId}`
+  try {
+    await adminApi.revokeIntegrityNotice(noticeId, reason)
+    integrityNote.value = '声明已撤销；若这是唯一一条生效声明，成果会恢复为「无诚信声明」。'
+    revokeTarget.value = ''
+    revokeReason.value = ''
+    await loadIntegrity()
+  } catch (cause) {
+    const described = describeError(cause)
+    integrityError.value = described.message
+  } finally {
+    integrityBusy.value = ''
+  }
 }
 
 function resetAction() {
@@ -555,6 +643,30 @@ function rebaseNote(result: unknown): string {
 
 function resolveAnomaly(id: string) {
   run(`anomaly:${id}`, () => adminApi.resolveAnomaly(id), '异常已标记为处理完毕。', loadAnomalies)
+}
+
+/**
+ * 公众纠错的处置细节。
+ *
+ * 摘要只给一行摘录，处置人要判断「这条报告是否成立」必须看到原文、累计次数与联系方式。
+ * 这四项都来自 detail，不在表格里就永远没人点开——而这张表本来就没有详情展开。
+ */
+function correctionOf(row: Record<string, unknown>): {
+  report: string
+  count: number
+  lastReportedAt: string
+  contact: string
+} | null {
+  if (String(row.kind ?? '') !== 'PUBLIC_CORRECTION_REPORT') return null
+  const detail = (row.detail ?? {}) as Record<string, unknown>
+  const text = (value: unknown) => (typeof value === 'string' ? value : '')
+  const count = typeof detail.reportCount === 'number' ? detail.reportCount : 1
+  return {
+    report: text(detail.report),
+    count,
+    lastReportedAt: text(detail.lastReportedAt),
+    contact: text(detail.contact),
+  }
 }
 
 function submitMerge() {
@@ -1031,7 +1143,22 @@ onMounted(loadAll)
                   >
                   <template v-else>{{ String(row.entityId ?? row.sourceRecordId ?? '—') }}</template>
                 </td>
-                <td class="tiny">{{ String(row.summary ?? '') }}</td>
+                <td class="tiny">
+                  {{ String(row.summary ?? '') }}
+                  <template v-if="correctionOf(row)">
+                    <div class="tiny" style="margin-top: 4px">
+                      报告原文：<span class="dim">{{ correctionOf(row)!.report }}</span>
+                    </div>
+                    <div class="tiny faint" style="margin-top: 2px">
+                      累计 {{ correctionOf(row)!.count }} 次 · 最近
+                      {{ correctionOf(row)!.lastReportedAt || '—' }}
+                      <template v-if="correctionOf(row)!.contact">
+                        · 联系方式 {{ correctionOf(row)!.contact }}
+                      </template>
+                      <template v-else> · 未留联系方式</template>
+                    </div>
+                  </template>
+                </td>
                 <td class="tiny">{{ String(row.status ?? '') }}</td>
                 <td class="mono tiny">{{ String(row.createdAt ?? '') }}</td>
                 <td>
@@ -1268,6 +1395,124 @@ onMounted(loadAll)
                 幸存 {{ String(row.survivorId ?? '—') }} ← 并入 {{ String(row.mergedId ?? '—') }}
               </div>
               <div class="tiny dim">{{ String(row.reason ?? '') }}</div>
+            </div>
+          </AsyncBlock>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>学术诚信声明</h2>
+          <span class="tiny faint">撤稿 / 更正 / 关注声明</span>
+        </div>
+        <div class="panel-body">
+          <div class="notice info" style="margin-bottom: 12px">
+            声明<b>不改写成果的任何字段</b>：它是挂在成果上的一条独立判断，纠正内容仍走修订与裁决流程。
+            撤稿成果<b>仍然可以检索</b>（引用过它的人需要查到发生了什么），但详情与列表都会显示标记。
+            同一成果同一类型同时只能有一条生效声明，撤销必须写理由。
+          </div>
+
+          <div class="btn-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px">
+            <input
+              v-model="integrityForm.achievementId"
+              type="text"
+              placeholder="成果标识（ach_…）"
+              style="flex: 2; min-width: 220px"
+            />
+            <select v-model="integrityForm.noticeType" style="flex: 1; min-width: 160px">
+              <option v-for="type in INTEGRITY_TYPES" :key="type.value" :value="type.value">
+                {{ type.label }}
+              </option>
+            </select>
+            <input
+              v-model="integrityForm.declaredBy"
+              type="text"
+              placeholder="声明主体（期刊 / 机构 / 平台治理）"
+              style="flex: 2; min-width: 200px"
+            />
+          </div>
+          <div class="btn-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px">
+            <input
+              v-model="integrityForm.sourceUrl"
+              type="text"
+              placeholder="可核查链接（http/https，可空）"
+              style="flex: 2; min-width: 220px"
+            />
+            <input
+              v-model="integrityForm.announcedOn"
+              type="date"
+              style="flex: 1; min-width: 140px"
+              title="声明方公布的日期，可空"
+            />
+          </div>
+          <textarea
+            v-model="integrityForm.reason"
+            rows="3"
+            placeholder="登记理由（至少 10 字）：读者要能据此判断这次声明的依据"
+            style="width: 100%; margin-bottom: 8px"
+          ></textarea>
+          <div class="btn-row" style="margin-bottom: 10px">
+            <button
+              class="btn"
+              :disabled="integrityBusy === 'register'"
+              @click="submitIntegrity"
+            >
+              {{ integrityBusy === 'register' ? '登记中…' : '登记声明' }}
+            </button>
+            <span v-if="integrityError" class="tiny" style="color: var(--danger, #b00)">{{
+              integrityError
+            }}</span>
+            <span v-else-if="integrityNote" class="tiny faint">{{ integrityNote }}</span>
+          </div>
+
+          <AsyncBlock
+            :loading="integrity.loading"
+            :error="integrity.error"
+            :error-code="integrity.errorCode"
+            :empty="integrity.items.length === 0"
+            empty-text="当前没有生效中的诚信声明。"
+          >
+            <div
+              v-for="row in integrity.items"
+              :key="String(row.id)"
+              class="result-item"
+              style="padding: 10px 0"
+            >
+              <div class="result-meta">
+                <span class="badge danger">{{ String(row.typeLabel ?? row.type ?? '') }}</span>
+                <span class="tiny">{{ String(row.declaredBy ?? '') }}</span>
+                <span class="mono tiny">{{ String(row.achievementId ?? '') }}</span>
+                <span class="tiny faint">登记 {{ String(row.recordedAt ?? '') }}</span>
+              </div>
+              <div class="small" style="margin-top: 6px">{{ String(row.reason ?? '') }}</div>
+              <div v-if="row.sourceUrl" class="tiny" style="margin-top: 4px">
+                <a :href="String(row.sourceUrl)" target="_blank" rel="noopener noreferrer">
+                  {{ String(row.sourceUrl) }}
+                </a>
+              </div>
+              <div class="btn-row" style="margin-top: 8px">
+                <button
+                  class="btn small"
+                  @click="revokeTarget = revokeTarget === String(row.id) ? '' : String(row.id)"
+                >
+                  {{ revokeTarget === String(row.id) ? '取消' : '撤销' }}
+                </button>
+              </div>
+              <div v-if="revokeTarget === String(row.id)" style="margin-top: 6px">
+                <textarea
+                  v-model="revokeReason"
+                  rows="2"
+                  placeholder="撤销理由（至少 10 字）：事后要能回答这条声明为什么被推翻"
+                  style="width: 100%; margin-bottom: 6px"
+                ></textarea>
+                <button
+                  class="btn small"
+                  :disabled="integrityBusy === `revoke:${String(row.id)}`"
+                  @click="revokeIntegrity(String(row.id))"
+                >
+                  {{ integrityBusy === `revoke:${String(row.id)}` ? '撤销中…' : '确认撤销' }}
+                </button>
+              </div>
             </div>
           </AsyncBlock>
         </div>

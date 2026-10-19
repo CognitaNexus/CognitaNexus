@@ -144,6 +144,16 @@ public interface GovernanceRepositories {
      */
     java.util.Optional<String> findOpenIdByDedupeKey(String kind, String dedupeKey);
 
+    /**
+     * 按去重键取整条未处理异常。
+     *
+     * <p>公众纠错的重复提交需要在既有 detail 上累加计数，因此必须读回既有内容。
+     */
+    java.util.Optional<GovernanceAnomaly> findOpenByDedupeKey(String kind, String dedupeKey);
+
+    /** 某一类未处理异常的条数。 */
+    long countOpenOfKind(String kind);
+
     /** 复核既有异常：把 detail 换成本次巡检读到的事实，保持 OPEN 与创建时间不变。 */
     boolean refreshDetail(String id, java.util.Map<String, Object> detail);
 
@@ -245,6 +255,9 @@ public interface GovernanceRepositories {
     java.util.Optional<String> findActiveAuthorityId(String scholarId);
 
     List<String> snapshotContributions(String achievementId);
+
+    /** 某成果的参与学者（去重）。合并通知用它定位「档案上少了一条成果」的认领账号（ADR-003 §3）。 */
+    List<String> listScholarIdsOfAchievement(String achievementId);
 
     List<String> snapshotScholarContributions(String scholarId);
 

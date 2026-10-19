@@ -11,6 +11,14 @@
 #    验证过**。本机实际运行走 ops/local 下的原生二进制脚本；服务器部署使用本文件。
 #    未验证项在 README 的「部署」一节逐条列出。
 #
+# 关于 mem_limit（每个服务都必须有，不是可选优化）：
+#   三个服务的 Dockerfile 都写 -XX:MaxRAMPercentage=70。这个百分比按「JVM 认为可用的内存」
+#   算——容器没有任何 cgroup 限制时，JVM 读到的是宿主机总内存。于是 8G 机器上三个服务各自
+#   以为有 5.6G 可用、各把堆上限设到约 3.9G，合计 11.8G；真压上去由内核 OOM Killer 随机挑
+#   一个杀掉，容器日志只留一行 Killed，没有任何 Java 异常栈，现象是「服务自己重启了」却查
+#   不出原因。加上 mem_limit 之后 MaxRAMPercentage 才按容器限额算——这是正确解法，不需要
+#   改 Dockerfile。下列限额之和约 5G，为构建峰值与系统留余量；构建镜像前应先停掉应用容器。
+#
 # 用法：
 #   cp .env.example .env      # 至少改掉所有 *_PASSWORD 与 CN_*_SERVICE_TOKEN
 #   docker compose up -d --build
@@ -48,6 +56,9 @@ services:
     # 仅在开发期映射到宿主机，方便用本机 psql 排查。服务器覆盖配置里不映射。
     ports:
       - '127.0.0.1:${CN_PG_PORT:-5432}:5432'
+    # 共享缓冲池默认 128M，加上连接与 WAL 开销，1G 对小规模部署够用且有富余。
+    # 调大 shared_buffers 时这个数要同步调大，否则会被 cgroup 杀掉。
+    mem_limit: 1024m
 
   redis-session:
     image: redis:8-alpine
@@ -73,6 +84,8 @@ services:
       CN_SESSION_REDIS_PASSWORD: ${CN_SESSION_REDIS_PASSWORD:-cn_session_local_dev}
     ports:
       - '127.0.0.1:${CN_SESSION_REDIS_PORT:-6379}:6379'
+    # 会话只存登录态，容量由活跃用户数决定，不是可丢弃缓存，因此限额给得比缓存实例宽。
+    mem_limit: 128m
 
   redis-cache:
     image: redis:8-alpine
@@ -102,6 +115,10 @@ services:
       CN_CACHE_REDIS_PASSWORD: ${CN_CACHE_REDIS_PASSWORD:-cn_cache_local_dev}
     ports:
       - '127.0.0.1:${CN_CACHE_REDIS_PORT:-6380}:6380'
+    # 必须大于 maxmemory：redis 的 maxmemory 只管数据，实例自身的分配器碎片、复制缓冲区、
+    # 客户端输出缓冲都在其外。限额等于 maxmemory 时，淘汰策略还没触发，容器就已经被 cgroup
+    # 杀掉了。默认 maxmemory 256mb，因此这里给 384m。
+    mem_limit: 384m
 
   # ------------------------------ 应用 ------------------------------
 
@@ -139,6 +156,9 @@ services:
       - claim-evidence:/app/storage
     ports:
       - '127.0.0.1:${CN_CORE_PORT:-8081}:8081'
+    # core 承载身份、审核、投递与全部 DDL 迁移，是三个服务里堆需求最大的一个。
+    # 1536m 按 MaxRAMPercentage=70 折算，堆上限约 1.05G，非堆留约 480m。
+    mem_limit: 1536m
 
   query-service:
     build:
@@ -169,6 +189,8 @@ services:
       CN_QUERY_SERVICE_TOKEN: ${CN_QUERY_SERVICE_TOKEN:-cn_query_service_dev}
     ports:
       - '127.0.0.1:${CN_QUERY_PORT:-8083}:8083'
+    # 公开查询以读为主，堆需求低于 core。1024m 折算堆上限约 716m。
+    mem_limit: 1024m
 
   ingestion-service:
     build:
@@ -193,12 +215,21 @@ services:
       SPRING_DATA_REDIS_PORT: '6380'
       CN_CACHE_REDIS_PASSWORD: ${CN_CACHE_REDIS_PASSWORD:-cn_cache_local_dev}
       CN_CORE_BASE_URL: http://core-service:8081
-      CN_CORE_SERVICE_TOKEN: ${CN_CORE_SERVICE_TOKEN:-cn_core_service_dev}
+      # ⚠️ 这里不能写 CN_CORE_SERVICE_TOKEN。该变量名经 Spring 的宽松绑定正好映射到
+      # cn.core.service-token（ingestion 调用 core 时出示的令牌），会覆盖掉它本应为
+      # cn_ingestion_service_dev 的值；于是 core 按「ingestion」这个身份查令牌时对不上，
+      # 回 403，现象是采集管理端点全部返回 DEPENDENCY_UNAVAILABLE「鉴权服务暂不可用」。
+      # 本意要设的是 cn.internal.service-tokens.core（ingestion 校验 core 来调用它时用的
+      # 令牌），对应的环境变量名是 CN_INTERNAL_SERVICE_TOKENS_CORE。
+      CN_INTERNAL_SERVICE_TOKENS_CORE: ${CN_CORE_SERVICE_TOKEN:-cn_core_service_dev}
       CN_INGESTION_SERVICE_TOKEN: ${CN_INGESTION_SERVICE_TOKEN:-cn_ingestion_service_dev}
       # 采集器对外自我标识。Crossref 与 OpenAlex 都要求可联系的 UA，留默认值会被限流。
       CN_COLLECT_USER_AGENT: ${CN_COLLECT_USER_AGENT:-CognitaNexus/0.2 (mailto:cn-admin@example.edu.cn)}
     ports:
       - '127.0.0.1:${CN_INGESTION_PORT:-8082}:8082'
+    # 采集是批处理型负载，峰值出现在解析响应而非常驻；此处与 query 同额，但要注意
+    # 采集与构建不能同时进行——Maven 编译的内存峰值远高于运行时。
+    mem_limit: 1024m
 
   web:
     build:
@@ -211,6 +242,9 @@ services:
       - ingestion-service
     ports:
       - '${CN_WEB_PORT:-8080}:80'
+    # nginx 只做静态文件与反向代理，128m 是宽裕的；设上限是为了让它不会在内存紧张时
+    # 把别人的份额吃掉——它也是唯一对外暴露的服务，限制它的资源等价于缩小暴露面。
+    mem_limit: 128m
 
 volumes:
   pgdata:

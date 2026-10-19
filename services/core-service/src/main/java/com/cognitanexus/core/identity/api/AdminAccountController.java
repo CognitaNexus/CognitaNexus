@@ -4,6 +4,7 @@ import com.cognitanexus.core.identity.application.AccountAdminService;
 import com.cognitanexus.core.platform.security.ActorContextHolder;
 import com.cognitanexus.core.platform.web.ApiResponse;
 import com.cognitanexus.core.platform.web.TraceIdHolder;
+import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
@@ -41,6 +42,23 @@ public class AdminAccountController {
     return ResponseEntity.ok(
         ApiResponse.ok(
             accountAdmin.disable(ActorContextHolder.currentOrNull(), accountId, body.reason()),
+            TraceIdHolder.current()));
+  }
+
+  /**
+   * 重置指定账号的口令。
+   *
+   * <p>不传 newPassword 时由服务端生成一次性口令。无论哪种方式，重置后都会置「需修改」标记，
+   * 本人登录时页面会提示尽快改密。
+   */
+  @PostMapping("/{accountId}/password-reset")
+  public ResponseEntity<ApiResponse<Map<String, Object>>> resetPassword(
+      @PathVariable String accountId,
+      @Valid @RequestBody IdentityRequests.ResetPasswordRequest body) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            accountAdmin.resetPassword(
+                ActorContextHolder.currentOrNull(), accountId, body.newPassword(), body.reason()),
             TraceIdHolder.current()));
   }
 

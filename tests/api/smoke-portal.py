@@ -61,10 +61,13 @@ class Session:
             urllib.request.HTTPCookieProcessor(self.jar), urllib.request.ProxyHandler({})
         )
 
-    def _send(self, method, url, body=None, token=None):
+    def _send(self, method, url, body=None, token=None, raw=None, headers_extra=None):
         data = None
         headers = {"Accept": "application/json"}
-        if body is not None:
+        if raw is not None:
+            data = raw
+            headers.update(headers_extra or {})
+        elif body is not None:
             data = json.dumps(body, ensure_ascii=False).encode("utf-8")
             headers["Content-Type"] = "application/json"
         if token:
@@ -80,6 +83,15 @@ class Session:
             except ValueError:
                 return err.code, {"raw": text}
 
+    def get_raw(self, path):
+        """读二进制资源（头像）：返回状态、Content-Type 与字节。"""
+        req = urllib.request.Request(CORE + path, headers={"Accept": "*/*"})
+        try:
+            with self.opener.open(req, timeout=60) as resp:
+                return resp.status, resp.headers.get("Content-Type", ""), resp.read()
+        except urllib.error.HTTPError as err:
+            return err.code, err.headers.get("Content-Type", ""), err.read()
+
     def csrf(self):
         self._send("GET", CORE + "/api/v1/auth/csrf")
         for cookie in self.jar:
@@ -93,6 +105,34 @@ class Session:
     def post(self, path, body=None):
         token = self.csrf()
         return self._send("POST", CORE + path, body if body is not None else {}, token)
+
+    def put(self, path, body=None):
+        token = self.csrf()
+        return self._send("PUT", CORE + path, body if body is not None else {}, token)
+
+    def delete(self, path):
+        token = self.csrf()
+        return self._send("DELETE", CORE + path, token=token)
+
+    def upload(self, path, filename, content, content_type):
+        """multipart/form-data 上传。手写边界是因为这里不引第三方库。"""
+        token = self.csrf()
+        boundary = "----cn" + uuid.uuid4().hex
+        body = b""
+        body += ("--%s\r\n" % boundary).encode("utf-8")
+        body += (
+            'Content-Disposition: form-data; name="file"; filename="%s"\r\n' % filename
+        ).encode("utf-8")
+        body += ("Content-Type: %s\r\n\r\n" % content_type).encode("utf-8")
+        body += content
+        body += ("\r\n--%s--\r\n" % boundary).encode("utf-8")
+        return self._send(
+            "POST",
+            CORE + path,
+            token=token,
+            raw=body,
+            headers_extra={"Content-Type": "multipart/form-data; boundary=%s" % boundary},
+        )
 
     def login(self, user, password):
         self.csrf()
@@ -202,11 +242,13 @@ def main():
     check("原持有人仍持有授权", len(still_mine) == 1,
           still_mine[0].get("authorityId") if still_mine else "lost")
 
-    # ---- 门户变更：需审批字段 ----
-    summary = "自检写入的研究简介 %s" % stamp
+    # ---- 门户变更：需审批字段（机构属于身份与归属事实） ----
+    # 这里刻意不用「研究简介」：它自第十批起属于本人自述、提交即生效，只有机构这类
+    # 影响归属的字段才进待审通道。用错字段会让这段测试在语义变更后仍然通过（假绿）。
+    new_org = "自检机构 %s" % stamp
     code, payload = first.post(
         "/api/v1/account/portal-changes",
-        {"scholarId": scholar_id, "fieldName": "RESEARCH_SUMMARY", "proposedValue": summary},
+        {"scholarId": scholar_id, "fieldName": "ORGANIZATION_NAME", "proposedValue": new_org},
     )
     change = data_of(payload)
     change_id = change.get("id")
@@ -219,14 +261,14 @@ def main():
         rows = data_of(listing) or []
         matched = [
             row for row in rows
-            if row.get("scholarId") == scholar_id and row.get("fieldName") == "RESEARCH_SUMMARY"
+            if row.get("scholarId") == scholar_id and row.get("fieldName") == "ORGANIZATION_NAME"
         ]
         change_id = matched[0]["id"] if matched else None
         check("回查取得变更 id", bool(change_id), change_id)
 
     code, payload = second.post(
         "/api/v1/account/portal-changes",
-        {"scholarId": scholar_id, "fieldName": "RESEARCH_SUMMARY", "proposedValue": "越权写入"},
+        {"scholarId": scholar_id, "fieldName": "ORGANIZATION_NAME", "proposedValue": "越权写入"},
     )
     check("未获授权的用户可以提交门户变更吗：应被拒", code == 403,
           "%d %s" % (code, payload.get("code")))
@@ -239,18 +281,18 @@ def main():
           "%s | %s | trace=%s" % (payload.get("code"), payload.get("message"), payload.get("traceId")))
 
     stored_rows = psql(
-        "core_db", "core", "SELECT coalesce(research_summary,'') FROM core_scholar WHERE id='%s';" % scholar_id
+        "core_db", "core", "SELECT coalesce(organization_name,'') FROM core_scholar WHERE id='%s';" % scholar_id
     )
     stored = stored_rows[0] if stored_rows else ""
-    check("批准后学者简介已更新", stored == summary, stored[:40])
+    check("批准后学者机构已更新", stored == new_org, stored[:40])
 
     provenance = psql(
         "core_db",
         "core",
         "SELECT value_level FROM core_field_provenance "
-        "WHERE entity_type='SCHOLAR' AND entity_id='%s' AND field_name='researchSummary';" % scholar_id,
+        "WHERE entity_type='SCHOLAR' AND entity_id='%s' AND field_name='organizationName';" % scholar_id,
     )
-    check("简介写为 REVIEWED 级（来源自动更新不得覆盖）",
+    check("机构写为 REVIEWED 级（来源自动更新不得覆盖）",
           bool(provenance) and provenance[-1] in ("REVIEWED", "MANUAL"),
           provenance)
 
@@ -260,9 +302,128 @@ def main():
     )
     check("重复裁决被拒", code == 409, "%d %s" % (code, payload.get("code")))
 
-    # 不在这里直接 UPDATE 学者简介来「模拟来源覆盖」：那样做会把已写好的 REVIEWED 值破坏掉，
+    # 不在这里直接 UPDATE 学者机构来「模拟来源覆盖」：那样做会把已写好的 REVIEWED 值破坏掉，
     # 制造出一条与业务无关的脏数据，而且并不能验证来源写入路径。来源侧是否尊重 REVIEWED
     # 由 SourceIntakeService 的字段合并规则保证，对应的单测在 core 模块里。
+
+    # ---- 门户资料自助维护：简介、主页、头像、代表作置顶 ----
+    self_summary = "自检自助写入的研究简介 %s" % stamp
+    homepage = "https://example.edu/~selfcheck-%s" % stamp
+    code, payload = first.put(
+        "/api/v1/account/scholars/%s/profile" % scholar_id,
+        {"researchSummary": self_summary, "homepageUrl": homepage},
+    )
+    data = data_of(payload)
+    check("本人可直接修改简介与主页", code == 200 and data.get("homepageUrl") == homepage,
+          "%d %s" % (code, payload.get("message")))
+    check("修改后立即回显新简介", data.get("researchSummary") == self_summary,
+          str(data.get("researchSummary"))[:40])
+
+    rows = psql("core_db", "core",
+                "SELECT coalesce(research_summary,'')||'|'||coalesce(homepage_url,'') "
+                "FROM core_scholar WHERE id='%s';" % scholar_id)
+    check("简介与主页已落库", rows and rows[0] == self_summary + "|" + homepage, rows[:1])
+
+    provenance = psql(
+        "core_db", "core",
+        "SELECT value_level FROM core_field_provenance "
+        "WHERE entity_type='SCHOLAR' AND entity_id='%s' AND field_name='researchSummary';" % scholar_id)
+    check("自助修改的简介写为 MANUAL 级", bool(provenance) and provenance[-1] in ("MANUAL", "REVIEWED"),
+          provenance)
+
+    code, payload = first.put(
+        "/api/v1/account/scholars/%s/profile" % scholar_id,
+        {"homepageUrl": "javascript:alert(1)"},
+    )
+    check("非 http(s) 的主页地址被拒（不让档案页变成脚本入口）", code == 400,
+          "%d %s" % (code, payload.get("code")))
+
+    code, payload = second.put(
+        "/api/v1/account/scholars/%s/profile" % scholar_id,
+        {"researchSummary": "越权写入"},
+    )
+    check("非管理者改不了别人门户的资料", code == 403, "%d %s" % (code, payload.get("code")))
+
+    # 公开页必须能读到刚写进去的自述与主页（写成功但读不到，等于没生效）。
+    code, payload = first.get("/api/v1/public/scholars/%s" % scholar_id)
+    public = data_of(payload)
+    check("公开档案页回显本人填写的主页",
+          (public.get("profile") or {}).get("homepageUrl") == homepage,
+          (public.get("profile") or {}).get("homepageUrl"))
+    check("公开档案页回显本人填写的简介", public.get("researchSummary") == self_summary,
+          str(public.get("researchSummary"))[:30])
+
+    # 置顶：先拿一条该学者名下的公开成果。
+    own_rows = psql(
+        "core_db", "core",
+        "SELECT a.id FROM core_achievement a JOIN core_contribution c ON c.achievement_id=a.id "
+        "WHERE c.scholar_id='%s' AND c.relation_state IN ('AUTO','SELF_CONFIRMED') "
+        "AND a.visibility='PUBLIC' AND a.effective_status='EFFECTIVE' AND a.merged_into_id IS NULL "
+        "LIMIT 2;" % scholar_id)
+    if own_rows:
+        code, payload = first.put(
+            "/api/v1/account/scholars/%s/featured" % scholar_id,
+            {"achievementIds": own_rows[:2]},
+        )
+        featured = (data_of(payload).get("featured") or [])
+        check("可置顶本人名下的公开成果",
+              code == 200 and [row.get("achievementId") for row in featured] == own_rows[:2],
+              "%d %s" % (code, payload.get("message")))
+        check("置顶顺序与提交顺序一致（名次由数组顺序决定）",
+              [row.get("achievementId") for row in featured] == own_rows[:2],
+              [row.get("achievementId") for row in featured])
+
+        code, payload = first.get("/api/v1/public/scholars/%s" % scholar_id)
+        public_featured = (data_of(payload).get("featured") or {})
+        check("公开页出现置顶代表作",
+              [item.get("id") for item in (public_featured.get("items") or [])] == own_rows[:2],
+              public_featured.get("items"))
+    else:
+        check("该自查学者名下没有可置顶的公开成果（跳过置顶用例）", False, scholar_id)
+
+    foreign = psql(
+        "core_db", "core",
+        "SELECT a.id FROM core_achievement a WHERE a.visibility='PUBLIC' "
+        "AND a.effective_status='EFFECTIVE' AND a.merged_into_id IS NULL "
+        "AND NOT EXISTS (SELECT 1 FROM core_contribution c WHERE c.achievement_id=a.id "
+        "AND c.scholar_id='%s') LIMIT 1;" % scholar_id)
+    if foreign:
+        code, payload = first.put(
+            "/api/v1/account/scholars/%s/featured" % scholar_id,
+            {"achievementIds": [foreign[0]]},
+        )
+        check("不能置顶不属于自己的成果", code == 400, "%d %s" % (code, payload.get("code")))
+
+    code, payload = first.put(
+        "/api/v1/account/scholars/%s/featured" % scholar_id,
+        {"achievementIds": ["ach_1", "ach_2", "ach_3", "ach_4"]},
+    )
+    check("置顶超过上限被拒", code == 400, "%d %s" % (code, payload.get("code")))
+
+    # 头像：1x1 PNG，真实字节，走真实 multipart 通道。
+    png = bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+        "0000000d49444154789c6360000002000100ffff03000006000557bfabd40000000049454e44ae426082")
+    code, payload = first.upload(
+        "/api/v1/account/scholars/%s/avatar" % scholar_id, "avatar.png", png, "image/png")
+    check("上传头像成功", code == 200 and data_of(payload).get("avatarUrl"),
+          "%d %s" % (code, payload.get("message")))
+    avatar_url = data_of(payload).get("avatarUrl") or ""
+    code, content_type, body = first.get_raw(avatar_url.split("?")[0])
+    check("公开读取头像返回真实 PNG 字节",
+          code == 200 and content_type.startswith("image/png") and body == png,
+          "%d %s %d bytes" % (code, content_type, len(body)))
+
+    code, payload = first.upload(
+        "/api/v1/account/scholars/%s/avatar" % scholar_id, "bad.png", b"not-an-image", "image/png")
+    check("非图片内容被拒（只信文件头不信 Content-Type）", code == 400,
+          "%d %s" % (code, payload.get("code")))
+
+    code, payload = first.delete("/api/v1/account/scholars/%s/avatar" % scholar_id)
+    check("可移除头像", code == 200 and not data_of(payload).get("avatarUrl"),
+          "%d %s" % (code, payload.get("message")))
+    code, _, _ = first.get_raw("/api/v1/public/scholars/%s/avatar" % scholar_id)
+    check("移除后公开头像返回 404", code == 404, code)
 
     # ---- 撤销发布与恢复 ----
     sample = psql(
