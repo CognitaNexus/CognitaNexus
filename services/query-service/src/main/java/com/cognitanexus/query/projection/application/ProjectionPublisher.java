@@ -67,6 +67,17 @@ public class ProjectionPublisher {
       }
       InboxEventRecord event = pending.get(0);
 
+      // 迟到事件：revision 已不高于已发布水位，说明这一修订的内容早已进过投影。
+      //
+      // 单调水位要求「下一条必须正好是 published+1」，所以这类行一旦排在队首，
+      // 每个周期都会被判成「等待修订 X」，水位静默停住、不报错也不改状态——
+      // 线上实际发生过：重放补投后 1426 条历史事件堵住队头，投影停了 10 分钟无任何日志。
+      // 这里直接标记已应用并继续，不参与「应用」计数。
+      if (event.catalogRevision() <= published) {
+        inbox.markApplied(event.id());
+        continue;
+      }
+
       ProjectionPreparer.Prepared prepared;
       try {
         prepared = preparer.prepare(event);
