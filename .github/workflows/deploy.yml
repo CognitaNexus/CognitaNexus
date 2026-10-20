@@ -113,12 +113,19 @@ jobs:
             fi
           done
           if [ -z "$ok" ]; then
-            echo "::error::CN_SSH_KEY 解析不出私钥（原文/换行还原/base64 三种都失败）：$(tr '\n' ' ' < /tmp/cn-key.err | cut -c1-300)"
-            echo "首行：$(head -1 /tmp/key-crlf | cut -c1-40)；长度 $(wc -c < /tmp/key-crlf) 字节；行数 $(wc -l < /tmp/key-crlf)"
+            # 日志要登录才能看，所以把诊断信息做成注解（未登录也能通过 API 读到）。
+            # sha256 只用于和本地正确私钥比对，不泄露内容。
+            printf '::error::CN_SSH_KEY 三种存法都解析失败：%s\n' "$(tr '\n' ' ' < /tmp/cn-key.err | cut -c1-200)"
+            printf '::error::诊断 字节=%s 行=%s 首行=[%s] 末行=[%s] sha256=%s\n' \
+              "$(wc -c < /tmp/key-crlf)" \
+              "$(wc -l < /tmp/key-crlf)" \
+              "$(head -1 /tmp/key-crlf | cut -c1-30)" \
+              "$(tail -1 /tmp/key-crlf | cut -c1-30)" \
+              "$(sha256sum /tmp/key-crlf | cut -c1-32)"
             exit 1
           fi
           chmod 600 ~/.ssh/cn_deploy
-          echo "私钥取自 $ok，公钥指纹 $(ssh-keygen -lf ~/.ssh/cn_deploy.pub)"
+          printf '::notice::私钥取自 %s，公钥指纹 %s\n' "$ok" "$(ssh-keygen -lf ~/.ssh/cn_deploy.pub | awk '{print $2}')"
           {
             echo "Host cn-target"
             echo "  HostName $CN_SSH_HOST"
