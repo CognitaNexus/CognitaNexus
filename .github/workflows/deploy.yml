@@ -1,10 +1,14 @@
 name: build-and-deploy
 
-# 推 dev 分支即构建并部署到 Oracle 那台机器。
+# 推 dev 分支即构建三个服务与前端，传到目标机后由 deploy-update.sh 换产物并重启。
 #
 # 为什么在 GitHub 上构建而不是在服务器上：
 # 目标机是 2 核，三个 Spring 服务的 Maven 构建加前端打包要三四十分钟，
-# 且内存峰值不可控；runner 是 4 核且带缓存，一轮几分钟。
+# 且内存峰值不可控；runner 是 4 核且带缓存，本轮实测后端 63s、前端 16s。
+#
+# 为什么用命令行 ssh/rsync 而不是 appleboy 那两个 action：
+# action 出错时只报「exit code 1」，密钥格式这类问题看不到原因；直接用命令行
+# 可以先把密钥校验一遍，并把真实报错通过 ::error:: 注解暴露到 API 上。
 on:
   push:
     branches: [dev]
@@ -32,8 +36,9 @@ jobs:
         # 先跳过测试换部署速度。要开质量门禁，把下面这行换成 ./mvnw -B verify
         # （verify 会跑 spotless 与 JaCoCo 80% 覆盖率门禁，耗时明显增加）。
         run: |
+          set -o pipefail
           chmod +x mvnw
-          ./mvnw -B -DskipTests package
+          ./mvnw -B -DskipTests package 2>&1 | tee /tmp/cn-build.log | tail -20
 
       - name: 设置 Node
         uses: actions/setup-node@v4
@@ -44,9 +49,10 @@ jobs:
 
       - name: 构建前端
         run: |
+          set -o pipefail
           cd frontend
-          npm ci
-          npm run build
+          npm ci --no-audit --no-fund 2>&1 | tail -5
+          npm run build 2>&1 | tee /tmp/cn-web.log | tail -20
 
       - name: 整理产物
         # 每个服务只取一个可执行 jar：排除 *-sources.jar / *-javadoc.jar / *.jar.original，
@@ -70,31 +76,73 @@ jobs:
           cp ops/deploy/deploy-update.sh out/deploy-update.sh
           du -sh out out/app out/web
 
-      - name: 上传产物到服务器
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.CN_SSH_HOST }}
-          username: ${{ secrets.CN_SSH_USER }}
-          key: ${{ secrets.CN_SSH_KEY }}
-          source: "out/*"
-          target: "/home/ubuntu/cn-incoming"
-          # 去掉最外层 out/，服务器上得到 app/ 与 web/ 两级，正好是 deploy-update.sh 期望的结构
-          strip_components: 1
-          overwrite: true
-          rm: true
+      - name: 准备 SSH
+        env:
+          CN_SSH_HOST: ${{ secrets.CN_SSH_HOST }}
+          CN_SSH_USER: ${{ secrets.CN_SSH_USER }}
+          CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
+          CN_SSH_PORT: ${{ secrets.CN_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CN_SSH_HOST:-}" ] || [ -z "${CN_SSH_USER:-}" ] || [ -z "${CN_SSH_KEY:-}" ]; then
+            echo "::error::Secrets 缺失：需要 CN_SSH_HOST / CN_SSH_USER / CN_SSH_KEY"
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          # 从 Windows 复制进 Secrets 的私钥常带 CRLF，ssh 会直接判 invalid format，
+          # 报错只有一行，很容易被当成「密钥不对」。这里统一去掉 \r 再校验。
+          printf '%s\n' "$CN_SSH_KEY" | tr -d '\r' > ~/.ssh/cn_deploy
+          chmod 600 ~/.ssh/cn_deploy
+          if ! ssh-keygen -y -f ~/.ssh/cn_deploy > ~/.ssh/cn_deploy.pub 2>/tmp/cn-key.err; then
+            echo "::error::CN_SSH_KEY 不可用：$(tr '\n' ' ' < /tmp/cn-key.err)"
+            echo "首行内容：$(head -1 ~/.ssh/cn_deploy | cut -c1-40)"
+            exit 1
+          fi
+          echo "公钥指纹 $(ssh-keygen -lf ~/.ssh/cn_deploy.pub)"
+          {
+            echo "Host cn-target"
+            echo "  HostName $CN_SSH_HOST"
+            echo "  User $CN_SSH_USER"
+            echo "  Port ${CN_SSH_PORT:-22}"
+            echo "  IdentityFile ~/.ssh/cn_deploy"
+            echo "  IdentitiesOnly yes"
+            echo "  StrictHostKeyChecking accept-new"
+            echo "  UserKnownHostsFile ~/.ssh/known_hosts"
+          } > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+          # 15 秒内连不上就当场失败，而不是挂到 job 超时
+          ssh -F ~/.ssh/config -o ConnectTimeout=15 -o BatchMode=yes cn-target 'echo "已连上 $(hostname)"'
 
-      - name: 重启服务
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.CN_SSH_HOST }}
-          username: ${{ secrets.CN_SSH_USER }}
-          key: ${{ secrets.CN_SSH_KEY }}
-          command_timeout: 10m
-          script: |
-            set -e
-            # 先更新部署脚本自身，再执行它（脚本已在本次上传的产物里）。
-            if [ -f /home/ubuntu/cn-incoming/deploy-update.sh ]; then
-              install -m 755 /home/ubuntu/cn-incoming/deploy-update.sh /home/ubuntu/cn-deploy/deploy-update.sh
-            fi
-            # 只换产物、不动数据库。install-server.sh 会 DROP SCHEMA，绝不能在这里调用。
-            bash /home/ubuntu/cn-deploy/deploy-update.sh /home/ubuntu/cn-incoming
+      - name: 上传产物
+        # rsync 带 --delete 清掉上一次的残留，避免旧 jar 被误当成新产物。
+        # 注意源写成 out/ 而不是 out，才能把 app/ 与 web/ 直接铺到目标目录下。
+        run: |
+          set -o pipefail
+          rsync -az --delete -e "ssh -F $HOME/.ssh/config" out/ cn-target:/home/ubuntu/cn-incoming/ 2>&1 | tee /tmp/cn-upload.log
+          ssh -F ~/.ssh/config cn-target 'ls -la /home/ubuntu/cn-incoming /home/ubuntu/cn-incoming/app'
+
+      - name: 更新部署脚本并重启服务
+        run: |
+          set -o pipefail
+          ssh -F ~/.ssh/config cn-target 'bash -s' <<'REMOTE' 2>&1 | tee /tmp/cn-restart.log
+          set -e
+          # 先更新部署脚本自身，再执行它（脚本已在本次上传的产物里）。
+          if [ -f /home/ubuntu/cn-incoming/deploy-update.sh ]; then
+            install -m 755 /home/ubuntu/cn-incoming/deploy-update.sh /home/ubuntu/cn-deploy/deploy-update.sh
+          fi
+          # 只换产物、不动数据库。install-server.sh 会 DROP SCHEMA，绝不能在这里调用。
+          bash /home/ubuntu/cn-deploy/deploy-update.sh /home/ubuntu/cn-incoming
+          REMOTE
+
+      - name: 失败诊断
+        # 日志要登录才能看，所以把每个步骤的尾部报错提升成注解，
+        # 未登录也能通过 check-runs/annotations 接口读到真正的原因。
+        if: failure()
+        run: |
+          for f in /tmp/cn-*.log /tmp/cn-key.err; do
+            [ -f "$f" ] || continue
+            echo "---- $f ----"
+            tail -n 12 "$f" | tr -d '\r' | while IFS= read -r line; do
+              echo "::error file=.github/workflows/deploy.yml::${line:0:400}"
+            done
+          done
