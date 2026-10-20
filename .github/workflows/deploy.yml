@@ -150,12 +150,14 @@ jobs:
           ssh -F ~/.ssh/config -o ConnectTimeout=15 -o BatchMode=yes cn-target 'echo "已连上 $(hostname)"'
 
       - name: 上传产物
-        # rsync 带 --delete 清掉上一次的残留，避免旧 jar 被误当成新产物。
-        # 注意源写成 out/ 而不是 out，才能把 app/ 与 web/ 直接铺到目标目录下。
+        # 目标机没有 rsync（install-server.sh 只装 JDK/PG/Redis/nginx），
+        # 用 tar over ssh：两端只需要 tar，不留额外依赖。
+        # 先清空暂存区，否则上一轮残留的旧 jar 会被当成新产物。
         run: |
           set -o pipefail
-          rsync -az --delete -e "ssh -F $HOME/.ssh/config" out/ cn-target:/home/ubuntu/cn-incoming/ 2>&1 | tee /tmp/cn-upload.log
-          ssh -F ~/.ssh/config cn-target 'ls -la /home/ubuntu/cn-incoming /home/ubuntu/cn-incoming/app'
+          ssh -F ~/.ssh/config cn-target 'rm -rf /home/ubuntu/cn-incoming && mkdir -p /home/ubuntu/cn-incoming' 2>&1 | tee /tmp/cn-upload.log
+          tar -C out -czf - . | ssh -F ~/.ssh/config cn-target 'tar xzf - -C /home/ubuntu/cn-incoming' 2>&1 | tee -a /tmp/cn-upload.log
+          ssh -F ~/.ssh/config cn-target 'du -sh /home/ubuntu/cn-incoming; ls -la /home/ubuntu/cn-incoming/app' 2>&1 | tee -a /tmp/cn-upload.log
 
       - name: 更新部署脚本并重启服务
         run: |
