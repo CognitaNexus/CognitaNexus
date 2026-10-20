@@ -46,14 +46,24 @@ fi
 echo "产物已替换"
 
 log "重启服务（按依赖顺序：core 先起，就绪后再起另外两个）"
+# 等待就绪必须轮询，不能用固定 sleep：2 核机上 Spring 冷启动实测 30～60 秒，
+# 固定睡 15 秒会让自检先失败，出现「其实部署成功、流水线却报红」的假失败。
+wait_health() {
+  local port="$1" limit="$2" code=""
+  for _ in $(seq 1 "$limit"); do
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://127.0.0.1:$port/actuator/health" || true)"
+    [ "$code" = "200" ] && return 0
+    sleep 2
+  done
+  echo "端口 $port 未在 $((limit * 2)) 秒内就绪（最后一次 $code）" >&2
+  return 1
+}
+
 sudo systemctl restart cn-core
-for i in $(seq 1 45); do
-  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:8081/actuator/health || true)"
-  [ "$code" = "200" ] && break
-  sleep 2
-done
+wait_health 8081 60 || true
 sudo systemctl restart cn-query cn-ingestion
-sleep 15
+wait_health 8082 60 || true
+wait_health 8083 60 || true
 
 log "自检"
 fail=0
@@ -62,7 +72,12 @@ for p in 8081 8082 8083; do
   printf '%s %s\n' "$p" "$code"
   [ "$code" = "200" ] || fail=1
 done
-code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 'http://127.0.0.1/query/api/v1/public/search/achievements?page=1&size=1' || true)"
+# nginx → query 这条链路单独再验一次，代理配错时端口本身仍是 200。
+for _ in $(seq 1 30); do
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 'http://127.0.0.1/query/api/v1/public/search/achievements?page=1&size=1' || true)"
+  [ "$code" = "200" ] && break
+  sleep 2
+done
 printf '经 nginx 的公开检索 %s\n' "$code"
 [ "$code" = "200" ] || fail=1
 
