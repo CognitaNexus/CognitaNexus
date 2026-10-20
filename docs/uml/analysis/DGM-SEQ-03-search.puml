@@ -1,0 +1,41 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+title DGM-SEQ-03 公开检索与稳定分页（分析序列）
+actor "访客" as Visitor
+boundary "SearchUI" as UI
+control "SearchCoordinator" as Ctl
+entity "WorkEntity" as Work
+entity "Scholar" as Scholar
+Visitor -> UI : 关键词 + 范围 + 筛选 + 排序 + 页码
+UI -> Ctl : 提交查询
+Ctl -> Ctl : 校验范围与筛选条件
+alt 条件非法
+  Ctl --> UI : 指出非法字段，不查询
+else 条件有效
+  Ctl -> Ctl : 固定公开许可上下文与数据快照
+  Ctl -> Work : 检索公开有效成果
+  Ctl -> Scholar : 检索公开Scholar（仅学者范围）
+  alt 查询失败/超时
+    Ctl --> UI : 执行失败（不得伪装空结果）
+  else 查询成功
+    Ctl -> Ctl : 过滤无权/待审/敏感项 + 稳定排序
+    alt 无匹配
+      Ctl --> UI : 无匹配，不放宽条件
+    else 有匹配
+      Ctl --> UI : 当前页结果 + 总数 + 条件回显
+    end
+  end
+end
+UI --> Visitor : 展示结果/失败/空态
+Visitor -> UI : 下一页
+UI -> Ctl : 携带同一查询上下文与快照
+Ctl --> UI : 不重不漏的稳定页
+note right
+  AC-IMPL-FR01-01/02/03、FR02-01/02、NF01-01
+  不得用“无结果”掩盖超时或依赖失败。
+end note
+@enduml

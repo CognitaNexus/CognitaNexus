@@ -1,0 +1,44 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+title DGM-SEQ-04 注册自动建主页与本人编辑（分析序列）
+actor "访客/注册用户" as UserActor
+boundary "AccountUI" as AccountUI
+boundary "ProfileUI" as ProfileUI
+control "RegistrationCoordinator" as Reg
+control "ProfileCoordinator" as Profile
+entity "User" as User
+entity "UserProfile" as UserProfile
+entity "Scholar" as Scholar
+entity "ReviewEvidence" as Evidence
+UserActor -> AccountUI : 提交注册
+AccountUI -> Reg : 校验并创建账号
+Reg -> User : 创建 User
+Reg -> UserProfile : 同事务创建唯一主页 + 稳定URL
+alt 任一步失败
+  Reg -> Reg : 回滚，保留可重试原因
+  Reg --> AccountUI : 注册失败，不得留下无主主页
+else 成功
+  Reg --> AccountUI : 账号 + 公开主页地址
+end
+UserActor -> ProfileUI : 编辑本人普通资料
+ProfileUI -> Profile : 校验会话与所有权
+alt 非本人/已停用
+  Profile --> ProfileUI : 拒绝且无写入
+else 本人
+  Profile -> UserProfile : 保存普通公开字段
+  Profile -> Evidence : 记录受控审计
+  opt 试图改 Scholar 身份/机构/归属
+    Profile -> Scholar : 转对象授权与学术审核
+    Profile --> ProfileUI : 本次普通编辑不直接改变学术核验状态
+  end
+  Profile --> ProfileUI : 普通资料按策略公开
+end
+note right
+  AC-IMPL-FR03-03/04、FR04-03/04、FR06-03/04/05
+  普通 UserProfile 与 Scholar 分离；认领另走 UC-05/06。
+end note
+@enduml

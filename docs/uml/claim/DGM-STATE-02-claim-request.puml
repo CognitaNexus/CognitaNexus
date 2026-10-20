@@ -2,50 +2,30 @@
 skinparam monochrome true
 skinparam shadowing false
 skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 16
 skinparam dpi 150
-
-' DGM-STATE-02; Draft; 唯一维护源，SVG 由 PlantUML 生成。
-' 依据：docs/srs/modules/scholar-claim.md §6.3；FR05-S01～S07。
-' 仅渲染本图：plantuml -charset UTF-8 -tsvg -o generated docs/uml/claim/DGM-STATE-02-claim-request.puml
-skinparam defaultFontSize 14
-skinparam state {
-  BackgroundColor white
-}
-title 认领申请状态图 · Draft\n对象：单份认领申请，不是门户或授权
-
+title DGM-STATE-02 认领申请
 state "待审核" as Pending
 state "待补充" as Supplement
+state "争议" as Dispute
 state "已通过" as Approved
 state "已驳回" as Rejected
-
-[*] --> Pending : 本人提交 [基本校验通过]\n/ 已有管理人则标记冲突，保留原授权
-Pending --> Supplement : 管理员要求补充 [仍待审核]\n/ 记录补充原因与要求
-Supplement --> Pending : 本人补充并重新提交 [校验通过]
-Supplement --> Supplement : 本人重提 [校验失败]\n/ 返回原因，保持待补充
-Pending --> Pending : 复核发现冲突 [尚未解决]\n/ 记录原因，保留原授权，待人工处理
-Pending --> Approved : 管理员批准 [核验通过、无未解决冲突\n且当前状态有效、授权处理成功]\n/ 记录通过理由，授予目标门户权
-Pending --> Rejected : 管理员驳回 [仍待审核且有原因]\n/ 记录原因，不改变原授权
+[*] --> Pending : 本人提交 [有效]
+Pending --> Supplement : 要求补证 [有权且有效]
+Supplement --> Pending : 本人重提 [校验通过]
+Pending --> Dispute : 发现冲突 [未解决]
+Dispute --> Supplement : 要求补证 [有权且有效]
+Dispute --> Pending : 人工结案 [冲突消除]
+Dispute --> Rejected : 人工驳回 [理由完整]
+Pending --> Approved : 批准 [无冲突且授权成功]
+Pending --> Rejected : 驳回 [有权且理由完整]
+Pending --> Pending : 审核/授权提交 [过期或授予失败]\n/ 拒绝决定，保持原状态
 Approved --> [*]
 Rejected --> [*]
-
-note right of Supplement
-  未重提时保持待补充。
-  补充不是直接通过。
-  不规定超时自动终结。
-end note
-
-note bottom of Approved
-  终态记录仍可由本人查询。
-  重复审核不得再次授予权限。
-  再次申请规则见 J03。
-end note
-
 legend bottom
-  本人可查询进度、原因及结果；查询不改变状态。
-  提交校验失败不创建待审核申请；过期决定被拒绝，不产生迁移。
-  冲突是标记，不是新状态；最终处置依 J03 联合冻结，不自动转移授权。
-  已驳回只作用于本申请，不使已有管理人的门户变为未认领。
-  撤回为 J04 待决能力：候选源状态、已撤回终态和竞态见 SRS §6.4。
-  当前不绘制撤回迁移，避免将候选承诺当成已确定业务规则。
+  事件 [守卫]；审核必须校验当前版本和权限。
+  过期审核/授权失败不改变原状态；不得虚报通过。
+  争议未决保留原授权；结案后重新审核，不自动转移。
+  未补证或超时保留待办；SLA/撤回/申诉仍待签认。
 endlegend
 @enduml

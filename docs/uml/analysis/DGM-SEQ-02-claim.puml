@@ -1,0 +1,43 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+title DGM-SEQ-02 Scholar 认领审核与对象授权（分析序列）
+actor "登录申请人" as Applicant
+actor "有权管理员" as Admin
+boundary "ClaimUI" as UI
+control "ClaimReviewCoordinator" as Ctl
+entity "ClaimApplication" as Claim
+entity "Scholar" as Scholar
+entity "ScholarAuthorization" as Auth
+entity "UserProfile" as Profile
+entity "User" as User
+Applicant -> UI : 选择Scholar并提交证据
+UI -> Ctl : 校验会话/必要证据/冲突
+alt 缺必要证据
+  Ctl --> UI : 标待补充并说明缺项
+else 证据完整
+  Ctl -> Claim : 创建待审核申请
+  UI --> Applicant : 可查询申请状态
+end
+Admin -> UI : 查看证据并作出审核决定
+UI -> Ctl : 提交决定(批准/驳回/争议)
+Ctl -> User : 校验审核权限与账号状态
+alt 无冲突且批准成功
+  Ctl -> Auth : 授予目标Scholar对象管理权
+  Ctl -> Claim : 记录通过
+  Ctl -> Profile : 仅展示批准关联，不创建第二主页
+  Ctl -> Evidence : 留痕操作者/理由/前后值/时间
+  Ctl --> UI : 批准结果
+else 驳回/争议/授权事务失败
+  Ctl -> Claim : 记录驳回/争议或保持原状态
+  Ctl -> Auth : 保留原授权，不自动转移
+  Ctl --> UI : 明确结果与原因
+end
+note right
+  AC-IMPL-FR05-01～04、FR15-04～06、NF03-01
+  管理员批准不等于本人确认；不批量确认其他 Authorship。
+end note
+@enduml

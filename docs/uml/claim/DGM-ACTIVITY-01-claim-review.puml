@@ -2,93 +2,56 @@
 skinparam monochrome true
 skinparam shadowing false
 skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 16
 skinparam dpi 150
-
-' DGM-ACTIVITY-01; Draft; 唯一维护源，SVG 由 PlantUML 生成。
-' 依据：docs/srs/modules/scholar-claim.md §6.1、§6.3；FR05-S01～S07。
-' 渲染：plantuml -charset UTF-8 -tsvg -o generated docs/uml/claim/DGM-ACTIVITY-01-claim-review.puml
-skinparam defaultFontSize 14
-title 门户认领审核活动图 · Draft
+title DGM-ACTIVITY-01 认领审核
+|申请人|
 start
-partition "申请人" {
-  :选择目标门户，提交说明与材料;
-}
-partition "系统" {
-  :校验登录、账号、目标及申请完整性;
-  if (有效提交?) then (是)
-    :创建待审核申请;
-    :已有管理人则标记冲突，保留原授权;
+:提交门户认领\n及核验证据;
+|系统|
+if (提交有效?) then (是)
+ :创建待审核申请;
+else (否)
+ :反馈错误;
+ stop
+endif
+|管理员|
+:核验身份及授权;
+if (需要补证?) then (是)
+ |系统|
+ :待补充并说明原因;
+ |申请人|
+ :补证后重新提交\n校验通过回待审核;
+ stop
+endif
+|管理员|
+if (存在未决冲突?) then (是)
+ |系统|
+ :进入争议\n保留原管理授权;
+ stop
+endif
+|管理员|
+:记录批准或驳回\n及证据理由;
+|系统|
+if (权限和申请版本仍有效?) then (是)
+ if (批准?) then (是)
+  if (授权成功?) then (是)
+   :已通过\n仅授予目标门户权;
   else (否)
-    :返回失败原因，不创建待审核申请;
-    stop
+   :授权失败\n保持先前状态;
   endif
-}
-partition "管理员" {
-  :核验申请、证据与当前门户授权;
-}
-while (需要补充材料?) is (是)
-  partition "管理员" {
-    :记录补充原因与要求;
-  }
-  partition "系统" {
-    if (仍待审核且审核权限有效?) then (是)
-      :申请进入待补充，本人可查要求与原因;
-    else (否)
-      :拒绝过期或无权处理，反馈当前状态;
-      stop
-    endif
-  }
-  partition "申请人" {
-    :等待本人补充并重新提交;
-  }
-  partition "系统" {
-    while (重提校验通过?) is (否)
-      :反馈校验失败，保持待补充;
-      partition "申请人" {
-        :修正材料并重新提交;
-      }
-    endwhile (是)
-    :申请回到待审核;
-    :复核当前授权，已有管理人则标记冲突;
-  }
-  partition "管理员" {
-    :重新核验申请与证据;
-  }
-endwhile (否)
-partition "管理员" {
-  if (作出驳回决定?) then (是)
-    :记录驳回原因;
-  else (否)
-    if (核验通过且无未解决冲突?) then (是)
-      :提出批准决定;
-    else (否)
-      :记录尚未解决的原因，待人工继续处理;
-      partition "系统" {
-        :保留待审核及原授权，本人可查进度;
-      }
-      stop
-    endif
-  endif
-}
-partition "系统" {
-  if (决定与当前申请状态及授权一致\n且相应处理成功?) then (是)
-    if (决定为批准?) then (是)
-      :记录已通过并授予目标门户权\n门户显示已认领;
-    else (否，驳回)
-      :记录已驳回\n不授予、不撤销原管理授权;
-    endif
-    :本人可查询处理原因与结果;
-  else (否)
-    :拒绝过期决定或提示未完成\n不虚报通过，不覆盖既有授权;
-  endif
-}
+ else (否)
+  :已驳回\n不撤销原授权;
+ endif
+else (否)
+ :拒绝过期审核\n返回当前状态;
+endif
+|申请人|
+:查询状态及理由;
 stop
 legend bottom
-  Draft；责任分区表示申请人、系统、管理员，不表示技术组件。
-  待补充未重提时保持原状态，不自动通过、驳回或超时终结。
-  冲突未解决分支仅结束本次处理，不终结申请；可再次人工核验。
-  申请驳回不撤销原管理权；未认领公开门户仍可访问。
-  J03 证据及最终冲突处置待评审，不默认转移、撤销或共管。
-  J04 撤回未采纳，不画既定分支；见 SRS §6.4 条件验收。
+  补证/争议可继续处理，结束本次流程不代表申请终结。
+  争议结案见DGM-STATE-02，不自动转移管理权。
+  授权失败不虚报通过；认领不推导本人确认成果。
 endlegend
 @enduml

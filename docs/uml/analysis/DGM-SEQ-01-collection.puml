@@ -1,0 +1,44 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+title DGM-SEQ-01 数据采集入库与异常移交（分析序列）
+actor "管理员" as Admin
+boundary "AdminConsole" as UI
+boundary "SourceAdapter" as Adapter
+control "CollectionCoordinator" as Collect
+control "GovernanceCoordinator" as Govern
+entity "CollectionTask" as Task
+entity "SourceRecord" as Source
+entity "WorkEntity" as Work
+entity "Authorship" as Authorship
+Admin -> UI : 启动作业(来源,范围)
+UI -> Collect : 校验权限/来源/范围
+Collect -> Task : 创建运行中任务与检查点
+Collect -> Adapter : 读取获准来源批次
+Adapter --> Collect : 原始记录 + 来源证据
+loop 每条已读记录
+  Collect -> Source : 保留原值与逻辑出处
+  Collect -> Govern : 清洗/去重/归属候选
+  alt 可自动关联且证据相容
+    Govern -> Work : 建立或关联去重成果
+    Govern -> Authorship : 建立/更新参与关系状态
+  else 缺字段/冲突/证据不足
+    Govern -> Evidence : 记录异常/待核验与原因
+  end
+end
+Collect -> Task : 记录处置汇总与检查点
+alt 全部已读记录均有处置
+  Collect --> UI : 任务成功 + 待核验数量
+else 读取/处理/队列交接失败
+  Collect --> UI : 任务失败，保留已完成项与恢复入口
+end
+UI --> Admin : 展示结果/待办
+note right
+  AC-IMPL-FR08-01/02、FR09-03～06、FR10-01/02
+  “采集成功”不等于全部公开或全部归属已核验。
+  分析交互，不含实现协议、数据库或消息产品。
+end note
+@enduml

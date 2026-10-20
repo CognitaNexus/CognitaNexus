@@ -1,0 +1,21 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam dpi 150
+left to right direction
+title DGM-USECASE-04 检索与详情
+actor "访客" as Visitor
+rectangle "CognitaNexus" {
+ usecase "UC-01 检索成果与学者" as Search
+ usecase "UC-02 查看成果详情与来源" as Detail
+ usecase "UC-03 浏览学者门户" as Portal
+}
+Visitor -- Search
+Visitor -- Detail
+Visitor -- Portal
+note bottom
+当前V1.1；角色关系表示职责，不用继承表达账号状态。
+认证及授权为守卫，不画作强制调用用例。O01/O02延期。
+end note
+@enduml

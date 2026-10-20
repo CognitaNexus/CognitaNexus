@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" contentScriptType="application/ecmascript" contentStyleType="text/css" height="560.9375px" preserveAspectRatio="none" style="width:729px;height:560px;" version="1.1" viewBox="0 0 729 560" width="729.6875px" zoomAndPan="magnify"><defs/><g><text fill="#000000" font-family="Noto Sans CJK SC" font-size="28.125" lengthAdjust="spacingAndGlyphs" textLength="381.25" x="178.9063" y="32.6248">DGM-USECASE-04 检索与详情</text><!--MD5=[ba81b208e2d7e3c0ff850752f68b8683]
+cluster CognitaNexus--><rect fill="#FFFFFF" height="390.625" style="stroke: #000000; stroke-width: 2.34375;" width="367.1875" x="246.0938" y="153.2247"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="148.4375" x="355.4688" y="181.7246">CognitaNexus</text><ellipse cx="429.415" cy="360.8265" fill="#F8F8F8" rx="140.3525" ry="31.8205" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="220.3125" x="319.2588" y="371.1952">UC-01 检索成果与学者</text><ellipse cx="429.7386" cy="483.235" fill="#F8F8F8" rx="158.6448" ry="35.479" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="264.0625" x="297.7073" y="493.6036">UC-02 查看成果详情与来源</text><ellipse cx="430.0697" cy="244.2387" fill="#F8F8F8" rx="131.6322" ry="30.0764" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="198.4375" x="330.851" y="254.6074">UC-03 浏览学者门户</text><!--MD5=[acb64d932532ebbc809d9a993fb5ccd9]
+entity Visitor--><ellipse cx="32.0313" cy="311.8185" fill="#F8F8F8" rx="12.5" ry="12.5" style="stroke: #383838; stroke-width: 2.34375;"/><path d="M32.0313,324.3185 L32.0313,366.506 M11.7188,336.8185 L52.3438,336.8185 M32.0313,366.506 L11.7188,389.9435 M32.0313,366.506 L52.3438,389.9435 " fill="none" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="43.75" x="10.1563" y="419.2246">访客</text><path d="M148.4375,53.2247 L148.4375,127.6748 A0,0 0 0 0 148.4375,127.6748 L423.4375,127.6748 L429.6875,213.9435 L435.9375,127.6748 L710.9375,127.6748 A0,0 0 0 0 710.9375,127.6748 L710.9375,68.8497 L695.3125,53.2247 L148.4375,53.2247 A0,0 0 0 0 148.4375,53.2247 " fill="#ECECEC" style="stroke: #383838; stroke-width: 1.5625;"/><path d="M695.3125,53.2247 L695.3125,68.8497 L710.9375,68.8497 L695.3125,53.2247 " fill="#ECECEC" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="506.25" x="157.8125" y="84.5998">当前V1.1；角色关系表示职责，不用继承表达账号状态。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="529.6875" x="157.8125" y="114.0123">认证及授权为守卫，不画作强制调用用例。O01/O02延期。</text><!--MD5=[4036449cf14ff72c294f87b9c2b9e902]
+link Visitor to Search--><path d="M54.8125,361.0372 C98.5,361.0372 201.7344,361.0372 288.5938,361.0372 " fill="none" id="Visitor-Search" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[9f5abd1075cd1969f0cb2740b8e5de9a]
+link Visitor to Detail--><path d="M54.8438,374.1466 C77.3438,387.5216 114.2656,407.9904 148.4375,420.4122 C197.5469,438.256 253.4063,451.9747 302.25,461.9435 " fill="none" id="Visitor-Detail" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[a8ca35f5f7fccc2472f9537db54f62c6]
+link Visitor to Portal--><path d="M54.8125,347.8185 C77.2813,334.3497 114.1563,313.8029 148.4375,301.6622 C202.8906,282.3654 265.7031,268.6622 317.9844,259.4591 " fill="none" id="Visitor-Portal" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[0c726457ad251717069c106620ce386b]
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam dpi 150
+left to right direction
+title DGM-USECASE-04 检索与详情
+actor "访客" as Visitor
+rectangle "CognitaNexus" {
+ usecase "UC-01 检索成果与学者" as Search
+ usecase "UC-02 查看成果详情与来源" as Detail
+ usecase "UC-03 浏览学者门户" as Portal
+}
+Visitor - - Search
+Visitor - - Detail
+Visitor - - Portal
+note bottom
+当前V1.1；角色关系表示职责，不用继承表达账号状态。
+认证及授权为守卫，不画作强制调用用例。O01/O02延期。
+end note
+@enduml
+
+PlantUML version 1.2020.02(Sun Mar 01 18:22:07 CST 2020)
+(GPL source distribution)
+Java Runtime: Java(TM) SE Runtime Environment
+JVM: Java HotSpot(TM) 64-Bit Server VM
+Java Version: 22.0.2+9-70
+Operating System: Linux
+Default Encoding: UTF-8
+Language: en
+Country: null
+--></g></svg>

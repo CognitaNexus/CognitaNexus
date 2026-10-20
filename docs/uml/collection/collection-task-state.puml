@@ -1,45 +1,33 @@
 @startuml
 skinparam monochrome true
 skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 16
 skinparam dpi 150
-' Noto Sans CJK SC unavailable locally; use installed system default font.
-title DGM-STATE-01 数据采集任务状态图
-
+title DGM-STATE-01 采集任务
 state "待执行" as Pending
 state "运行中" as Running
 state "成功" as Success
 state "失败" as Failed
 state "重试" as Retry
 state "已停止" as Stopped
-
-[*] --> Pending : 管理员创建 [权限、来源、范围有效] / 保存快照
-Pending --> Running : 管理员启动 [再次校验通过] / 记录开始时间
-Pending --> Stopped : 管理员停止 [停止生效] / 保留记录
-Running --> Success : 全范围读取结束 [全部已读记录完成处置] / 保存汇总
-Running --> Failed : 取得或处理失败 [未全部完成] / 保存错误与恢复范围
-Running --> Stopped : 管理员停止 [停止先于完成生效] / 保留已完成项
-Failed --> Retry : 管理员发起重试 [权限、来源、范围有效] / 保留原轮次
-Retry --> Running : 恢复准备通过 [执行条件仍有效] / 开始新轮次
-Retry --> Failed : 恢复准备失败 / 记录本轮错误
-Retry --> Stopped : 管理员停止 [停止生效] / 不再执行
-Success --> [*] : 生命周期结束
-Stopped --> [*] : 生命周期结束
-
-note right of Success
-成功表示本轮范围完成处置。
-异常／冲突已明确交入可追踪队列
-也可完成处置，不表示全部公开。
-队列交接失败不算完成。
-end note
-
-note bottom of Stopped
-成功、已停止不能直接重启或重试。
-再次采集另建关联原任务的新任务。
-停止与完成竞争按先生效转移裁定。
-end note
-
+[*] --> Pending : 创建 [权限/来源/范围有效]
+Pending --> Running : 启动 [复核通过]
+Pending --> Stopped : 停止 [决定生效]
+Running --> Success : 读取结束 [已读全部处置]
+Running --> Failed : 取得/处理失败 [未完成]
+Running --> Stopped : 停止 [先于完成生效]
+Failed --> Retry : 重试 [执行条件有效]
+Retry --> Running : 恢复准备 [通过]
+Retry --> Failed : 恢复准备 [失败]
+Retry --> Stopped : 停止 [决定生效]
+Success --> [*]
+Stopped --> [*]
 legend bottom
-FR08-S02～S04、FR10-S05；SRS §6.2、BR-204/205。
-未列转移均拒绝；操作反馈不是新增状态。
+  处置=入库/可追踪异常移交/转待核验，交接失败不算完成。
+  成功不等于全部公开；单列待核验、异常及未公开数量。
+  失败/停止保留已完成项；重试不增实体和唯一出处。
+  成功/停止后另建关联任务；停止与完成按先生效裁定。
+  依据：现行FR08/FR10、SRS第6.2节、BR-IMP-04。
 endlegend
 @enduml

@@ -1,0 +1,45 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 15
+skinparam dpi 150
+title DGM-ACTIVITY-05 注册账号并自动建立公开个人主页
+start
+partition "访客" {
+  :填写注册信息;
+}
+partition "系统" {
+  :校验必填项、账号状态与唯一性;
+  if (输入有效?) then (否)
+    :返回字段级错误，不创建账号;
+    stop
+  else (是)
+  endif
+  :创建 User;
+  :同一业务事务创建唯一 UserProfile;
+  :分配稳定、不可重复的公开主页地址;
+  if (创建或地址分配成功?) then (否)
+    :回滚本次注册;
+    :保留可重试原因，不留下无主主页;
+    stop
+  else (是)
+  endif
+  :发布允许公开的普通资料与零成果空态;
+  :返回账号与主页地址;
+}
+partition "访客/其他访问者" {
+  :凭稳定地址公开读取主页;
+}
+if (账号已退出或停用?) then (是)
+  :受保护写操作拒绝;
+else (否)
+  :主页所有者可进入 UC-22;
+endif
+note right
+  AC-IMPL-FR03-03/04、FR04-03/04
+  重试不得产生第二主页；零成果不返回404。
+  不创建 Scholar，不产生 Authorship。
+end note
+stop
+@enduml

@@ -1,0 +1,51 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 15
+skinparam dpi 150
+left to right direction
+title DGM-USECASE-07 个人主页、账号与 Scholar 边界（V2.2 / 69 AC）
+actor "访客" as Visitor
+actor "注册用户" as User
+actor "已授权 Scholar 管理者" as ScholarManager
+actor "有权管理员" as Admin
+rectangle "CognitaNexus" {
+  usecase "UC-03 查看公开个人主页/学者档案" as ViewProfile
+  usecase "UC-04 注册账号并生成主页" as Register
+  usecase "UC-22 编辑本人普通个人主页" as EditProfile
+  usecase "UC-05 提交和查询 Scholar 认领" as Claim
+  usecase "UC-06 审核 Scholar 认领" as ReviewClaim
+  usecase "UC-07 维护已授权 Scholar 档案" as MaintainScholar
+  usecase "创建唯一 UserProfile 与稳定地址" as CreateProfile
+}
+Visitor --> ViewProfile
+User --> Register
+User --> EditProfile
+User --> Claim
+Admin --> ReviewClaim
+ScholarManager --> MaintainScholar
+Register ..> CreateProfile : <<include>>
+CreateProfile ..> ViewProfile : 注册后公开可读
+EditProfile ..> ViewProfile : 普通资料公开生效
+Claim ..> MaintainScholar : 仅批准后授权
+ReviewClaim ..> Claim : 审核决定
+note bottom of Register
+  AC-IMPL-FR04-03/04、FR03-03/04
+  注册重试不产生第二主页
+end note
+note bottom of EditProfile
+  AC-IMPL-FR06-03/04/05
+  普通资料无需 Scholar 认领
+  学术事实不能直接写入
+end note
+note bottom of Claim
+  AC-IMPL-FR05-01～04
+  认领不创建第二主页
+  不批量确认 Authorship
+end note
+legend bottom
+  普通 UserProfile 与 Scholar 档案是两个对象，不按同名合并。
+  本图是 S02 用例局部视图，不替代总体用例图。
+endlegend
+@enduml

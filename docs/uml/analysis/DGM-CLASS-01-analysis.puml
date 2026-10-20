@@ -1,0 +1,147 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 13
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+hide circle
+hide empty members
+top to bottom direction
+title DGM-CLASS-01 CognitaNexus BCE 分析类模型（S02 / 69 AC）
+package "Boundary 边界职责" {
+  class AccountUI <<boundary>>
+  class ProfileUI <<boundary>>
+  class ClaimUI <<boundary>>
+  class PublicUI <<boundary>>
+  class SearchUI <<boundary>>
+  class AnalyticsUI <<boundary>>
+  class AdminUI <<boundary>>
+  class SourceUI <<boundary>>
+}
+package "Control 协调职责" {
+  class RegCtl <<control>> {
+    +注册/唯一主页/回滚
+  }
+  class ProfileCtl <<control>> {
+    +所有权/普通字段
+  }
+  class ClaimCtl <<control>> {
+    +证据/授权/争议
+  }
+  class SearchCtl <<control>> {
+    +公开过滤/稳定排序
+  }
+  class CollectCtl <<control>> {
+    +任务/检查点/重试
+  }
+  class GovernCtl <<control>> {
+    +清洗/去重/候选
+  }
+  class GraphCtl <<control>> {
+    +四类基础边/论文路径
+  }
+  class AuditCtl <<control>> {
+    +决定/前后值留痕
+  }
+}
+package "Entity 业务信息" {
+  class User <<entity>> {
+    +账号状态()
+    +对象授权校验()
+  }
+  class UserProfile <<entity>> {
+    +稳定公开地址()
+    +普通公开资料()
+    +零成果空态()
+  }
+  class Scholar <<entity>> {
+    +已核验身份()
+    +公开学者档案()
+  }
+  class Claim <<entity>> {
+    +证据材料()
+    +申请状态()
+  }
+  class Auth <<entity>> {
+    +目标Scholar()
+    +授权范围()
+  }
+  class Source <<entity>> {
+    +原值/来源/许可()
+    +逻辑出处()
+  }
+  class Work <<entity>> {
+    +去重规范值()
+    +成果类型()
+    +生效状态()
+  }
+  class Version <<entity>> {
+    +版本证据()
+  }
+  class Authorship <<entity>> {
+    +角色/顺序/证据()
+    +独立关系状态()
+  }
+  class Task <<entity>> {
+    +任务状态()
+    +检查点()
+  }
+  class Evidence <<entity>> {
+    +操作者/理由/前后值()
+  }
+}
+AccountUI ..> RegCtl
+ProfileUI ..> ProfileCtl
+ClaimUI ..> ClaimCtl
+SearchUI ..> SearchCtl
+PublicUI ..> SearchCtl
+AnalyticsUI ..> GraphCtl
+AdminUI ..> CollectCtl
+AdminUI ..> GovernCtl
+AdminUI ..> AuditCtl
+SourceUI ..> CollectCtl
+RegCtl ..> User
+RegCtl ..> UserProfile
+ProfileCtl ..> UserProfile
+ProfileCtl ..> Scholar
+ClaimCtl ..> Claim
+ClaimCtl ..> Auth
+SearchCtl ..> Work
+CollectCtl ..> Task
+GovernCtl ..> Work
+GovernCtl ..> Authorship
+GraphCtl ..> Authorship
+AuditCtl ..> Evidence
+User "1" -- "1" UserProfile : 唯一拥有
+User -- Claim : 提交
+Claim -- Scholar : 认领目标
+Claim ..> Auth : 批准后授予
+Auth -- Scholar : 目标档案
+Task -- Source : 批次结果
+Source -- Work : 来源证据
+Work -- Version : 明示版本
+Scholar -- Authorship : 身份参与
+Authorship -- Work : 参与成果
+Evidence ..> Claim : 决定留痕
+Evidence ..> Authorship : 修正留痕
+note bottom of UserProfile
+  User 1:1 UserProfile；UserProfile 与 Scholar 分离。
+  注册即存在，零成果仍公开；普通资料本人可编辑。
+  AC-IMPL-FR03-03/04、FR04-03/04、FR06-03/04/05。
+end note
+note bottom of Authorship
+  四类合法参与角色分别核验；仅论文作者关系进入 IN01。
+  管理员审核不等于本人确认。
+  AC-IMPL-FR12-01～05、FR15-03～06。
+end note
+note bottom of GraphCtl
+  FR12 基础网络可用四类合格共同成果；
+  IN01 只取共同论文子图，边数最短、等长字典序。
+  AC-IMPL-FR12-05、IN01-01～04。
+end note
+legend bottom
+  分析类模型：只有业务职责，不含 Controller/Service/Repository 实现类。
+  属性为业务信息提示，不是数据库字段或 API 设计。
+endlegend
+@enduml

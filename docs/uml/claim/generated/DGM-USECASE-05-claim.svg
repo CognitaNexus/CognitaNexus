@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" contentScriptType="application/ecmascript" contentStyleType="text/css" height="778.125px" preserveAspectRatio="none" style="width:793px;height:778px;" version="1.1" viewBox="0 0 793 778" width="793.75px" zoomAndPan="magnify"><defs/><g><text fill="#000000" font-family="Noto Sans CJK SC" font-size="28.125" lengthAdjust="spacingAndGlyphs" textLength="493.75" x="154.6875" y="32.6248">DGM-USECASE-05 账号认领与成果维护</text><!--MD5=[ba81b208e2d7e3c0ff850752f68b8683]
+cluster CognitaNexus--><rect fill="#FFFFFF" height="607.8125" style="stroke: #000000; stroke-width: 2.34375;" width="367.1875" x="310.1563" y="153.2247"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="148.4375" x="419.5313" y="181.7246">CognitaNexus</text><ellipse cx="493.5925" cy="362.8807" fill="#F8F8F8" rx="123.28" ry="28.406" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="176.5625" x="405.3113" y="373.2494">UC-04 账号与会话</text><ellipse cx="493.4775" cy="246.764" fill="#F8F8F8" rx="140.3525" ry="31.8205" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="220.3125" x="383.3213" y="257.1327">UC-05 提交和查询认领</text><ellipse cx="493.7556" cy="707.6535" fill="#F8F8F8" rx="114.0681" ry="27.085" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="154.6875" x="416.4118" y="718.0222">UC-06 审核认领</text><ellipse cx="493.7556" cy="473.2785" fill="#F8F8F8" rx="114.0681" ry="27.085" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="154.6875" x="416.4118" y="483.6472">UC-07 维护门户</text><ellipse cx="493.8011" cy="591.0475" fill="#F8F8F8" rx="158.6448" ry="35.479" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="264.0625" x="361.7698" y="601.4161">UC-08 确认补录与纠错成果</text><!--MD5=[fee662a292a0353a69bd162820bae93b]
+entity User--><ellipse cx="64.0625" cy="219.631" fill="#F8F8F8" rx="12.5" ry="12.5" style="stroke: #383838; stroke-width: 2.34375;"/><path d="M64.0625,232.131 L64.0625,274.3185 M43.75,244.631 L84.375,244.631 M64.0625,274.3185 L43.75,297.756 M64.0625,274.3185 L84.375,297.756 " fill="none" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="109.375" x="9.375" y="327.0371">登录申请人</text><!--MD5=[327d8b0cc9017ef0d2f4054fa6547e20]
+entity Manager--><ellipse cx="64.0625" cy="424.3185" fill="#F8F8F8" rx="12.5" ry="12.5" style="stroke: #383838; stroke-width: 2.34375;"/><path d="M64.0625,436.8185 L64.0625,479.006 M43.75,449.3185 L84.375,449.3185 M64.0625,479.006 L43.75,502.4435 M64.0625,479.006 L84.375,502.4435 " fill="none" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="109.375" x="9.375" y="531.7246">门户管理者</text><!--MD5=[97ab183161fd5d1db7fba7485cf76add]
+entity Admin--><ellipse cx="64.0625" cy="607.131" fill="#F8F8F8" rx="12.5" ry="12.5" style="stroke: #383838; stroke-width: 2.34375;"/><path d="M64.0625,619.631 L64.0625,661.8185 M43.75,632.131 L84.375,632.131 M64.0625,661.8185 L43.75,685.256 M64.0625,661.8185 L84.375,685.256 " fill="none" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="109.375" x="9.375" y="714.5371">有权管理员</text><path d="M212.5,53.2247 L212.5,127.6748 L775,127.6748 L775,68.8497 L759.375,53.2247 L212.5,53.2247 " fill="#ECECEC" style="stroke: #383838; stroke-width: 1.5625;"/><path d="M759.375,53.2247 L759.375,68.8497 L775,68.8497 L759.375,53.2247 " fill="#ECECEC" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="506.25" x="221.875" y="84.5998">当前V1.1；角色关系表示职责，不用继承表达账号状态。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="529.6875" x="221.875" y="114.0123">认证及授权为守卫，不画作强制调用用例。O01/O02延期。</text><!--MD5=[87e802f94dff5db0b14b612664619da8]
+link User to Account--><path d="M119.1719,283.2247 C146.9375,290.506 181.4531,299.2716 212.5,306.3497 C273.8281,320.3341 343.1406,334.2872 397.4219,344.8029 " fill="none" id="User-Account" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[b3388bff7d5ef458cc002f541283a360]
+link User to Claim--><path d="M118.7813,266.131 C177.8594,263.0997 275.5469,258.0841 356.1875,253.9435 " fill="none" id="User-Claim" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[8793587b4d2fc13218f47f3e3b7f7d74]
+link Manager to Maintain--><path d="M118.7813,473.5372 C183.6719,473.5372 295.125,473.5372 379.4219,473.5372 " fill="none" id="Manager-Maintain" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[aaab29287c82f391dd27c98aabeedf90]
+link Manager to Correct--><path d="M119.4375,495.5841 C146.9688,506.3497 181.1875,518.9435 212.5,528.2247 C264.5,543.631 322.9219,557.256 372.875,567.8185 " fill="none" id="Manager-Correct" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[485278972be4df47c4c7bb3a23a61ee0]
+link Admin to Review--><path d="M118.7813,662.7716 C186.7969,670.9904 305.9844,685.3966 391.4219,695.7247 " fill="none" id="Admin-Review" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[35d0aa03fbeb22b6ec4e46fde7172eb9]
+link Admin to Maintain--><path d="M119.0781,597.4747 C144.9375,572.4435 177.8594,545.1779 212.5,528.2247 C265.8281,502.1154 330.6094,488.4747 384.4063,481.3341 " fill="none" id="Admin-Maintain" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[b91dcd9e5a459425cb4d95f19254c583]
+link Admin to Correct--><path d="M118.7813,648.1779 C179.4219,638.8497 280.75,623.256 362.5625,610.6622 " fill="none" id="Admin-Correct" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[66b52650dfa94e0db82eaaf6b5f5473d]
+link Correct to GMN37--><path d="M335.1406,592.5216 C268.7969,583.7872 199.375,559.6466 165.625,500.881 C134.1563,446.0841 134.1563,271.3029 165.625,216.506 C189.4844,174.9747 229.5625,147.0841 273.6719,128.381 " fill="none" id="Correct-GMN37" style="stroke: #383838; stroke-width: 1.5625; stroke-dasharray: 7.0,7.0;"/><!--MD5=[2452e26439fe284d07ab9d543f597a01]
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam dpi 150
+left to right direction
+title DGM-USECASE-05 账号认领与成果维护
+actor "登录申请人" as User
+actor "门户管理者" as Manager
+actor "有权管理员" as Admin
+rectangle "CognitaNexus" {
+ usecase "UC-04 账号与会话" as Account
+ usecase "UC-05 提交和查询认领" as Claim
+ usecase "UC-06 审核认领" as Review
+ usecase "UC-07 维护门户" as Maintain
+ usecase "UC-08 确认补录与纠错成果" as Correct
+}
+User - - Account
+User - - Claim
+Manager - - Maintain
+Manager - - Correct
+Admin - - Review
+Admin - - Maintain
+Admin - - Correct
+note bottom
+当前V1.1；角色关系表示职责，不用继承表达账号状态。
+认证及授权为守卫，不画作强制调用用例。O01/O02延期。
+end note
+@enduml
+
+PlantUML version 1.2020.02(Sun Mar 01 18:22:07 CST 2020)
+(GPL source distribution)
+Java Runtime: Java(TM) SE Runtime Environment
+JVM: Java HotSpot(TM) 64-Bit Server VM
+Java Version: 22.0.2+9-70
+Operating System: Linux
+Default Encoding: UTF-8
+Language: en
+Country: null
+--></g></svg>

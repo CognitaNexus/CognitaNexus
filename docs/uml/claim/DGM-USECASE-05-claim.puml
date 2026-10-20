@@ -1,0 +1,29 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam dpi 150
+left to right direction
+title DGM-USECASE-05 账号认领与成果维护
+actor "登录申请人" as User
+actor "门户管理者" as Manager
+actor "有权管理员" as Admin
+rectangle "CognitaNexus" {
+ usecase "UC-04 账号与会话" as Account
+ usecase "UC-05 提交和查询认领" as Claim
+ usecase "UC-06 审核认领" as Review
+ usecase "UC-07 维护门户" as Maintain
+ usecase "UC-08 确认补录与纠错成果" as Correct
+}
+User -- Account
+User -- Claim
+Manager -- Maintain
+Manager -- Correct
+Admin -- Review
+Admin -- Maintain
+Admin -- Correct
+note bottom
+当前V1.1；角色关系表示职责，不用继承表达账号状态。
+认证及授权为守卫，不画作强制调用用例。O01/O02延期。
+end note
+@enduml

@@ -1,0 +1,43 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 15
+skinparam dpi 150
+title DGM-ACTIVITY-07 公开检索、筛选与稳定分页
+start
+partition "访客" {
+  :输入关键词、范围与筛选条件;
+}
+partition "系统" {
+  :校验范围与筛选条件;
+  if (条件有效?) then (否)
+    :指出非法字段并停止本次查询;
+    stop
+  else (是)
+  endif
+  :确定公开许可与数据快照;
+  :仅对当前公开有效实体应用查询;
+  if (查询执行失败或依赖超时?) then (是)
+    :返回执行失败，不返回“无结果”;
+    stop
+  else (否)
+  endif
+  :按已批准规则排序并追加稳定实体ID平局键;
+  :返回分页及完整条件回显;
+  if (结果为空?) then (是)
+    :返回无匹配，不放宽筛选条件;
+  else (否)
+    :返回公开结果;
+  endif
+}
+partition "访客" {
+  :打开成果详情或公开主页;
+  :下一页保持查询上下文;
+}
+note right
+  AC-IMPL-FR01-01/02/03、FR02-01/02
+  待审、无权、模拟混淆项不得混入真实结果。
+end note
+stop
+@enduml

@@ -1,0 +1,23 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam dpi 150
+left to right direction
+title DGM-USECASE-06 后台审核与审计
+actor "有权管理员" as Admin
+rectangle "CognitaNexus" {
+ usecase "UC-17 后台待办与审计" as Audit
+ usecase "UC-06 审核认领" as Review
+ usecase "UC-09 核验成果数据" as Work
+ usecase "UC-10 核验身份与归属" as Identity
+}
+Admin -- Audit
+Admin -- Review
+Admin -- Work
+Admin -- Identity
+note bottom
+当前V1.1；角色关系表示职责，不用继承表达账号状态。
+认证及授权为守卫，不画作强制调用用例。O01/O02延期。
+end note
+@enduml

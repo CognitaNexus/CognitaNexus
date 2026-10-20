@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" contentScriptType="application/ecmascript" contentStyleType="text/css" height="664.0625px" preserveAspectRatio="none" style="width:793px;height:664px;" version="1.1" viewBox="0 0 793 664" width="793.75px" zoomAndPan="magnify"><defs/><g><text fill="#000000" font-family="Noto Sans CJK SC" font-size="28.125" lengthAdjust="spacingAndGlyphs" textLength="437.5" x="182.8125" y="32.6248">DGM-USECASE-06 后台审核与审计</text><!--MD5=[ba81b208e2d7e3c0ff850752f68b8683]
+cluster CognitaNexus--><rect fill="#FFFFFF" height="493.75" style="stroke: #000000; stroke-width: 2.34375;" width="331.25" x="328.125" y="153.2247"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="148.4375" x="419.5313" y="181.7246">CognitaNexus</text><ellipse cx="493.4775" cy="365.514" fill="#F8F8F8" rx="140.3525" ry="31.8205" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="220.3125" x="383.3213" y="375.8827">UC-17 后台待办与审计</text><ellipse cx="493.7556" cy="479.5285" fill="#F8F8F8" rx="114.0681" ry="27.085" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="154.6875" x="416.4118" y="489.8972">UC-06 审核认领</text><ellipse cx="494.1322" cy="592.6762" fill="#F8F8F8" rx="131.6322" ry="30.0764" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="198.4375" x="394.9135" y="603.0449">UC-09 核验成果数据</text><ellipse cx="493.4775" cy="246.764" fill="#F8F8F8" rx="140.3525" ry="31.8205" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="220.3125" x="383.3213" y="257.1327">UC-10 核验身份与归属</text><!--MD5=[97ab183161fd5d1db7fba7485cf76add]
+entity Admin--><ellipse cx="64.0625" cy="374.3185" fill="#F8F8F8" rx="12.5" ry="12.5" style="stroke: #383838; stroke-width: 2.34375;"/><path d="M64.0625,386.8185 L64.0625,429.006 M43.75,399.3185 L84.375,399.3185 M64.0625,429.006 L43.75,452.4435 M64.0625,429.006 L84.375,452.4435 " fill="none" style="stroke: #383838; stroke-width: 2.34375;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="109.375" x="9.375" y="481.7246">有权管理员</text><path d="M212.5,53.2247 L212.5,127.6748 A0,0 0 0 0 212.5,127.6748 L487.5,127.6748 L493.75,214.631 L500,127.6748 L775,127.6748 A0,0 0 0 0 775,127.6748 L775,68.8497 L759.375,53.2247 L212.5,53.2247 A0,0 0 0 0 212.5,53.2247 " fill="#ECECEC" style="stroke: #383838; stroke-width: 1.5625;"/><path d="M759.375,53.2247 L759.375,68.8497 L775,68.8497 L759.375,53.2247 " fill="#ECECEC" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="506.25" x="221.875" y="84.5998">当前V1.1；角色关系表示职责，不用继承表达账号状态。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="20.3125" lengthAdjust="spacingAndGlyphs" textLength="529.6875" x="221.875" y="114.0123">认证及授权为守卫，不画作强制调用用例。O01/O02延期。</text><!--MD5=[f965adb50b3f184f8d30ab78ee58d191]
+link Admin to Audit--><path d="M118.7813,416.3341 C181.875,407.7872 289.0313,393.256 372.4063,381.9591 " fill="none" id="Admin-Audit" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[485278972be4df47c4c7bb3a23a61ee0]
+link Admin to Review--><path d="M118.7813,430.5529 C187.2344,439.5685 307.5469,455.4435 393.0938,466.7247 " fill="none" id="Admin-Review" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[4acc7884d1365ef55835225007e1eef4]
+link Admin to Work--><path d="M119.0625,473.0529 C145.4063,494.9591 178.7344,519.1779 212.5,534.4747 C263.0781,557.3966 322.9375,571.3185 374.2813,579.7404 " fill="none" id="Admin-Work" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[62b54ee0461d35223e610b7897320636]
+link Admin to Identity--><path d="M119.3438,370.631 C145.5,347.6466 178.5781,322.3654 212.5,306.3497 C260.2969,283.7716 316.7344,269.6935 366.3438,260.9747 " fill="none" id="Admin-Identity" style="stroke: #383838; stroke-width: 1.5625;"/><!--MD5=[1603fcb9dddeb9187cde863fe1b39680]
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam dpi 150
+left to right direction
+title DGM-USECASE-06 后台审核与审计
+actor "有权管理员" as Admin
+rectangle "CognitaNexus" {
+ usecase "UC-17 后台待办与审计" as Audit
+ usecase "UC-06 审核认领" as Review
+ usecase "UC-09 核验成果数据" as Work
+ usecase "UC-10 核验身份与归属" as Identity
+}
+Admin - - Audit
+Admin - - Review
+Admin - - Work
+Admin - - Identity
+note bottom
+当前V1.1；角色关系表示职责，不用继承表达账号状态。
+认证及授权为守卫，不画作强制调用用例。O01/O02延期。
+end note
+@enduml
+
+PlantUML version 1.2020.02(Sun Mar 01 18:22:07 CST 2020)
+(GPL source distribution)
+Java Runtime: Java(TM) SE Runtime Environment
+JVM: Java HotSpot(TM) 64-Bit Server VM
+Java Version: 22.0.2+9-70
+Operating System: Linux
+Default Encoding: UTF-8
+Language: en
+Country: null
+--></g></svg>

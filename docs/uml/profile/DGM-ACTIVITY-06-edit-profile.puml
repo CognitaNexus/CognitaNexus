@@ -1,0 +1,38 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 15
+skinparam dpi 150
+title DGM-ACTIVITY-06 编辑本人普通个人主页
+start
+partition "登录用户" {
+  :打开本人主页编辑;
+  :选择昵称、头像、简介、兴趣领域或展示设置;
+}
+partition "系统" {
+  :校验会话、账号状态与 UserProfile 所有权;
+  if (有权编辑本人主页?) then (否)
+    :拒绝修改并记录受控审计;
+    stop
+  else (是)
+  endif
+  :校验字段是否属于普通公开资料;
+  if (包含 Scholar 身份、机构、归属或成果核验字段?) then (是)
+    :转 UC-07/UC-08 的对象授权与审核流程;
+    :本次普通编辑不直接写入学术核验状态;
+  else (否)
+    :保存普通资料与展示设置;
+    :按公共资料策略发布;
+  endif
+}
+partition "访客" {
+  :读取允许公开字段;
+}
+note right
+  AC-IMPL-FR06-03/04/05
+  普通编辑无需学术审核；他人主页不可写；
+  私有联系方式、认证材料和凭据不公开。
+end note
+stop
+@enduml

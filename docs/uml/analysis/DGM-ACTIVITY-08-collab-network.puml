@@ -1,0 +1,52 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+title DGM-ACTIVITY-08 基础合作网络与 IN01 论文路径
+start
+partition "访客" {
+  :选择图快照、机构/领域筛选;
+  if (查询基础网络还是论文路径?) then (基础网络)
+    :请求 FR12 四类合格共同成果网络;
+  else (IN01 路径)
+    :指定两名已消歧学者;
+  endif
+}
+partition "系统" {
+  :读取固定图快照与已生效参与关系;
+  :仅保留真实、公开、合格成果与合法角色证据;
+  if (基础网络?) then (是)
+    :论文按作者、专利按发明人、项目按成员、获奖按个人成员;
+    :按去重成果生成无向边并累计强度;
+  else (否)
+    :仅取合格共同论文子图;
+    :共同专利/项目/获奖不得成为路径边;
+  endif
+  :排除同机构/同领域推断、待核验、争议与已排除关系;
+  if (IN01 路径?) then (是)
+    :在固定筛选图上以边数做 BFS;
+    if (端点不可用或无路径?) then (是)
+      :返回明确无路径/端点无效;
+      stop
+    else (否)
+    endif
+    :等长路径按 canonical_id 序列字典序选一条;
+    :每跳校验共同论文证据;
+  else (否)
+  endif
+  if (图规模超上限?) then (是)
+    :返回超规模，不截断后伪报全范围;
+    stop
+  else (否)
+  endif
+  :返回结果、图版本与证据;
+}
+note right
+  FR12: AC-IMPL-FR12-01～05、BR-IMP-08
+  IN01: AC-IMPL-IN01-01～04、BR-IMP-09
+  基础网络四类；只有论文子图可进入 IN01 路径。
+end note
+stop
+@enduml
