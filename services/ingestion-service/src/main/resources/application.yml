@@ -11,6 +11,13 @@ spring:
     name: ingestion-service
   profiles:
     active: local
+  task:
+    scheduling:
+      # 默认调度线程池只有 1 个线程。本服务已有采集推进（fixedDelay 2000ms），又加了引用补水
+      # （fixedDelay 30min）。共用单线程时，前者会长期占住唯一线程，后者被无限期推迟且不报错——
+      # 表现为「定时任务静默不执行」，日志上完全看不出来。
+      pool:
+        size: ${CN_SCHEDULING_POOL_SIZE:4}
 
   datasource:
     # 运行账号：仅 DML，无 DDL 权限（架构 §12.1）
@@ -117,6 +124,17 @@ cn:
       api-key: ${CN_OPENALEX_API_KEY:}
       request-timeout: 20s
       max-response-bytes: 4194304
+    citation:
+      # 引用网络补水。采集每天新增约 2700 条公开论文，不自动补的话覆盖率每天都在往回掉：
+      # 手动补到 81% 之后什么都不做，一周就退回一半。补水本身极便宜（300 篇约 12 次请求）。
+      worker:
+        enabled: ${CN_CITATION_WORKER_ENABLED:true}
+        # 30 分钟一轮：一天 48 轮 × 300 篇 = 14400 篇的处理能力，远大于每日新增。
+        # 单轮失败不影响整体，下一轮自动接上（候选查询只挑从未取过引用的成果，天然幂等）。
+        interval-ms: 1800000
+        # 启动后先等 3 分钟：把启动瞬间的数据库连接与迁移让给主流程，别让首个调度抢在前面。
+        initial-delay-ms: 180000
+        works-per-tick: 300
   paging:
     default-page-size: 20
     max-page-size: 100
