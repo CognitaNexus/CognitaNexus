@@ -89,16 +89,36 @@ jobs:
             exit 1
           fi
           mkdir -p ~/.ssh
-          # 从 Windows 复制进 Secrets 的私钥常带 CRLF，ssh 会直接判 invalid format，
-          # 报错只有一行，很容易被当成「密钥不对」。这里统一去掉 \r 再校验。
-          printf '%s\n' "$CN_SSH_KEY" | tr -d '\r' > ~/.ssh/cn_deploy
-          chmod 600 ~/.ssh/cn_deploy
-          if ! ssh-keygen -y -f ~/.ssh/cn_deploy > ~/.ssh/cn_deploy.pub 2>/tmp/cn-key.err; then
-            echo "::error::CN_SSH_KEY 不可用：$(tr '\n' ' ' < /tmp/cn-key.err)"
-            echo "首行内容：$(head -1 ~/.ssh/cn_deploy | cut -c1-40)"
+          # 多行私钥从网页粘进 Secrets 极易受损：丢字符、带引号、换行被转成字面量 \n，
+          # 报错统一是 error in libcrypto，看不出差别。所以按三种存法依次试：
+          #   1) 原样（只去 CRLF）
+          #   2) 字面量 \n 还原成真换行
+          #   3) 一行 base64（推荐，粘贴时不可能被换行破坏）
+          printf '%s\n' "$CN_SSH_KEY" > /tmp/key-raw
+          tr -d '\r' < /tmp/key-raw > /tmp/key-crlf
+          sed 's/\\n/\n/g' /tmp/key-crlf > /tmp/key-nl
+          tr -d ' \t\r\n' < /tmp/key-nl | base64 -d > /tmp/key-b64 2>/dev/null || true
+          # 解码结果若刚好缺末尾换行，ssh-keygen 会报 libcrypto: unsupported（已实测），
+          # 补一个换行即可；多一个空行对解析无影响。
+          [ -s /tmp/key-b64 ] && printf '\n' >> /tmp/key-b64 || true
+
+          ok=""
+          for cand in /tmp/key-crlf /tmp/key-nl /tmp/key-b64; do
+            [ -s "$cand" ] || continue
+            chmod 600 "$cand"
+            if ssh-keygen -y -f "$cand" > ~/.ssh/cn_deploy.pub 2>/tmp/cn-key.err; then
+              cp "$cand" ~/.ssh/cn_deploy
+              ok="$cand"
+              break
+            fi
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::CN_SSH_KEY 解析不出私钥（原文/换行还原/base64 三种都失败）：$(tr '\n' ' ' < /tmp/cn-key.err | cut -c1-300)"
+            echo "首行：$(head -1 /tmp/key-crlf | cut -c1-40)；长度 $(wc -c < /tmp/key-crlf) 字节；行数 $(wc -l < /tmp/key-crlf)"
             exit 1
           fi
-          echo "公钥指纹 $(ssh-keygen -lf ~/.ssh/cn_deploy.pub)"
+          chmod 600 ~/.ssh/cn_deploy
+          echo "私钥取自 $ok，公钥指纹 $(ssh-keygen -lf ~/.ssh/cn_deploy.pub)"
           {
             echo "Host cn-target"
             echo "  HostName $CN_SSH_HOST"
