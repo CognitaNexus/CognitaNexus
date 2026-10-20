@@ -673,6 +673,31 @@ public interface CollectMapper {
   @Select("SELECT count(*) FROM ing_handoff_batch WHERE status = 'FAILED'")
   long countFailedBatches();
 
+  @Select(
+      """
+      SELECT count(*) FROM ing_handoff_batch WHERE job_id = #{jobId} AND status = 'FAILED'
+      """)
+  long countFailedBatchesByJob(@Param("jobId") String jobId);
+
+  /**
+   * 把一个已判死的批次放回待重试队列。
+   *
+   * <p>为什么需要它：批次键由「任务 + 来源 + 首尾记录」算出，同一批记录重试必然得到同一个键。
+   * 一旦该键的批次被判成 FAILED，后续每轮都会在插入时撞唯一约束，既不会新建批次，
+   * {@code findNextPending} 也不会取到 FAILED 的批次——这一批记录就永久卡死，且没有任何报错。
+   *
+   * <p>{@code attempts} 故意<b>不</b>归零：自愈次数必须以真实尝试次数计次，归零会让
+   * 「撞键 → 重置 → 再失败 → 再撞键」变成无限循环。调用方另有一道按 job 的 FAILED 批次数量
+   * 设的上限兜底。
+   */
+  @Update(
+      """
+      UPDATE ing_handoff_batch
+      SET status = 'PENDING', next_attempt_at = now(), acked_at = NULL, last_error = NULL
+      WHERE id = #{id} AND status = 'FAILED'
+      """)
+  int reopenFailedBatch(@Param("id") String id);
+
   @Update(
       """
       UPDATE ing_handoff_batch

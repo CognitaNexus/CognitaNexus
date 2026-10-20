@@ -360,12 +360,40 @@ public class CollectExecutionService {
       }
       String batchKey = buildBatchKey(job, slice);
       String batchId = Identifiers.batch();
+      List<String> sliceIds = slice.stream().map(StagedRecord::id).toList();
       // 建批次与把记录挂到批次上必须一起完成：只建批次会留下一个查不到记录的空批次，
       // 后续按批次取记录时得到空集合，会把正常批次误判成数据不一致
-      if (!unitOfWork.openBatch(
-          batchId, job.id(), batchKey, slice.stream().map(StagedRecord::id).toList())) {
-        // 同键批次已存在。两种可能：已 ACK（由检查点前移体现）或在退避重试窗口内等待。
-        // 两者都不该在本次调用里继续循环：同样的记录集只会算出同一个键、再撞一次唯一约束，
+      if (!unitOfWork.openBatch(batchId, job.id(), batchKey, sliceIds)) {
+        // 同键批次已存在。三种可能，处理方式不同：
+        //   1) PENDING —— 在退避重试窗口内等待，交给下一个调度周期；
+        //   2) ACKED   —— 记录却还是 STAGED，属于状态不一致，不在这里猜，交给下一轮/人工；
+        //   3) FAILED  —— 批次已判死，而 findNextPending 只取 PENDING、重建又撞唯一约束。
+        //      不处理的话这一批记录会永久卡住且没有任何报错（线上实测卡了 100 条真实数据，
+        //      记录的 handoff_attempts 一直是 0，因为流程根本走不到调用 core 那一步）。
+        //      FAILED 自愈还必须有上限：每次重试失败都会新增一个 FAILED 批次，用它计数，
+        //      达到 maxHandoffAttempts 就停手，避免「撞键 → 重置 → 再失败」无限循环。
+        Optional<CollectRepositories.HandoffBatchRepository.HandoffBatch> existing =
+            batches.findByKey(batchKey);
+        boolean revived = false;
+        if (existing.isPresent() && "FAILED".equals(existing.get().status())) {
+          long failedBatches = batches.countFailedByJob(job.id());
+          if (failedBatches <= properties.maxHandoffAttempts()
+              && unitOfWork.reopenFailedBatch(existing.get().id(), sliceIds)) {
+            log.warn("重新打开已失败的交接批次 batchKey={} 该任务历史失败批次数={}", batchKey, failedBatches);
+            HandoffAttempt attempt = handoffBatch(existing.get());
+            if (!attempt.acked()) {
+              return totalHandedOff;
+            }
+            totalHandedOff += attempt.recordCount();
+            revived = true;
+          } else {
+            log.warn("交接批次已失败且自愈次数用尽，留待人工处置 batchKey={} 失败批次数={}", batchKey, failedBatches);
+          }
+        }
+        if (revived) {
+          continue;
+        }
+        // 同键批次已存在且不该在本次调用里继续：同样的记录集只会算出同一个键、再撞一次唯一约束，
         // 既推不动任何状态，又会在一个调度周期内空转几十次。交给下一个调度周期。
         return totalHandedOff;
       }

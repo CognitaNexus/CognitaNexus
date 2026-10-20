@@ -196,6 +196,12 @@ public interface CollectRepositories {
     long countPending();
 
     long countFailed();
+
+    /** 同一任务下被判失败的批次数；用于给「FAILED 批次自愈」设上限，避免无限循环。 */
+    long countFailedByJob(String jobId);
+
+    /** 把 FAILED 批次放回 PENDING 以便重试；attempts 保留，仅当原状态确为 FAILED 时生效。 */
+    int reopenFailed(String id);
   }
 
   /** 运行日志仓储（只追加）。 */

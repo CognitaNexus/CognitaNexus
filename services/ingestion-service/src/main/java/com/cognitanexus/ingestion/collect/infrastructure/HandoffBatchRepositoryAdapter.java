@@ -59,4 +59,14 @@ public class HandoffBatchRepositoryAdapter implements CollectRepositories.Handof
   public long countFailed() {
     return mapper.countFailedBatches();
   }
+
+  @Override
+  public long countFailedByJob(String jobId) {
+    return mapper.countFailedBatchesByJob(jobId);
+  }
+
+  @Override
+  public int reopenFailed(String id) {
+    return mapper.reopenFailedBatch(id);
+  }
 }

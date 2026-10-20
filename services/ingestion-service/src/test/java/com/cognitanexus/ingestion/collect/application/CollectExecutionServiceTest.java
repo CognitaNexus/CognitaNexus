@@ -3,6 +3,7 @@ package com.cognitanexus.ingestion.collect.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
@@ -18,6 +19,8 @@ import com.cognitanexus.ingestion.collect.domain.AdapterKind;
 import com.cognitanexus.ingestion.collect.domain.CollectModels.CollectJob;
 import com.cognitanexus.ingestion.collect.domain.CollectModels.FetchPage;
 import com.cognitanexus.ingestion.collect.domain.CollectModels.SourceRunConfig;
+import com.cognitanexus.ingestion.collect.domain.CollectModels.StagedRecord;
+import com.cognitanexus.ingestion.collect.domain.HandoffState;
 import com.cognitanexus.ingestion.collect.domain.JobStatus;
 import com.cognitanexus.ingestion.platform.client.CoreInternalClient;
 import com.cognitanexus.ingestion.platform.persistence.JsonCodec;
@@ -467,5 +470,85 @@ class CollectExecutionServiceTest {
     assertThat(outcome.fetchFailed()).isTrue();
     verify(adapter).fetch(any(), any(), any());
     verify(unitOfWork).recordFetchFailure("job_1", "上游仍不可达", 8);
+  }
+
+  @Test
+  @DisplayName("撞上已 FAILED 的批次键时重新打开：否则这批记录永久卡住且没有任何报错")
+  void reopensFailedBatchInsteadOfStalling() {
+    givenClaimedJob(job(0, null));
+    when(adapters.require(any())).thenReturn(adapter);
+
+    StagedRecord record = stagedRecord("stg_1");
+    // 第一次取到待交接记录，重开后第二轮为空：模拟「一批记录在同一轮里交接完成」。
+    when(staged.listPendingForHandoff(eq("job_1"), anyInt()))
+        .thenReturn(List.of(record))
+        .thenReturn(List.of());
+    // 批次键由首尾记录算出，同一批重试必然撞唯一约束。
+    when(unitOfWork.openBatch(anyString(), eq("job_1"), anyString(), anyList())).thenReturn(false);
+
+    CollectRepositories.HandoffBatchRepository.HandoffBatch failedBatch = failedBatch();
+    when(batches.findByKey(anyString())).thenReturn(Optional.of(failedBatch));
+    when(batches.countFailedByJob("job_1")).thenReturn(1L);
+    when(unitOfWork.reopenFailedBatch(eq("hbt_1"), anyList())).thenReturn(true);
+    when(staged.listByBatch("hbt_1")).thenReturn(List.of(record));
+    when(coreClient.handoff(any())).thenReturn(handoffResult());
+    when(adapter.fetch(any(), any(), any())).thenThrow(new IllegalStateException("上游返回 400"));
+
+    service.runOnce("job_1", "worker-1");
+
+    // 关键：必须重新打开并真正把记录交出去，而不是每一轮都在撞键处静默返回。
+    verify(unitOfWork).reopenFailedBatch(eq("hbt_1"), anyList());
+    verify(unitOfWork).recordHandoffSuccess(eq(failedBatch), anyList(), any(), any());
+  }
+
+  @Test
+  @DisplayName("自愈次数用尽后不再重开：失败批次数达到上限即停手，留待人工处置")
+  void stopsReopeningAfterTooManyFailedBatches() {
+    givenClaimedJob(job(0, null));
+    when(adapters.require(any())).thenReturn(adapter);
+
+    when(staged.listPendingForHandoff(eq("job_1"), anyInt()))
+        .thenReturn(List.of(stagedRecord("stg_1")))
+        .thenReturn(List.of());
+    when(unitOfWork.openBatch(anyString(), eq("job_1"), anyString(), anyList())).thenReturn(false);
+    when(batches.findByKey(anyString())).thenReturn(Optional.of(failedBatch()));
+    // maxHandoffAttempts = 8，这里已经失败过 9 个批次
+    when(batches.countFailedByJob("job_1")).thenReturn(9L);
+    when(adapter.fetch(any(), any(), any())).thenThrow(new IllegalStateException("上游返回 400"));
+
+    service.runOnce("job_1", "worker-1");
+
+    // 不能用「撞键就重置」做自愈：那样会变成撞键 → 重置 → 再失败 → 再撞键的无限循环
+    verify(unitOfWork, never()).reopenFailedBatch(anyString(), anyList());
+  }
+
+  private static StagedRecord stagedRecord(String id) {
+    return new StagedRecord(
+        id,
+        "job_1",
+        "src_1",
+        "10.1000/test",
+        "fp_1",
+        "{\"title\":\"t\"}",
+        com.cognitanexus.sharedkernel.DataNature.REAL,
+        null,
+        null,
+        NOW,
+        HandoffState.STAGED,
+        null,
+        0,
+        null,
+        null,
+        null);
+  }
+
+  private static CollectRepositories.HandoffBatchRepository.HandoffBatch failedBatch() {
+    return new CollectRepositories.HandoffBatchRepository.HandoffBatch(
+        "hbt_1", "job_1", "batch-key-1", "FAILED", 1, 2, NOW, null, "批次内找不到暂存记录", null, NOW);
+  }
+
+  private static CoreInternalClient.HandoffResult handoffResult() {
+    return new CoreInternalClient.HandoffResult(
+        "hbt_1", 1, 1, 0, 0, 0, 100L, Map.of("10.1000/test", "ACCEPTED"), "{}");
   }
 }

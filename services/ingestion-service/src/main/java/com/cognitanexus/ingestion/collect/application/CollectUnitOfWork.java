@@ -73,6 +73,23 @@ public class CollectUnitOfWork {
   }
 
   /**
+   * 把一个撞到唯一约束的 FAILED 批次重新打开，并把记录挂回去。
+   *
+   * <p>两步必须同一事务：只把批次改回 PENDING 而没挂记录，下一次交接会按批次查记录得到空集合，
+   * 于是把一个本该正常的批次判成「数据不一致」——这正是这个坑最初的表现形式。
+   *
+   * @return 是否重新打开；批次已不是 FAILED（被别处推进或已 ACK）时返回 false
+   */
+  @Transactional
+  public boolean reopenFailedBatch(String batchId, List<String> recordIds) {
+    if (batches.reopenFailed(batchId) == 0) {
+      return false;
+    }
+    staged.assignToBatch(recordIds, batchId);
+    return true;
+  }
+
+  /**
    * 暂存一页记录并推进游标。
    *
    * <p>两件事必须在同一事务内：游标前移而记录未落库，会让这段区间被永久跳过；反过来记录落库而
