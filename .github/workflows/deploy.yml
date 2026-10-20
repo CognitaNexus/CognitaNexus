@@ -32,13 +32,17 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: 构建后端
-        # 先跳过测试换部署速度。要开质量门禁，把下面这行换成 ./mvnw -B verify
-        # （verify 会跑 spotless 与 JaCoCo 80% 覆盖率门禁，耗时明显增加）。
+      - name: 构建后端（含全部单测与覆盖率门禁）
+        # 这里曾是 -DskipTests package，理由是与「部署要快」权衡。已经不值得了：
+        # 两次真实事故都落在「测试本该拦、而部署前没人跑」这一类上——一次是改配置类多加了
+        # 一个构造器导致 ingestion 启动崩溃、线上循环重启 6 次；一次是 springdoc 与 Spring
+        # 版本错配让三个服务的文档全 500，编译期完全看不出来。
+        # verify 会跑 spotless、全部单测与 JaCoCo 覆盖率门禁，代价约一分半。
+        # 注意 verify 本身包含 package 阶段，产物路径不变，后面的挑包逻辑不用改。
         run: |
           set -o pipefail
           chmod +x mvnw
-          ./mvnw -B -DskipTests package 2>&1 | tee /tmp/cn-build.log | tail -20
+          ./mvnw -B verify 2>&1 | tee /tmp/cn-build.log | tail -30
 
       - name: 设置 Node
         uses: actions/setup-node@v4
