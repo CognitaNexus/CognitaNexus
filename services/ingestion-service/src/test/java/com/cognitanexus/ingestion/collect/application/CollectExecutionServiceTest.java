@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -74,7 +75,7 @@ class CollectExecutionServiceTest {
             configs,
             adapters,
             coreClient,
-            new CollectProperties(100, 2_097_152, 40, 120, false, 2000, 8, 300),
+            new CollectProperties(100, 2_097_152, 40, 120, false, 2000, 8, 300, 43_200, 20),
             unitOfWork,
             json);
   }
@@ -198,8 +199,8 @@ class CollectExecutionServiceTest {
   void backoffCappedByConfiguration() {
     when(adapter.fetch(any(), any(), any())).thenThrow(new IllegalStateException("上游返回 400"));
 
-    // 第 40 次连续失败：1 << 39 远超任何配置，必须回落到 maxBackoffSeconds。
-    givenRunnable(job(39, null));
+    // 第 10 次连续失败：1 << 9 = 512 超过配置的 300，必须回落到 maxBackoffSeconds。
+    givenRunnable(job(9, null));
     service.runOnce("job_1", "worker-1");
 
     verify(unitOfWork).recordFetchFailure("job_1", "上游返回 400", 300);
@@ -219,15 +220,83 @@ class CollectExecutionServiceTest {
   }
 
   @Test
-  @DisplayName("Retry-After 也受运行参数封顶：异常响应头不能把任务冻结数天")
-  void retryAfterIsCappedByConfiguration() {
+  @DisplayName("Retry-After 有独立上限：按日配额算出的十几小时会被尊重，不被 300 秒截断")
+  void retryAfterUsesItsOwnCap() {
+    givenRunnable(job(0, null));
+    when(adapter.fetch(any(), any(), any()))
+        .thenThrow(SourceFetchException.httpStatus("OpenAlex", 429, "44533"));
+
+    service.runOnce("job_1", "worker-1");
+
+    // 线上实测的真实值。用 max-backoff-seconds（300）截它，结果就是每 5 分钟照打一轮，
+    // 限流窗口被不断刷新；这里最多等 12 小时。
+    verify(unitOfWork).recordFetchFailure(eq("job_1"), anyString(), eq(43_200));
+  }
+
+  @Test
+  @DisplayName("Retry-After 也受独立上限封顶：异常响应头不能把任务冻结数天")
+  void retryAfterIsCappedByItsOwnConfiguration() {
     givenRunnable(job(0, null));
     when(adapter.fetch(any(), any(), any()))
         .thenThrow(SourceFetchException.httpStatus("Crossref", 429, "86400"));
 
     service.runOnce("job_1", "worker-1");
 
-    verify(unitOfWork).recordFetchFailure(eq("job_1"), anyString(), eq(300));
+    // 86400 秒（1 天）超过 12 小时上限：取上限。上限的意义是挡住解析异常的响应头，
+    // 而不是把来源的合理要求压回来。
+    verify(unitOfWork).recordFetchFailure(eq("job_1"), anyString(), eq(43_200));
+  }
+
+  @Test
+  @DisplayName("连续失败到阈值即熔断：转 FAILED 且不再安排下一次重试")
+  void consecutiveFailuresTripCircuitBreaker() {
+    givenRunnable(job(19, null));
+    when(adapter.fetch(any(), any(), any())).thenThrow(new IllegalStateException("上游返回 400"));
+
+    service.runOnce("job_1", "worker-1");
+
+    // 关键断言是「不再 recordFetchFailure」：那一步才会排下一次重试。
+    // 线上实测有任务在来源稳定返回 400 后打到第 421 次连续失败，退避只降频、不停止。
+    verify(unitOfWork, never()).recordFetchFailure(anyString(), anyString(), anyInt());
+    verify(unitOfWork).updateJobStatus(eq("job_1"), eq(JobStatus.FAILED), contains("已熔断"));
+  }
+
+  @Test
+  @DisplayName("熔断写一条 CIRCUIT_OPEN 运行记录：事后能看出任务是被熔断停的")
+  void circuitBreakerIsRecorded() {
+    givenRunnable(job(19, null));
+    when(adapter.fetch(any(), any(), any())).thenThrow(new IllegalStateException("上游返回 400"));
+
+    service.runOnce("job_1", "worker-1");
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, Object>> payload = ArgumentCaptor.forClass(Map.class);
+    verify(unitOfWork)
+        .appendLog(
+            eq("job_1"),
+            eq("src_1"),
+            eq("FETCH"),
+            eq("CIRCUIT_OPEN"),
+            any(),
+            any(),
+            any(),
+            payload.capture());
+    assertThat(payload.getValue())
+        .containsEntry("consecutiveFailures", 20)
+        .containsEntry("threshold", 20);
+  }
+
+  @Test
+  @DisplayName("阈值以下仍按退避重试，不被提前熔断")
+  void belowThresholdStillRetries() {
+    givenRunnable(job(18, null));
+    when(adapter.fetch(any(), any(), any())).thenThrow(new IllegalStateException("上游返回 400"));
+
+    service.runOnce("job_1", "worker-1");
+
+    // 第 19 次失败：还没到 20，必须继续按退避重试
+    verify(unitOfWork).recordFetchFailure("job_1", "上游返回 400", 300);
+    verify(unitOfWork, never()).updateJobStatus(anyString(), eq(JobStatus.FAILED), anyString());
   }
 
   @Test

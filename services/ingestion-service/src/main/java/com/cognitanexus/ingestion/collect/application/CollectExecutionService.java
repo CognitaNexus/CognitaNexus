@@ -133,6 +133,39 @@ public class CollectExecutionService {
         // 任务直接跳到最大退避。
         int attempt = leased.consecutiveFailures() + 1;
         Backoff decision = decideBackoff(attempt, fetched.retryAfterSeconds());
+
+        // 熔断：连续失败到阈值就停手，转 FAILED 等人工处置。
+        //
+        // 没有这一步时，一个持续故障会被无限重试。线上实测：来源稳定返回 400 的任务打到了第 421 次
+        // 连续失败，另一个被 429 限流的任务每 5 分钟敲一次门已持续数天。退避只降低频率，不改变
+        // 「永远不停」这件事；而这两类故障都不是靠重试能自愈的（请求本身不合法 / 配额已耗尽）。
+        // 阈值按连续次数而不是累计次数：跑了很久、偶发失败一次的任务不该被熔断。
+        if (attempt >= properties.maxConsecutiveFailures()) {
+          String reason =
+              "连续失败 "
+                  + attempt
+                  + " 次，已熔断停止自动重试（阈值 "
+                  + properties.maxConsecutiveFailures()
+                  + "）："
+                  + fetched.error();
+          unitOfWork.updateJobStatus(jobId, JobStatus.FAILED, reason);
+          unitOfWork.appendLog(
+              jobId,
+              config.id(),
+              "FETCH",
+              "CIRCUIT_OPEN",
+              null,
+              null,
+              null,
+              Map.of(
+                  "error", fetched.error(),
+                  "consecutiveFailures", attempt,
+                  "threshold", properties.maxConsecutiveFailures(),
+                  "retryAfterSeconds", String.valueOf(fetched.retryAfterSeconds())));
+          log.warn("采集任务熔断 jobId={} sourceCode={} 连续失败={} 次", jobId, config.sourceCode(), attempt);
+          return new RunOutcome(false, reason, 0, 0, handedOff, false, true);
+        }
+
         unitOfWork.recordFetchFailure(jobId, fetched.error(), decision.seconds());
         unitOfWork.appendLog(
             jobId,
@@ -507,15 +540,18 @@ public class CollectExecutionService {
    *   <li>{@code EXPONENTIAL_BACKOFF}：自己的推算，1、2、4、8…秒。
    * </ul>
    *
-   * <p>两者都被 {@code max-backoff-seconds} 兜住，但兜的方向不同：来源要求的时间若超过上限，
-   * 取上限并在依据里保留 {@code RETRY_AFTER}，这样「来源要求等一天，我们只等了 5 分钟」这件事
-   * 能从运行记录里看出来，而不是悄悄变成一个普通退避。
+   * <p>两者被<b>不同</b>的上限兜住，这一点很关键。自身推算用 {@code max-backoff-seconds}（默认
+   * 300 秒）：自己的推算是保守估计，没必要等更久。来源要求用 {@code max-retry-after-seconds}
+   * （默认 12 小时）：对方按日配额算出来的等待时间可能是十几小时，用小上限截它等于明知故犯——
+   * 线上实测 OpenAlex 要求 44533 秒，被 300 秒压回来后每 5 分钟照打一轮，限流窗口被不断刷新，
+   * 看起来像来源一直不可用。两种上限都保留依据字段，所以「来源要等一天、我们只等了 5 分钟」
+   * 这类事能从运行记录里读出来，而不是悄悄变成一个普通退避。
    */
   private Backoff decideBackoff(int attempt, Integer retryAfterSeconds) {
     if (retryAfterSeconds == null) {
       return new Backoff(backoffSeconds(attempt), "EXPONENTIAL_BACKOFF");
     }
-    int cap = properties.maxBackoffSeconds();
+    int cap = properties.maxRetryAfterSeconds();
     return new Backoff(Math.min(Math.max(retryAfterSeconds, 1), cap), "RETRY_AFTER");
   }
 

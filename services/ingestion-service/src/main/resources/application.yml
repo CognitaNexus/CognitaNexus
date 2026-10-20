@@ -98,6 +98,15 @@ cn:
     worker-enabled: true
     worker-interval-ms: 2000
     max-handoff-attempts: 8
+    # 自身指数退避的上限（秒）。自己的推算是保守估计，没必要等更久。
+    max-backoff-seconds: 300
+    # 来源在 Retry-After 里明示的等待时间的上限（秒，默认 12 小时）。
+    # 与上一项分开：对方按日配额算出来的等待可能是十几小时，用 300 秒截它等于在限流期间继续敲门。
+    # 保留上限是为了挡住解析异常的响应头把任务冻结几十天。
+    max-retry-after-seconds: 43200
+    # 连续失败熔断阈值：达到后任务转 FAILED，不再自动重试，等人工核查来源。
+    # 按连续次数而非累计次数，跑了很久偶发失败一次的任务不会被误熔断。
+    max-consecutive-failures: 20
     adapter:
       # 采集器对上游的自我标识；Crossref 与 OpenAlex 都要求可联系的 UA
       user-agent: ${CN_COLLECT_USER_AGENT:CognitaNexus/0.2 (mailto:cn-admin@example.edu.cn)}
