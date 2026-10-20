@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -45,12 +46,25 @@ public class OpenAlexCitationFetcher {
   private final String userAgent;
   private final int maxResponseBytes;
 
+  /** 免费 API key。缺失时按匿名调用，每日预算 0.1 美元且与同出口 IP 共享。 */
+  private final String apiKey;
+
   public OpenAlexCitationFetcher(
       ObjectMapper objectMapper, HttpClient httpClient, String userAgent, int maxResponseBytes) {
+    this(objectMapper, httpClient, userAgent, maxResponseBytes, null);
+  }
+
+  public OpenAlexCitationFetcher(
+      ObjectMapper objectMapper,
+      HttpClient httpClient,
+      String userAgent,
+      int maxResponseBytes,
+      String apiKey) {
     this.objectMapper = objectMapper;
     this.httpClient = httpClient;
     this.userAgent = userAgent;
     this.maxResponseBytes = maxResponseBytes;
+    this.apiKey = apiKey == null || apiKey.isBlank() ? null : apiKey.trim();
   }
 
   /**
@@ -66,7 +80,7 @@ public class OpenAlexCitationFetcher {
     String url = buildUrl(dois);
     HttpResponse<byte[]> response = send(url);
     int status = response.statusCode();
-    Integer remaining = intHeader(response, "X-RateLimit-Remaining");
+    Integer remaining = remainingCredits(response);
     Long resetSeconds = longHeader(response, "X-RateLimit-Reset");
     if (status != 200) {
       // 403/429 是配额或限流，属于「暂时做不了」；其余按来源故障处理
@@ -136,6 +150,9 @@ public class OpenAlexCitationFetcher {
       }
       url.append("&mailto=").append(URLEncoder.encode(mail, StandardCharsets.UTF_8));
     }
+    if (apiKey != null && !apiKey.isBlank()) {
+      url.append("&api_key=").append(URLEncoder.encode(apiKey.trim(), StandardCharsets.UTF_8));
+    }
     return url.toString();
   }
 
@@ -172,6 +189,26 @@ public class OpenAlexCitationFetcher {
     value = value.replaceAll("^(doi:|https?://(dx\\.)?doi\\.org/|doi\\.org/)", "");
     value = value.replaceAll("[\\s\\u00A0]+", "");
     return value.isEmpty() ? null : value;
+  }
+
+  /**
+   * 剩余额度，统一折算成「美分」整数返回。
+   *
+   * <p>OpenAlex 2026 年起改为按美元计费，响应头变成 {@code X-RateLimit-Remaining-Usd}，值是小数
+   * （实测形如 {@code 0.0871}）。旧代码读的是 {@code X-RateLimit-Remaining}，在那个头消失之后
+   * 一直取到 null，于是「剩余额度低于阈值就整轮改用 Crossref」这条保护从未真正生效——额度耗尽时
+   * 不会切换来源，只会把一串 403 记成抓取失败。这里优先读新头并折算成美分，老头保留作回退。
+   */
+  private static Integer remainingCredits(HttpResponse<?> response) {
+    Optional<String> usd = response.headers().firstValue("X-RateLimit-Remaining-Usd");
+    if (usd.isPresent()) {
+      try {
+        return (int) Math.round(Double.parseDouble(usd.get().trim()) * 100);
+      } catch (NumberFormatException ex) {
+        return null;
+      }
+    }
+    return intHeader(response, "X-RateLimit-Remaining");
   }
 
   private static Integer intHeader(HttpResponse<?> response, String name) {

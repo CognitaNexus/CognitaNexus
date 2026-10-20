@@ -157,6 +157,14 @@ SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE=20MB
 # —— 采集器自我标识：Crossref 要求可联系的 UA，上线前改成真实邮箱 ——
 # 值里有空格和括号，必须加引号；否则 source 这份文件时 bash 会把括号当成语法错误。
 CN_COLLECT_USER_AGENT="CognitaNexus/0.2 (mailto:cn-admin@example.edu.cn)"
+
+# —— OpenAlex 免费 API key ——
+# 留空 = 匿名调用：每日预算 0.1 美元且与同出口 IP 的其他人共享，实测极易被吃光，
+# 表现为 /v3/api-docs 之外的一切上游请求 403（body 里写明 budget 用完）。
+# 有 key：每日 1 美元、30 req/s，补满全站引用约需 0.1 美元。
+# 值在 https://openalex.org/settings/api-key 取，填完重启 cn-ingestion 生效。
+# 这个文件只在首次安装时生成（见上面的 if），重装不会覆盖已有值。
+CN_OPENALEX_API_KEY=
 EOF
   chmod 600 "$CN_HOME/conf/cn-env.sh"
 fi

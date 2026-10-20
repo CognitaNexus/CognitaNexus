@@ -80,6 +80,20 @@ class OpenAlexAdapterUrlTest {
   }
 
   @Test
+  @DisplayName("配置了 API key 就带上 api_key，匿名预算与有 key 预算差十倍")
+  void apiKeyIsAppendedWhenConfigured() {
+    assertThat(OpenAlexAdapter.buildUrl(BASE, "x", 10, 1, UA, "k-123")).contains("api_key=k-123");
+  }
+
+  @Test
+  @DisplayName("未配置 API key 时不得发出空的 api_key 参数")
+  void apiKeyIsOmittedWhenAbsent() {
+    // 空值传成 &api_key= 会被上游当成无效密钥，反而退化成 401，比不带更糟
+    assertThat(OpenAlexAdapter.buildUrl(BASE, "x", 10, 1, UA, null)).doesNotContain("api_key");
+    assertThat(OpenAlexAdapter.buildUrl(BASE, "x", 10, 1, UA, "  ")).doesNotContain("api_key");
+  }
+
+  @Test
   @DisplayName("非数字游标必须报错，不能悄悄回落到第一页重采")
   void invalidCursorFailsLoudly() {
     // 回落到第 1 页会让任务一直「有进展」却永远推进不到新数据

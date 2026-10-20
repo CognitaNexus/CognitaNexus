@@ -71,7 +71,8 @@ public class CitationHydrationService {
             objectMapper,
             httpClient,
             adapterProperties.userAgent(),
-            adapterProperties.maxResponseBytes());
+            adapterProperties.maxResponseBytes(),
+            adapterProperties.apiKey());
     this.crossrefFetcher =
         new CrossrefCitationFetcher(
             objectMapper,
@@ -430,8 +431,11 @@ public class CitationHydrationService {
     public HydrationProperties {
       // 25 篇一批：单次响应约 1～2 MB（每篇最多数百条参考文献），既能摊薄配额又不会撞上响应上限
       batchSize = batchSize == null || batchSize <= 0 ? 25 : Math.min(batchSize, 50);
+      // 单位是「美分」，不是请求次数：OpenAlex 2026 起按美元计费，剩余额度头是小数，
+      // 取回时已折算成美分（见 OpenAlexCitationFetcher#remainingCredits）。
+      // 默认 3 美分：匿名预算只有 10 美分且与采集共用，留 3 美分给采集侧，低于此值改走 Crossref。
       minRemainingCredits =
-          minRemainingCredits == null || minRemainingCredits < 0 ? 10 : minRemainingCredits;
+          minRemainingCredits == null || minRemainingCredits < 0 ? 3 : minRemainingCredits;
       maxWorksPerRun = maxWorksPerRun == null || maxWorksPerRun <= 0 ? 1000 : maxWorksPerRun;
       maxRounds = maxRounds == null || maxRounds <= 0 ? 200 : maxRounds;
       // Crossref 逐篇请求：留出间隔，避免在免费池里被限流

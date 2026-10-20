@@ -110,6 +110,11 @@ cn:
     adapter:
       # 采集器对上游的自我标识；Crossref 与 OpenAlex 都要求可联系的 UA
       user-agent: ${CN_COLLECT_USER_AGENT:CognitaNexus/0.2 (mailto:cn-admin@example.edu.cn)}
+      # OpenAlex 免费 API key。留空则匿名调用：每日预算 0.1 美元，且与同出口 IP 的其他用户共享，
+      # 额度耗尽后接口返回 403 并在 body 里说明 budget 已用完（不是来源故障）。
+      # 注册后每日预算 10 倍（1 美元）、每秒 30 次；补满全站引用约需 10 美分，占日额度十分之一。
+      # key 只从环境变量读，不写进仓库。
+      api-key: ${CN_OPENALEX_API_KEY:}
       request-timeout: 20s
       max-response-bytes: 4194304
   paging:
@@ -126,6 +131,10 @@ springdoc:
   paths-to-match: /api/v1/**
   swagger-ui:
     path: /swagger-ui.html
+    # 页面挂在 nginx 的 /ingest/swagger-ui/ 下，而同源真实文档地址是 /ingest/v3/api-docs。
+    # 用相对路径 ../v3/api-docs 同时满足两种访问方式：经代理时解析成 /ingest/v3/api-docs，
+    # 直连 8082 时解析成 /v3/api-docs。写死绝对路径会有一边取不到 JSON、界面空白。
+    url: ../v3/api-docs
     operations-sorter: alpha
     tags-sorter: alpha
 

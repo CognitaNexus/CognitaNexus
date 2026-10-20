@@ -62,17 +62,31 @@ public class OpenAlexAdapter implements SourceAdapter {
   private final int maxResponseBytes;
   private final OpenAlexFieldMapper fieldMapper;
 
+  /** 免费 API key。缺失时按匿名调用：每日预算 0.1 美元且与同出口 IP 共享。 */
+  private final String apiKey;
+
   public OpenAlexAdapter(
       ObjectMapper objectMapper,
       HttpClient httpClient,
       String userAgent,
       int maxResponseBytes,
       OpenAlexFieldMapper fieldMapper) {
+    this(objectMapper, httpClient, userAgent, maxResponseBytes, fieldMapper, null);
+  }
+
+  public OpenAlexAdapter(
+      ObjectMapper objectMapper,
+      HttpClient httpClient,
+      String userAgent,
+      int maxResponseBytes,
+      OpenAlexFieldMapper fieldMapper,
+      String apiKey) {
     this.objectMapper = objectMapper;
     this.httpClient = httpClient;
     this.userAgent = userAgent;
     this.maxResponseBytes = maxResponseBytes;
     this.fieldMapper = fieldMapper;
+    this.apiKey = apiKey == null || apiKey.isBlank() ? null : apiKey.trim();
   }
 
   @Override
@@ -136,7 +150,7 @@ public class OpenAlexAdapter implements SourceAdapter {
             ? "https://api.openalex.org/works"
             : config.baseEndpoint();
     String query = config.queryExpression() == null ? "" : config.queryExpression();
-    return buildUrl(base, query, config.pageSize(), pageNo, userAgent);
+    return buildUrl(base, query, config.pageSize(), pageNo, userAgent, apiKey);
   }
 
   /**
@@ -151,6 +165,18 @@ public class OpenAlexAdapter implements SourceAdapter {
    * 但那是精度提升，不是能否翻页的前提。</p>
    */
   static String buildUrl(String base, String query, int pageSize, int pageNo, String userAgent) {
+    return buildUrl(base, query, pageSize, pageNo, userAgent, null);
+  }
+
+  /**
+   * 组装查询 URL（可带 API key）。
+   *
+   * <p>key 用查询参数而不是 Authorization 头：OpenAlex 两种都收，但查询参数会出现在访问日志里，
+   * 与 mailto 一样属于可接受的上游侧记录；本项目不自建代理，没有中间日志落地。key 只从环境变量
+   * 读，不进仓库。</p>
+   */
+  static String buildUrl(
+      String base, String query, int pageSize, int pageNo, String userAgent, String apiKey) {
     StringBuilder url = new StringBuilder(base);
     url.append(base.contains("?") ? "&" : "?");
     url.append("search=")
@@ -168,6 +194,11 @@ public class OpenAlexAdapter implements SourceAdapter {
       }
       url.append("&mailto=")
           .append(java.net.URLEncoder.encode(mail, java.nio.charset.StandardCharsets.UTF_8));
+    }
+    if (apiKey != null && !apiKey.isBlank()) {
+      url.append("&api_key=")
+          .append(
+              java.net.URLEncoder.encode(apiKey.trim(), java.nio.charset.StandardCharsets.UTF_8));
     }
     return url.toString();
   }

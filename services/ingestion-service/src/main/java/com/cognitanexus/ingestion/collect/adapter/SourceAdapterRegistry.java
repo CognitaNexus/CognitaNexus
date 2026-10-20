@@ -38,7 +38,8 @@ public class SourceAdapterRegistry {
             httpClient,
             properties.userAgent(),
             properties.maxResponseBytes(),
-            OpenAlexFieldMapper.loadFromClasspath(objectMapper)));
+            OpenAlexFieldMapper.loadFromClasspath(objectMapper),
+            properties.apiKey()));
     // 项目与获奖各自一家公开来源：论文之外的类别没有通用元数据服务，必须逐类接入
     register(
         new NsfAdapter(
@@ -69,7 +70,13 @@ public class SourceAdapterRegistry {
 
   /** 适配器运行参数。 */
   @ConfigurationProperties(prefix = "cn.collect.adapter")
-  public record AdapterProperties(String userAgent, Duration requestTimeout, int maxResponseBytes) {
+  public record AdapterProperties(
+      String userAgent, Duration requestTimeout, int maxResponseBytes, String apiKey) {
+
+    /** 未配置 api-key 时仍可用三参构造，避免调用方到处判空。 */
+    public AdapterProperties(String userAgent, Duration requestTimeout, int maxResponseBytes) {
+      this(userAgent, requestTimeout, maxResponseBytes, null);
+    }
 
     public AdapterProperties {
       userAgent =
@@ -78,6 +85,8 @@ public class SourceAdapterRegistry {
               : userAgent;
       requestTimeout = requestTimeout == null ? Duration.ofSeconds(20) : requestTimeout;
       maxResponseBytes = maxResponseBytes <= 0 ? 4 * 1024 * 1024 : maxResponseBytes;
+      // 空串与缺失等价：env 里留一个空值不该让请求带上 &api_key=
+      apiKey = apiKey == null || apiKey.isBlank() ? null : apiKey.trim();
     }
 
     Duration connectTimeout() {
