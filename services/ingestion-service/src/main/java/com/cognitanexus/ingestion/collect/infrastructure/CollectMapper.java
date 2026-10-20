@@ -673,12 +673,6 @@ public interface CollectMapper {
   @Select("SELECT count(*) FROM ing_handoff_batch WHERE status = 'FAILED'")
   long countFailedBatches();
 
-  @Select(
-      """
-      SELECT count(*) FROM ing_handoff_batch WHERE job_id = #{jobId} AND status = 'FAILED'
-      """)
-  long countFailedBatchesByJob(@Param("jobId") String jobId);
-
   /**
    * 把一个已判死的批次放回待重试队列。
    *

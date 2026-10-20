@@ -488,7 +488,6 @@ class CollectExecutionServiceTest {
 
     CollectRepositories.HandoffBatchRepository.HandoffBatch failedBatch = failedBatch();
     when(batches.findByKey(anyString())).thenReturn(Optional.of(failedBatch));
-    when(batches.countFailedByJob("job_1")).thenReturn(1L);
     when(unitOfWork.reopenFailedBatch(eq("hbt_1"), anyList())).thenReturn(true);
     when(staged.listByBatch("hbt_1")).thenReturn(List.of(record));
     when(coreClient.handoff(any())).thenReturn(handoffResult());
@@ -511,9 +510,8 @@ class CollectExecutionServiceTest {
         .thenReturn(List.of(stagedRecord("stg_1")))
         .thenReturn(List.of());
     when(unitOfWork.openBatch(anyString(), eq("job_1"), anyString(), anyList())).thenReturn(false);
-    when(batches.findByKey(anyString())).thenReturn(Optional.of(failedBatch()));
-    // maxHandoffAttempts = 8，这里已经失败过 9 个批次
-    when(batches.countFailedByJob("job_1")).thenReturn(9L);
+    // maxHandoffAttempts = 8，这个批次自己已经试满 8 次
+    when(batches.findByKey(anyString())).thenReturn(Optional.of(failedBatch(8)));
     when(adapter.fetch(any(), any(), any())).thenThrow(new IllegalStateException("上游返回 400"));
 
     service.runOnce("job_1", "worker-1");
@@ -543,8 +541,12 @@ class CollectExecutionServiceTest {
   }
 
   private static CollectRepositories.HandoffBatchRepository.HandoffBatch failedBatch() {
+    return failedBatch(2);
+  }
+
+  private static CollectRepositories.HandoffBatchRepository.HandoffBatch failedBatch(int attempts) {
     return new CollectRepositories.HandoffBatchRepository.HandoffBatch(
-        "hbt_1", "job_1", "batch-key-1", "FAILED", 1, 2, NOW, null, "批次内找不到暂存记录", null, NOW);
+        "hbt_1", "job_1", "batch-key-1", "FAILED", 1, attempts, NOW, null, "批次内找不到暂存记录", null, NOW);
   }
 
   private static CoreInternalClient.HandoffResult handoffResult() {

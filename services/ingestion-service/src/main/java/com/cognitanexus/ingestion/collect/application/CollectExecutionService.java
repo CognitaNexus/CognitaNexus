@@ -370,16 +370,17 @@ public class CollectExecutionService {
         //   3) FAILED  —— 批次已判死，而 findNextPending 只取 PENDING、重建又撞唯一约束。
         //      不处理的话这一批记录会永久卡住且没有任何报错（线上实测卡了 100 条真实数据，
         //      记录的 handoff_attempts 一直是 0，因为流程根本走不到调用 core 那一步）。
-        //      FAILED 自愈还必须有上限：每次重试失败都会新增一个 FAILED 批次，用它计数，
-        //      达到 maxHandoffAttempts 就停手，避免「撞键 → 重置 → 再失败」无限循环。
+        //      FAILED 自愈必须有上限，且限度看这个批次自己的 attempts：每次重试失败都会让
+        //      attempts 加一，所以「撞键 → 重置 → 再失败」最多走 maxHandoffAttempts 次。
+        //      不能按「该任务历史上有多少失败批次」判定——线上实测该任务积了 125 个历史
+        //      失败批次，用它当分母会让这批记录从一开始就不允许任何重试。
         Optional<CollectRepositories.HandoffBatchRepository.HandoffBatch> existing =
             batches.findByKey(batchKey);
         boolean revived = false;
         if (existing.isPresent() && "FAILED".equals(existing.get().status())) {
-          long failedBatches = batches.countFailedByJob(job.id());
-          if (failedBatches <= properties.maxHandoffAttempts()
+          if (existing.get().attempts() < properties.maxHandoffAttempts()
               && unitOfWork.reopenFailedBatch(existing.get().id(), sliceIds)) {
-            log.warn("重新打开已失败的交接批次 batchKey={} 该任务历史失败批次数={}", batchKey, failedBatches);
+            log.warn("重新打开已失败的交接批次 batchKey={} 已尝试={} 次", batchKey, existing.get().attempts());
             HandoffAttempt attempt = handoffBatch(existing.get());
             if (!attempt.acked()) {
               return totalHandedOff;
@@ -387,7 +388,8 @@ public class CollectExecutionService {
             totalHandedOff += attempt.recordCount();
             revived = true;
           } else {
-            log.warn("交接批次已失败且自愈次数用尽，留待人工处置 batchKey={} 失败批次数={}", batchKey, failedBatches);
+            log.warn(
+                "交接批次已失败且尝试次数用尽，留待人工处置 batchKey={} 已尝试={} 次", batchKey, existing.get().attempts());
           }
         }
         if (revived) {
