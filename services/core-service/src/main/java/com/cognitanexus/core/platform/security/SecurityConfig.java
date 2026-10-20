@@ -103,6 +103,18 @@ public class SecurityConfig {
                     .permitAll()
                     .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info")
                     .permitAll()
+                    // OpenAPI 契约匿名开放：评审与外部开发者不必登录就能读接口清单。
+                    // 边界只有文档本身——/internal/v1/** 不进文档（见 springdoc.paths-to-match），
+                    // 也仍然需要服务令牌，不因为「文档里没写」而放开鉴权。
+                    // 访问频率由 nginx 的 cn_docs 限流区兜（见 ops/deploy/nginx-cn.conf），
+                    // 应用侧不再重复做限流：这里的请求是只读的文档生成，成本在一次序列化。
+                    .requestMatchers(
+                        "/v3/api-docs",
+                        "/v3/api-docs/**",
+                        "/v3/api-docs.yaml",
+                        "/swagger-ui.html",
+                        "/swagger-ui/**")
+                    .permitAll()
                     .anyRequest()
                     .authenticated())
         .exceptionHandling(

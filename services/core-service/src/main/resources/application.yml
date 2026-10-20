@@ -142,6 +142,10 @@ springdoc:
   paths-to-match: /api/v1/**
   swagger-ui:
     path: /swagger-ui.html
+    # 页面挂在 nginx 的 /core/swagger-ui/ 下，而同源真实文档地址是 /core/v3/api-docs。
+    # 用相对路径 ../v3/api-docs 同时满足两种访问方式：经代理时解析成 /core/v3/api-docs，
+    # 直连 8081 时解析成 /v3/api-docs。写死绝对路径会有一边取不到 JSON、界面空白。
+    url: ../v3/api-docs
     operations-sorter: alpha
     tags-sorter: alpha
 

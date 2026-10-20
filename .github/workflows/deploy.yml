@@ -78,6 +78,9 @@ jobs:
           cp ops/deploy/pg-backup.sh ops/deploy/install-backup.sh out/
           # 日志上限的初始化脚本：幂等，每次部署顺手对齐一次 journald 配额与 logrotate 规则。
           cp ops/deploy/install-logging.sh out/
+          # nginx 站点配置与它的幂等安装脚本：OpenAPI 文档路由与限流都在这里，
+          # 不随产物一起发下去就只能靠人工登录服务器改，改完还会在下次重装时丢。
+          cp ops/deploy/nginx-cn.conf ops/deploy/install-nginx.sh out/
           mkdir -p out/systemd
           cp ops/deploy/systemd/cn-db-backup.service ops/deploy/systemd/cn-db-backup.timer out/systemd/
           du -sh out out/app out/web
@@ -191,6 +194,16 @@ jobs:
           # GitHub 的日志要登录才看得到，服务器上留一份才能在机器上直接查上一次部署的结果。
           # 只换产物、不动数据库。install-server.sh 会 DROP SCHEMA，绝不能在这里调用。
           ssh -F ~/.ssh/config cn-target "set -o pipefail; bash /home/ubuntu/cn-deploy/deploy-update.sh /home/ubuntu/cn-incoming 2>&1 | tee /home/ubuntu/cn/logs/deploy-last.log" 2>&1 | tee /tmp/cn-restart.log
+
+      - name: 同步 nginx 文档路由
+        # OpenAPI 的六条路由与 cn_docs 限流区都在 nginx-cn.conf 里。脚本幂等：
+        # 内容没变不 reload，nginx -t 不过会回滚。
+        # continue-on-error：这一项失败只影响文档页面是否走新路由，不该把「服务已上线新版本」
+        # 这一步变成失败——业务接口不依赖它。
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ssh -F ~/.ssh/config cn-target 'bash /home/ubuntu/cn-incoming/install-nginx.sh /home/ubuntu/cn-incoming/nginx-cn.conf' 2>&1 | tee /tmp/cn-nginx.log
 
       - name: 失败诊断
         # 日志要登录才能看，所以把每个步骤的尾部报错提升成注解，
