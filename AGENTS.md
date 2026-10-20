@@ -11,15 +11,15 @@ CognitaNexus 是学术成果分享平台课程项目，以学者为中心聚合�
 阅读入口（路径均相对仓库根目录）：
 - [项目说明](README.md)
 - [文档导航](docs/README.md)
-- [需求基线：正文 V1.9](docs/requirements/学术成果分享平台需求分析与可行性报告.md)
+- [需求基线：V2.1（2026-10-20）](docs/requirements/学术成果分享平台需求分析与可行性报告.md)
 - [调研与可行性论证附录](docs/requirements/学术成果分享平台调研与可行性论证附录.md)
 - [SRS 编写与需求建模规范 V1.0](docs/srs/CognitaNexus_SRS编写与需求建模规范_V1.0.md)
-- **[CognitaNexus × OvO 双组工程实施共同 SRS V1.1 RC](docs/srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.md)**：开发阶段唯一工程候选阅读入口；仍须双方正式签认，不得标记 Frozen。
+- **[CognitaNexus × OvO 共同 SRS V2.2（69 AC）](docs/srs/CognitaNexus-Shared-SRS-V2.2-69AC.md)**：课程需求分析阶段唯一69 AC权威基线；S01已冻结。旧V1.1/46AC与59AC仅历史。
 - [范围可行性决策与历史 124/287 编号去向](docs/reports/srs/engineering-feasibility-scope-review-2026-10-12.md)；旧长版 SRS 为追溯材料，不可并列作为当前开发指令。
 
 依据优先级与处理原则：
 1. 课程任务书的明确硬性要求优先；未取得原文时请求补充，不编造内容或文件路径。
-2. V1.9 正文规定需求语义、范围与优先级；附录、调研和成员原始材料仅用于追溯。
+2. V2.1正文及69 AC规定当前需求语义、范围与优先级；46/59 AC、附录、调研和成员原始材料仅用于追溯。
 3. SRS 规范约束模板、编号、建模与评审；模块 SRS 在基线内细化，不反向覆盖基线。
 4. 遇到冲突，报告依据、影响及待决事项，交由负责人联合评审；不得自行改动已确认基线。
 5. 文档的实际版本与状态以正文为准；Draft、待评审目标和候选规则不等于已冻结结论。
@@ -34,7 +34,7 @@ CognitaNexus 是学术成果分享平台课程项目，以学者为中心聚合�
 | --- | --- |
 | 需求调研 | 调研依据、可行性、范围与基线，不把未经验证的来源能力写成承诺 |
 | 需求建模 / SRS 与 SPEC 初稿 | SRS 的可观察行为、用例、流程、状态、权限与验收；课程要求的核心模块 SPEC 初稿 |
-| 需求分析 | 按授权建立业务类图、关键时序等分析模型 |
+| 需求分析（S02） | 用例规约、BCE分析类、活动/状态、关键分析时序、AC追踪 |
 | 架构设计 | 依已评审需求和对应规范确定架构、技术选型及设计决策 |
 | 构件设计 | 按授权细化接口、数据结构、数据库及 UI 等设计 |
 | 实现与测试 | 依据适用规范和核心模块 SPEC 编码、测试并维护需求追踪 |
@@ -135,6 +135,6 @@ README 与目录清单可能落后于工作区，应核对实际文件；不得�
 ## 9. 文档配置管理入口
 
 - 分类、当前阅读链和完整清单以 [docs/README.md](docs/README.md) 为导航单一入口；维护遵循 [文档配置管理规范](docs/configuration-management.md)。
-- 核心 SPEC V1.0 必须结合 [V1.1 对齐说明](docs/spec/implementation-alignment-V1.1-RC.md)；旧模块和追踪的历史含义保留，不替代当前实施候选。
-- 历史稿统一标为 Historical / 仅用于来源追踪，不作为当前开发基线；V1.1 为 Review Candidate / 未经两组正式签认 / 非 Frozen。
-- 常规检查运行 `python3 scripts/docs/check_documentation.py` 与 `python3 scripts/docs/verify_scoped_srs.py`；历史生成/验证脚本可能覆盖历史正文或报告，先读工具说明。正式生成物保持原件，构建至临时目录，CI 仅上传 artifact。
+- 核心 SPEC V1.0 必须结合 [SRS V2.2 对齐说明](docs/spec/implementation-alignment-V1.1-RC.md)；旧模块和追踪的历史含义保留，不替代69 AC当前基线。
+- 历史稿统一标为 Historical / 仅用于来源追踪，不作为当前开发基线；V2.2 为 S01冻结的69 AC权威基线，46/59 AC不再并列。
+- 常规检查运行 `python3 scripts/docs/check_documentation.py`、`python3 scripts/docs/verify_scoped_srs.py` 与 `python3 scripts/docs/verify_69_ac.py`；历史生成/验证脚本可能覆盖历史正文或报告，先读工具说明。正式生成物保持原件，构建至临时目录，CI 仅上传 artifact。

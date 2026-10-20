@@ -23,3 +23,20 @@ Supporting：图源为 `.puml`，同模块 `generated/` SVG 为生成副本，PN
 | 需求建模核心必需图（课程原文仍待核定） | [overall-usecase](usecase/overall-usecase.puml) | [SVG](usecase/generated/overall-usecase.svg) | usecase |
 
 后续需求分析的业务类图/关键时序、架构图、构件接口及数据库/UI 设计图须在对应阶段授权后建立；不预建占位，不将现有业务时序图算作完整架构或构件交付。本次不改动任何图源或生成物。静态配对/XML 与语法检查不证明业务守卫、流程和全部 SRS 引用已获两组确认。历史图与当前边界的争议交负责人联合评审。
+
+## S02 需求分析新增图（2026-10-20）
+
+| 用途 | 图源 | 生成物 | 追踪 |
+| --- | --- | --- | --- |
+| 个人主页/Scholar边界用例 | [DGM-USECASE-07-profile](profile/DGM-USECASE-07-profile.puml) | [SVG](profile/generated/DGM-USECASE-07-profile.svg) | UC-03/04/05/06/07/22 |
+| 注册并建主页活动 | [DGM-ACTIVITY-05-register-profile](profile/DGM-ACTIVITY-05-register-profile.puml) | [SVG](profile/generated/DGM-ACTIVITY-05-register-profile.svg) | UC-04；FR03/FR04 |
+| 编辑本人普通主页活动 | [DGM-ACTIVITY-06-edit-profile](profile/DGM-ACTIVITY-06-edit-profile.puml) | [SVG](profile/generated/DGM-ACTIVITY-06-edit-profile.svg) | UC-22；FR06 |
+| 检索活动 | [DGM-ACTIVITY-07-search](analysis/DGM-ACTIVITY-07-search.puml) | [SVG](analysis/generated/DGM-ACTIVITY-07-search.svg) | UC-01/02；FR01/FR02 |
+| 四类合作网/论文路径活动 | [DGM-ACTIVITY-08-collab-network](analysis/DGM-ACTIVITY-08-collab-network.puml) | [SVG](analysis/generated/DGM-ACTIVITY-08-collab-network.svg) | UC-14/15；FR12/IN01 |
+| BCE分析类 | [DGM-CLASS-01-analysis](analysis/DGM-CLASS-01-analysis.puml) | [SVG](analysis/generated/DGM-CLASS-01-analysis.svg) | 69 AC / S02 |
+| 采集入库序列 | [DGM-SEQ-01-collection](analysis/DGM-SEQ-01-collection.puml) | [SVG](analysis/generated/DGM-SEQ-01-collection.svg) | UC-18/19 |
+| 认领审核序列 | [DGM-SEQ-02-claim](analysis/DGM-SEQ-02-claim.puml) | [SVG](analysis/generated/DGM-SEQ-02-claim.svg) | UC-05/06 |
+| 检索序列 | [DGM-SEQ-03-search](analysis/DGM-SEQ-03-search.puml) | [SVG](analysis/generated/DGM-SEQ-03-search.svg) | UC-01/02 |
+| 注册/主页序列 | [DGM-SEQ-04-profile](analysis/DGM-SEQ-04-profile.puml) | [SVG](analysis/generated/DGM-SEQ-04-profile.svg) | UC-04/22 |
+
+所有新增图源均已实际渲染SVG/PNG；`.puml`是唯一维护源。分析类图不含实现类/数据库表；CodeArts原生工程未操作，状态NOT VERIFIED。

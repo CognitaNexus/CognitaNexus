@@ -4,7 +4,7 @@
 
 ## 阅读与效力
 
-统一入口为 [docs/README](README.md)。需求 V1.9 决定业务语义与优先级；共同 SRS V1.1 是唯一当前工程实施候选；核心 SPEC V1.0 与 V1.1 对齐说明必须结合阅读。所有候选仍待签认。Supporting 保留详细来源，Review & Validation 保留证据，Historical 仅用于来源追踪，不作为当前开发基线，Tooling 不具有业务效力。分类不重写原文件在历史时间点的状态。
+统一入口为 [docs/README](README.md)。需求V2.1（2026-10-20）规定A1c范围与规模；共同SRS V2.2是唯一69 AC权威基线；核心SPEC V1.0按69AC对齐。S01已冻结。46/59 AC与旧V1.1 SRS仅历史。Supporting保留详细来源，Review & Validation保留证据，Historical仅用于来源追踪，不作为当前开发基线，Tooling不具有业务效力。69 AC变更须走需求变更评审。分类不重写原文件在历史时间点的状态。
 
 ## 命名、版本和状态
 

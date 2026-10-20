@@ -1,16 +1,16 @@
 # CognitaNexus 文档导航（单一入口）
 
-先读需求 V1.9，再读唯一工程实施候选 SRS V1.1，最后将核心 SPEC V1.0 与 V1.1 对齐说明结合阅读。**Review Candidate / 未经两组正式签认 / 非 Frozen。** 本导航不授权进入下一阶段或变更需求。
+先读需求报告 V2.1（2026-10-20 最终基线），再读唯一 69 AC 权威 SRS V2.2，最后将核心 SPEC 与 A1c/规模对齐说明结合阅读。**S01 已冻结；69 AC 为唯一验收基线。** 文档导航不授权修改需求或跳过变更评审。
 
 | 类别 | 文档 | 版本 | 状态 | 用途 | 责任模块 |
 | --- | --- | --- | --- | --- | --- |
-| A Current | [需求主报告](requirements/学术成果分享平台需求分析与可行性报告.md) | V1.9 | 待小组评审 | 上位需求语义与范围 | 两组负责人 |
-| A Current | **[共同 SRS](srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.md)** · [Word](srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.docx) | V1.1 | Review Candidate / 未经两组正式签认 / 非 Frozen | 唯一当前工程实施候选主稿；46 AC | 两组负责人 |
-| A Current | [核心 SPEC](spec/CognitaNexus-Core-SPEC-V1.0.md) · [Word](spec/CognitaNexus-Core-SPEC-V1.0.docx) | V1.0 | Review Candidate，参数待评审 | 清洗、去重、消歧、检索规则；须配合下一项 | 01/02/03及消费模块 |
+| A Current | [需求主报告](requirements/学术成果分享平台需求分析与可行性报告.md) | V2.1 / 2026-10-20 | S01最终基线 | 上位需求语义、A1c范围与规模 | 两组负责人 |
+| A Current | **[共同 SRS V2.2](srs/CognitaNexus-Shared-SRS-V2.2-69AC.md)** | V2.2 / 2026-10-20 | **S01 FROZEN — 69 AC** | 唯一权威验收基线、A1c/规模同步 | 两组负责人 |
+| A Current | [核心 SPEC](spec/CognitaNexus-Core-SPEC-V1.0.md) · [Word](spec/CognitaNexus-Core-SPEC-V1.0.docx) | V1.0 / 2026-10-20 aligned | 69 AC aligned；未实测 | 清洗、去重、消歧、检索、网络边界 | 01/02/03及消费模块 |
 | A Current | [SPEC 工程对齐说明](spec/implementation-alignment-V1.1-RC.md) | V1.1 RC | 未签认，非 Frozen | 限定旧 SPEC 的当前工程边界 | 两组/核心规则负责人 |
 | B Supporting | [模块导航](srs/modules/README.md) · [SRS 编写规范](srs/CognitaNexus_SRS编写与需求建模规范_V1.0.md) | 正文版本 / V1.0 | 原模块候选/编写规则 | 六人分工与详细来源 | 成员01～06 |
 | B Supporting | [SPEC 追踪](spec/spec-traceability.md) · [采集追踪](srs/modules/collection-update-traceability.md) | 原快照 | 旧编号辅助，不代表验收 | 规则与 AC 来源 | 对应模块 |
-| B Supporting | [124/287 当前处理表](srs/integration/engineering-scope-trace-v1.1-rc.md) · [JSON](srs/integration/engineering-scope-trace-v1.1-rc.json) | V1.1 RC | 父范围参考；非逐条等价 | 来源、处理、46 AC 候选落点 | 双组整合 |
+| B Supporting | [124/287 历史处理表](srs/integration/engineering-scope-trace-v1.1-rc.md) · [JSON](srs/integration/engineering-scope-trace-v1.1-rc.json) | V1.1 RC | 历史来源；非当前AC等价 | 旧124子需求/287 AC来源溯源 | 双组整合 |
 | B Supporting | [全局 UC/BR/DGM](srs/global-id-registry.md) · [映射 JSON](srs/global-id-mapping.json) | V1.0 RC1 | 原六人编号与语义保留 | 旧号追踪；不覆盖 BR-IMP/AC-IMPL | 六人组 |
 | B Supporting | [OvO 124 语义映射](srs/integration/ovo-semantic-map-v0.1.md) · [287 AC 原文](srs/integration/ovo-ac-lineage-v0.1.md) · [编号对照](srs/integration/subrequirement-crosswalk-2026-10-12.md) | V0.1 / 日期快照 | 早期辅助映射，非当前实施规则 | 保留来源及语义差异 | 双组整合 |
 | B Supporting | [UML 图目录与阶段](uml/README.md) · [调研附录](requirements/学术成果分享平台调研与可行性论证附录.md) | 正文版本 | 建模及证据辅助 | 图源、生成物及调研 | 各模块 |
@@ -23,3 +23,13 @@
 | E Tooling | [构建与检查](../scripts/docs/README.md) · [配置管理规范](configuration-management.md) | 工具/维护候选 | 无业务批准效力 | 命名、版本、生成、CI 与检查命令 | 文档维护者 |
 
 完整逐文件索引及本机 incoming 原稿见[盘点](reports/document-management/inventory-and-plan-2026-10-12.md)。所有既有目录保持稳定；本地原稿不自动纳入 Git。历史文件正文中的“当前”指其原时间点，不赋予其当前工程效力。未取得课程任务书原文时，不凭模板推断阶段交付已完成。
+
+## 2026-10-20 S01/S02 课程分析入口
+
+- [课程要求与交付追踪矩阵](analysis/课程要求与交付追踪矩阵.md)
+- [S01 架构分析（已冻结）](analysis/stage-01/README.md) · [冻结记录](analysis/stage-01/09-S01冻结记录.md)
+- [S02 需求分析（用例分析）](analysis/stage-02/README.md)
+- [69 AC 权威基线](srs/integration/69-ac-authoritative-baseline.md) · [版本映射](srs/integration/69-ac-version-mapping.md) · [双向追踪](analysis/stage-02/03-AC-UC-分析模型追踪.md) · [机器账本](srs/integration/69-ac-baseline.json)
+- [合作图SPEC](spec/FR12-IN01-合作图与最短路径规范.md)、[NF测量方案](spec/NF-验收测量方案.md)、[数据源整改](requirements/四类成果数据源调研-整改版.md)。
+
+**69 AC为唯一权威验收基线；46/59 AC与旧V1.1 SRS仅历史参考。** 所有运行测试仍为NOT RUN，文档统一不等于系统PASS。

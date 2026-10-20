@@ -1,0 +1,50 @@
+@startuml
+skinparam defaultFontName SansSerif
+skinparam classAttributeIconSize 0
+hide empty members
+left to right direction
+title CognitaNexus S01 关键抽象（S01 FROZEN / 69 AC）
+class User <<entity>>
+class UserProfile <<entity>>
+class Scholar <<entity>>
+class "认领申请\n（类名待统一）" as Claim <<entity>>
+class "Scholar对象授权\n（类名待统一）" as Auth <<entity>>
+class SourceRecord <<entity>>
+class WorkEntity <<entity>>
+class WorkVersion <<entity>>
+class Authorship <<entity>>
+class "采集任务" as Task <<entity>>
+class "审核/审计证据\n（分解待确认）" as Evidence <<entity>>
+User "1" -- "1" UserProfile : 唯一普通主页 [用户A1c / 包SRS §12]
+User -- Claim : 申请人 [FR05]
+Claim -- Scholar : 认领目标 [FR05]
+Claim ..> Auth : 批准后授予 [AC-IMPL-FR05-02]
+Auth -- User : 获授权者
+Auth -- Scholar : 目标档案
+Task -- SourceRecord : 输入结果移交 [FR08]
+SourceRecord -- WorkEntity : 来源证据 [SPEC §5]
+WorkEntity -- WorkVersion : 有证据的版本 [FR02/09]
+Scholar -- Authorship : 独立身份/关系 [FR15]
+Authorship -- WorkEntity : 参与成果 [SPEC §2/6]
+Evidence ..> Claim : 决定留痕 [FR05/14]
+Evidence ..> Authorship : 修正/排除留痕 [FR15]
+note bottom of User
+  账号不等于学者，授权不等于本人确认
+  所有注册用户均有公开可编辑主页
+  非学者/零成果同样适用；保留UC-22
+  注册/昵称不产生Scholar或参与关系
+end note
+note bottom of Authorship
+  管理员批准不等于本人确认
+  解除关系不删除共享成果
+  四类参与角色必须有合法核验证据
+  FR12四类基础边；IN01仅论文子图
+end note
+legend bottom
+  只画有证据的核心概念，非完整类模型/数据库设计
+  依据用户A1c、包SRS V2.1 §12、SPEC §13/15；来源差异见08
+  除User—UserProfile 1:1，其余基数/属性/导航待逐UC验证
+  不把基础图/路径预设为持久实体；正式SRS V2.2已同步69 AC
+  AC-IMPL-FR03-03/04、FR04-03/04、FR06-03/04/05
+endlegend
+@enduml

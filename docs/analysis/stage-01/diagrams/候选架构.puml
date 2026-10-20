@@ -1,0 +1,33 @@
+@startuml
+skinparam defaultFontName SansSerif
+skinparam packageStyle rectangle
+title CognitaNexus S01 候选分析架构（S01 FROZEN / 69 AC）
+top to bottom direction
+package "Boundary Layer\n参与者与外部来源交互" as B <<layer>>
+package "Control Layer\n协调用例步骤、守卫与生效" as C <<layer>>
+package "Entity Layer\n管理业务信息及历史证据" as E <<layer>>
+B ..> C : 交互请求与结果
+C ..> E : 业务信息职责
+note right of B
+  证据：用户A1c、包SRS FR03/04/06/§12
+  普通主页公开读、本人编辑；学术事实另核验
+  其他公开交互、受保护写、获准来源输入不变
+end note
+note right of C
+  证据：用户A1c、包SRS/SPEC §13/15
+  注册唯一主页、认领仅增Scholar授权
+  FR12四类合格共同成果；IN01仅共同论文
+  批次完成不等于治理完成，批准不等于本人确认
+end note
+note right of E
+  User 1:1 UserProfile；UserProfile与Scholar分离
+  来源、成果、身份、参与关系与证据分别保留
+  不从普通资料推导学术身份、统计资格或建边
+end note
+legend bottom
+  教材 §5.3.1 图5-12：BCE逻辑职责分层
+  S01已冻结；69 AC基线与A1c最终决议
+  联调100万、最终500万、固定环境100并发仅为需求特征
+  包内具体类留待逐用例实现；不是应用栈或部署图
+endlegend
+@enduml
