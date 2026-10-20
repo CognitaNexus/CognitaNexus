@@ -73,11 +73,12 @@ public class SourceAdapterRegistry {
   public record AdapterProperties(
       String userAgent, Duration requestTimeout, int maxResponseBytes, String apiKey) {
 
-    /** 未配置 api-key 时仍可用三参构造，避免调用方到处判空。 */
-    public AdapterProperties(String userAgent, Duration requestTimeout, int maxResponseBytes) {
-      this(userAgent, requestTimeout, maxResponseBytes, null);
-    }
-
+    // 这里不能像普通类那样再加一个「少参数」的便利构造器。record 一旦有多个构造器，
+    // Spring Boot 的构造器绑定就选不出该用哪个，启动时抛
+    // NoSuchMethodException: AdapterProperties.<init>() —— 它退而去找无参构造，而 record 没有。
+    // 单测不加载 Spring 上下文，这类问题只有真启动才暴露，所以宁可不提供便利构造器。
+    // 守卫是 AdapterPropertiesBindingTest：它用 ApplicationContextRunner 起最小上下文绑一遍，
+    // 实测把便利构造器加回去会让它两项全红并抛出与线上一致的 NoSuchMethodException。
     public AdapterProperties {
       userAgent =
           userAgent == null || userAgent.isBlank()
