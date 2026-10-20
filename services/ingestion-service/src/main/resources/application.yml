@@ -114,6 +114,10 @@ cn:
     # 连续失败熔断阈值：达到后任务转 FAILED，不再自动重试，等人工核查来源。
     # 按连续次数而非累计次数，跑了很久偶发失败一次的任务不会被误熔断。
     max-consecutive-failures: 20
+    # 补交接巡逻间隔（毫秒，默认 15 分钟）：收拾「任务已暂停但批次还没交出去」的遗留。
+    # 交接重试只写在任务跑一轮的路径里，暂停任务永远轮不到，批次会静默停在 PENDING。
+    # 只交付已抓到的数据，不恢复抓取——要不要再抓是人的决定。
+    backlog-sweep-interval-ms: 900000
     adapter:
       # 采集器对上游的自我标识；Crossref 与 OpenAlex 都要求可联系的 UA
       user-agent: ${CN_COLLECT_USER_AGENT:CognitaNexus/0.2 (mailto:cn-admin@example.edu.cn)}

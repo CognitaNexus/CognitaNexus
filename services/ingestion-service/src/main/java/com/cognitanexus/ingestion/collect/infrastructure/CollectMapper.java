@@ -788,4 +788,27 @@ public interface CollectMapper {
       LIMIT #{limit}
       """)
   List<String> listRunnableJobIds(@Param("limit") int limit);
+
+  /**
+   * 暂停任务里「有到期未交付批次」的标识。
+   *
+   * <p>为什么需要单独一条查询：交接重试只发生在任务真的跑一轮的时候，而 {@code runOnce} 对
+   * PAUSED 直接跳过。于是「先建批次、再交接」这两步之间被打断时（core 侧超时、进程重启、
+   * 管理员正好点了暂停），批次停在 PENDING、记录停在 STAGED，两个状态都不会自己变化，
+   * 也不会有任何日志。线上实测：一个 OpenAlex 任务在 401 那轮里留下了 50 条记录卡三天。
+   *
+   * <p>只取 PAUSED：终态任务（SUCCEEDED/FAILED/STOPPED）由人决定不再继续，补交接会把
+   * 「已经放弃的采集」写进目录，那不是本查询该做的判断。
+   */
+  @Select(
+      """
+      SELECT DISTINCT b.job_id FROM ing_handoff_batch b
+      JOIN ing_collect_job j ON j.id = b.job_id
+      WHERE b.status = 'PENDING'
+        AND b.next_attempt_at <= now()
+        AND j.status = 'PAUSED'
+      ORDER BY b.job_id
+      LIMIT #{limit}
+      """)
+  List<String> listPausedJobsWithDueBatch(@Param("limit") int limit);
 }

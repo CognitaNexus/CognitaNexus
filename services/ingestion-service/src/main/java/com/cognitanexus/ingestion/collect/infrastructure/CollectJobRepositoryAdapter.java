@@ -109,4 +109,9 @@ public class CollectJobRepositoryAdapter implements CollectRepositories.JobRepos
   public List<String> listRunnableJobIds(int limit) {
     return mapper.listRunnableJobIds(limit);
   }
+
+  @Override
+  public List<String> listPausedJobsWithDueBatch(int limit) {
+    return mapper.listPausedJobsWithDueBatch(limit);
+  }
 }

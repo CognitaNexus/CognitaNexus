@@ -306,6 +306,47 @@ public class CollectExecutionService {
   }
 
   /**
+   * 只补交接、不抓取：把已暂停任务遗留的批次交出去，然后立刻放掉租约。
+   *
+   * <p>存在的理由是一个已经发生两次的静默卡死：交接重试写在 {@link #runOnce} 里，而 {@code runOnce}
+   * 对 PAUSED 直接跳过。于是「建了批次但没交成」的那一刻若正好撞上暂停（或 core 侧超时导致
+   * 客户端先放弃），批次停在 PENDING、记录停在 STAGED，两边都不会自己动，日志里也只有一次
+   * 已经过去很久的错误。线上实测：一个 OpenAlex 任务因此卡了 50 条记录三天，而任务本身看上去
+   * 只是「已暂停」，没有任何异常迹象。
+   *
+   * <p>为什么不顺手恢复抓取：暂停是管理员的显式决定。这里只把「已经抓到的」交付出去——
+   * 那部分代价已经花掉（上游配额、解析），不交付等于白花；而「要不要再抓」必须由人回答。
+   *
+   * <p>进入条件在 SQL 里就卡死了（只取 PAUSED 且有到期批次），这里再判一次状态，是为了防止
+   * 查询与执行之间状态被改（管理员刚好恢复或停止）。
+   *
+   * @return 本次实际交付的记录条数；0 表示没有可交付或没抢到租约
+   */
+  public int drainBacklog(String jobId, String leaseOwner) {
+    CollectJob job = jobs.findById(jobId).orElse(null);
+    if (job == null || job.status() != JobStatus.PAUSED) {
+      return 0;
+    }
+    // 与后台执行器共用同一把租约：它正在推这个任务时，这里不能并发交付同一批记录
+    if (!jobs.claimLease(jobId, leaseOwner, properties.leaseSeconds())) {
+      return 0;
+    }
+    try {
+      CollectJob leased = jobs.findById(jobId).orElse(null);
+      if (leased == null || leased.status() != JobStatus.PAUSED) {
+        return 0;
+      }
+      int handedOff = drainPendingHandoffs(leased);
+      if (handedOff > 0) {
+        log.info("补交接暂停任务遗留批次 jobId={} 条数={}", jobId, handedOff);
+      }
+      return handedOff;
+    } finally {
+      jobs.releaseLease(jobId, leaseOwner);
+    }
+  }
+
+  /**
    * 单页抓取结果。
    *
    * <p>{@code retryAfterSeconds} 只在来源用响应头明确给出等待时间时非空（典型是 429 与 503）。

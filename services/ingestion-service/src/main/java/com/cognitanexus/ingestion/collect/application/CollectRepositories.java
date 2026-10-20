@@ -126,6 +126,14 @@ public interface CollectRepositories {
      * 后台执行器就只是「拿到就做」，不会出现两处各有一套判据。
      */
     List<String> listRunnableJobIds(int limit);
+
+    /**
+     * 已暂停但仍有到期未交付批次的任务标识，供补交接巡回收拾遗留批次。
+     *
+     * <p>与 {@link #listRunnableJobIds} 分开：前者是「可以继续抓」，后者是「已抓到的还没交出去」，
+     * 两件事的准入判据不同——把后者塞进前者，就等于让暂停的任务悄悄恢复抓取。
+     */
+    List<String> listPausedJobsWithDueBatch(int limit);
   }
 
   /** 交接暂存仓储。 */

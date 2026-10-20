@@ -520,6 +520,80 @@ class CollectExecutionServiceTest {
     verify(unitOfWork, never()).reopenFailedBatch(anyString(), anyList());
   }
 
+  @Test
+  @DisplayName("补交接只对暂停任务生效：运行中的任务由执行器自己排空，巡逻不得抢")
+  void drainBacklogIgnoresRunningJob() {
+    when(jobs.findById("job_1")).thenReturn(Optional.of(job(0, null)));
+
+    int handedOff = service.drainBacklog("job_1", "sweeper-1");
+
+    assertThat(handedOff).isZero();
+    verify(jobs, never()).claimLease(anyString(), anyString(), anyInt());
+  }
+
+  @Test
+  @DisplayName("补交接拿不到租约就退出：执行器正在推这个任务，不能并发交付同一批")
+  void drainBacklogWithoutLeaseDoesNothing() {
+    when(jobs.findById("job_1")).thenReturn(Optional.of(pausedJob()));
+    when(jobs.claimLease(eq("job_1"), anyString(), anyInt())).thenReturn(false);
+
+    int handedOff = service.drainBacklog("job_1", "sweeper-1");
+
+    assertThat(handedOff).isZero();
+    verify(batches, never()).findNextPending(anyString());
+    verify(jobs, never()).releaseLease(anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("暂停任务的遗留批次会被交出去，并且必须放掉租约")
+  void drainBacklogDeliversPendingBatchAndReleasesLease() {
+    when(jobs.findById("job_1")).thenReturn(Optional.of(pausedJob()));
+    when(jobs.claimLease(eq("job_1"), anyString(), anyInt())).thenReturn(true);
+    StagedRecord record = stagedRecord("stg_1");
+    // 只取到一次：模拟「一轮里把这个遗留批次交完」，第二轮就没有待重试批次了
+    when(batches.findNextPending("job_1"))
+        .thenReturn(Optional.of(pendingBatch()))
+        .thenReturn(Optional.empty());
+    when(staged.listByBatch("hbt_p1")).thenReturn(List.of(record));
+    when(configs.findById("src_1")).thenReturn(Optional.of(config()));
+    when(coreClient.handoff(any())).thenReturn(handoffResult());
+
+    int handedOff = service.drainBacklog("job_1", "sweeper-1");
+
+    assertThat(handedOff).isEqualTo(1);
+    verify(unitOfWork).recordHandoffSuccess(eq(pendingBatch()), anyList(), any(), any());
+    // 只补交接、不抓取：暂停是管理员的决定，巡逻不得顺手把采集恢复
+    verify(adapter, never()).fetch(any(), any(), any());
+    verify(jobs).releaseLease("job_1", "sweeper-1");
+  }
+
+  private static CollectJob pausedJob() {
+    CollectJob running = job(0, null);
+    return new CollectJob(
+        running.id(),
+        running.sourceConfigId(),
+        running.jobKey(),
+        JobStatus.PAUSED,
+        running.cursor(),
+        running.checkpoint(),
+        running.totalFetched(),
+        running.totalStaged(),
+        running.totalHandedOff(),
+        running.totalRejected(),
+        running.leaseOwner(),
+        running.leaseUntil(),
+        running.lastError(),
+        running.createdBy(),
+        running.consecutiveFailures(),
+        running.nextAttemptAt(),
+        running.retryCount());
+  }
+
+  private static CollectRepositories.HandoffBatchRepository.HandoffBatch pendingBatch() {
+    return new CollectRepositories.HandoffBatchRepository.HandoffBatch(
+        "hbt_p1", "job_1", "batch-key-p1", "PENDING", 1, 1, NOW, null, null, null, NOW);
+  }
+
   private static StagedRecord stagedRecord(String id) {
     return new StagedRecord(
         id,
