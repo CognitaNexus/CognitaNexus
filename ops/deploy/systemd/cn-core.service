@@ -1,0 +1,25 @@
+[Unit]
+Description=CognitaNexus core-service
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+# 数据库没起来就重启，避免启动即失败后被 systemd 判定为「不再重试」。
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/cn
+EnvironmentFile=/home/ubuntu/cn/conf/cn-env.sh
+# 堆按 12G 物理机分配：core 2g、query 1.5g、ingestion 1.2g，其余留给 PG 与页缓存。
+# 用固定 -Xmx 而不是 MaxRAMPercentage，是为了让三个服务的上限之和可一眼加总核对。
+ExecStart=/usr/bin/java -Xmx2g -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8 -Duser.timezone=Asia/Shanghai -jar /home/ubuntu/cn/app/core-service.jar
+# 143 = 被 SIGTERM 正常关闭（systemctl stop），不记为失败，否则每次停服都会触发一次重启。
+SuccessExitStatus=143
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/ubuntu/cn/logs/core.log
+StandardError=append:/home/ubuntu/cn/logs/core.log
+
+[Install]
+WantedBy=multi-user.target

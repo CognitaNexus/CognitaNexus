@@ -1,0 +1,100 @@
+name: build-and-deploy
+
+# 推 dev 分支即构建并部署到 Oracle 那台机器。
+#
+# 为什么在 GitHub 上构建而不是在服务器上：
+# 目标机是 2 核，三个 Spring 服务的 Maven 构建加前端打包要三四十分钟，
+# 且内存峰值不可控；runner 是 4 核且带缓存，一轮几分钟。
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+# 连续推送时只保留最新一次，避免两次部署交叉执行把产物换乱。
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: 构建后端
+        # 先跳过测试换部署速度。要开质量门禁，把下面这行换成 ./mvnw -B verify
+        # （verify 会跑 spotless 与 JaCoCo 80% 覆盖率门禁，耗时明显增加）。
+        run: |
+          chmod +x mvnw
+          ./mvnw -B -DskipTests package
+
+      - name: 设置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 构建前端
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+      - name: 整理产物
+        # 每个服务只取一个可执行 jar：排除 *-sources.jar / *-javadoc.jar / *.jar.original，
+        # 否则 cp 一次匹配到多个文件会变成「把多个文件拷进一个目标名」，直接失败。
+        run: |
+          set -eu
+          mkdir -p out/app out/web
+          pick() {
+            f=$(find "services/$1-service/target" -maxdepth 1 -name "$1-service-*.jar" \
+                  ! -name '*-sources.jar' ! -name '*-javadoc.jar' ! -name '*.jar.original' | head -1)
+            [ -n "$f" ] || { echo "未找到 $1-service 的可执行 jar" >&2; exit 1; }
+            cp "$f" "out/app/$1-service.jar"
+            echo "$1-service.jar <= $f"
+          }
+          pick core
+          pick query
+          pick ingestion
+          cp -r frontend/dist/. out/web/
+          # 部署脚本也随产物一起发下去：否则服务器上那份是首次安装时留下的旧副本，
+          # 仓库里改了 deploy-update.sh 却不生效，排查起来很费时间。
+          cp ops/deploy/deploy-update.sh out/deploy-update.sh
+          du -sh out out/app out/web
+
+      - name: 上传产物到服务器
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.CN_SSH_HOST }}
+          username: ${{ secrets.CN_SSH_USER }}
+          key: ${{ secrets.CN_SSH_KEY }}
+          source: "out/*"
+          target: "/home/ubuntu/cn-incoming"
+          # 去掉最外层 out/，服务器上得到 app/ 与 web/ 两级，正好是 deploy-update.sh 期望的结构
+          strip_components: 1
+          overwrite: true
+          rm: true
+
+      - name: 重启服务
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.CN_SSH_HOST }}
+          username: ${{ secrets.CN_SSH_USER }}
+          key: ${{ secrets.CN_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            set -e
+            # 先更新部署脚本自身，再执行它（脚本已在本次上传的产物里）。
+            if [ -f /home/ubuntu/cn-incoming/deploy-update.sh ]; then
+              install -m 755 /home/ubuntu/cn-incoming/deploy-update.sh /home/ubuntu/cn-deploy/deploy-update.sh
+            fi
+            # 只换产物、不动数据库。install-server.sh 会 DROP SCHEMA，绝不能在这里调用。
+            bash /home/ubuntu/cn-deploy/deploy-update.sh /home/ubuntu/cn-incoming

@@ -1,0 +1,23 @@
+[Unit]
+Description=CognitaNexus ingestion-service
+After=network-online.target postgresql.service redis-server.service cn-core.service
+Wants=network-online.target cn-core.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/cn
+EnvironmentFile=/home/ubuntu/cn/conf/cn-env.sh
+# 采集服务的 worker 会周期性向 core 取会话上下文并交接批次；
+# core 不可用时它的管理端接口一律 403，所以同样依赖 cn-core.service。
+ExecStart=/usr/bin/java -Xmx1200m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8 -Duser.timezone=Asia/Shanghai -jar /home/ubuntu/cn/app/ingestion-service.jar
+SuccessExitStatus=143
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/ubuntu/cn/logs/ingestion.log
+StandardError=append:/home/ubuntu/cn/logs/ingestion.log
+
+[Install]
+WantedBy=multi-user.target

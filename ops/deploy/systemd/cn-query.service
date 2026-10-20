@@ -1,0 +1,23 @@
+[Unit]
+Description=CognitaNexus query-service
+After=network-online.target postgresql.service redis-server.service cn-core.service
+Wants=network-online.target cn-core.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/cn
+EnvironmentFile=/home/ubuntu/cn/conf/cn-env.sh
+# 公开查询每次都要向 core 核实水位（cn.core.request-timeout: 3s），
+# core 未就绪时 query 会启动成功但请求全超时，所以这里依赖 cn-core.service。
+ExecStart=/usr/bin/java -Xmx1500m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8 -Duser.timezone=Asia/Shanghai -jar /home/ubuntu/cn/app/query-service.jar
+SuccessExitStatus=143
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/ubuntu/cn/logs/query.log
+StandardError=append:/home/ubuntu/cn/logs/query.log
+
+[Install]
+WantedBy=multi-user.target

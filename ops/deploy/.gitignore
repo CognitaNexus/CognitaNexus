@@ -1,0 +1,12 @@
+# 部署包只在本地产出与消费，不入库。
+# dump 含全部业务数据、env 含生产口令，任何一项进版本库都是事故。
+*
+!.gitignore
+!*.example
+!nginx-cn.conf
+!install-server.sh
+!upload.sh
+!deploy-update.sh
+!README.md
+!systemd/
+!systemd/*.service
