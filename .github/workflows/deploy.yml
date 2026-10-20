@@ -89,21 +89,30 @@ jobs:
             exit 1
           fi
           mkdir -p ~/.ssh
-          # 多行私钥从网页粘进 Secrets 极易受损：丢字符、带引号、换行被转成字面量 \n，
-          # 报错统一是 error in libcrypto，看不出差别。所以按三种存法依次试：
-          #   1) 原样（只去 CRLF）
-          #   2) 字面量 \n 还原成真换行
-          #   3) 一行 base64（推荐，粘贴时不可能被换行破坏）
+          # 多行私钥从网页粘进 Secrets 极易受损，实测过的三种：
+          #   1) 只丢首尾两行标识，剩下 5 行密钥体（真遇上了：349 字节 / 5 行，
+          #      而完整文件是 419 字节 / 7 行，差值正好是两行标识加换行）
+          #   2) 换行被存成字面量 \n
+          #   3) 存成一行 base64
+          # 所以按四种存法依次试，命中即用。
           printf '%s\n' "$CN_SSH_KEY" > /tmp/key-raw
           tr -d '\r' < /tmp/key-raw > /tmp/key-crlf
           sed 's/\\n/\n/g' /tmp/key-crlf > /tmp/key-nl
+          # 缺首尾标识时补回来，这是唯一不需要人工重新粘贴的修法
+          if ! grep -q 'BEGIN .*PRIVATE KEY' /tmp/key-nl; then
+            {
+              echo '-----BEGIN OPENSSH PRIVATE KEY-----'
+              cat /tmp/key-nl
+              echo '-----END OPENSSH PRIVATE KEY-----'
+            } > /tmp/key-wrap
+          fi
           tr -d ' \t\r\n' < /tmp/key-nl | base64 -d > /tmp/key-b64 2>/dev/null || true
           # 解码结果若刚好缺末尾换行，ssh-keygen 会报 libcrypto: unsupported（已实测），
           # 补一个换行即可；多一个空行对解析无影响。
           [ -s /tmp/key-b64 ] && printf '\n' >> /tmp/key-b64 || true
 
           ok=""
-          for cand in /tmp/key-crlf /tmp/key-nl /tmp/key-b64; do
+          for cand in /tmp/key-crlf /tmp/key-nl /tmp/key-wrap /tmp/key-b64; do
             [ -s "$cand" ] || continue
             chmod 600 "$cand"
             if ssh-keygen -y -f "$cand" > ~/.ssh/cn_deploy.pub 2>/tmp/cn-key.err; then
@@ -115,7 +124,7 @@ jobs:
           if [ -z "$ok" ]; then
             # 日志要登录才能看，所以把诊断信息做成注解（未登录也能通过 API 读到）。
             # sha256 只用于和本地正确私钥比对，不泄露内容。
-            printf '::error::CN_SSH_KEY 三种存法都解析失败：%s\n' "$(tr '\n' ' ' < /tmp/cn-key.err | cut -c1-200)"
+            printf '::error::CN_SSH_KEY 四种存法都解析失败：%s\n' "$(tr '\n' ' ' < /tmp/cn-key.err | cut -c1-200)"
             printf '::error::诊断 字节=%s 行=%s 首行=[%s] 末行=[%s] sha256=%s\n' \
               "$(wc -c < /tmp/key-crlf)" \
               "$(wc -l < /tmp/key-crlf)" \
