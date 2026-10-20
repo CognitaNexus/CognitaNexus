@@ -44,6 +44,15 @@ jobs:
           chmod +x mvnw
           ./mvnw -B verify 2>&1 | tee /tmp/cn-build.log | tail -30
 
+      - name: 报告测试计数
+        # 把 surefire 的汇总行写进 workflow annotation。GitHub 的完整日志要登录才看得到，
+        # 而 check-runs/annotations 匿名可读；没有这一行，「CI 到底跑没跑测试」只能靠猜，
+        # 而「测试被静默跳过」恰恰是最不该靠猜的事。
+        if: always()
+        run: |
+          s=$(grep -hE "Tests run: [0-9]+, Failures: [0-9]+, Errors: [0-9]+, Skipped: [0-9]+$" /tmp/cn-build.log | tr '\n' ' ')
+          echo "::notice title=后端测试汇总::${s:-未找到测试汇总行（构建可能未跑到测试阶段）}"
+
       - name: 设置 Node
         uses: actions/setup-node@v4
         with:
