@@ -1,0 +1,18 @@
+[Unit]
+Description=CognitaNexus 数据库备份（三个库一起，带清单）
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/cn
+# 备份是 IO 密集型，别和采集/查询抢 CPU 与磁盘。
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+ExecStart=/usr/bin/bash /home/ubuntu/cn-deploy/pg-backup.sh
+StandardOutput=append:/home/ubuntu/cn/logs/db-backup.log
+StandardError=append:/home/ubuntu/cn/logs/db-backup.log
+# 备份失败要能看见：非零退出会在 systemctl --failed 里留痕。

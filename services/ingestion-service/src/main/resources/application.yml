@@ -76,9 +76,11 @@ management:
 
 cn:
   internal:
-    # 本服务在内部端点被调用时用于校验对端身份的令牌（core 投递事件、运维脚本）
+    # 本服务在内部端点被调用时用于校验对端身份的令牌（core 投递事件、运维脚本）。
+    # 变量名不复用 CN_CORE_SERVICE_TOKEN：那个名字经宽松绑定会命中 cn.core.service-token
+    # （本服务调 core 时出示的令牌），在共享 EnvironmentFile 下会把出站令牌一起改掉。
     service-tokens:
-      core: ${CN_CORE_SERVICE_TOKEN:cn_core_service_dev}
+      core: ${CN_INGESTION_INBOUND_CORE_TOKEN:cn_core_service_dev}
   core:
     base-url: ${CN_CORE_BASE_URL:http://127.0.0.1:8081}
     # 以什么身份调用 core 的内部接口；core 侧按此名查对应令牌

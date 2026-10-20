@@ -74,6 +74,10 @@ jobs:
           # 部署脚本也随产物一起发下去：否则服务器上那份是首次安装时留下的旧副本，
           # 仓库里改了 deploy-update.sh 却不生效，排查起来很费时间。
           cp ops/deploy/deploy-update.sh out/deploy-update.sh
+          # 备份脚本同理：仓库是唯一来源，服务器上的副本每次部署都覆盖一遍。
+          cp ops/deploy/pg-backup.sh ops/deploy/install-backup.sh out/
+          mkdir -p out/systemd
+          cp ops/deploy/systemd/cn-db-backup.service ops/deploy/systemd/cn-db-backup.timer out/systemd/
           du -sh out out/app out/web
 
       - name: 准备 SSH
@@ -158,6 +162,13 @@ jobs:
           ssh -F ~/.ssh/config cn-target 'rm -rf /home/ubuntu/cn-incoming && mkdir -p /home/ubuntu/cn-incoming' 2>&1 | tee /tmp/cn-upload.log
           tar -C out -czf - . | ssh -F ~/.ssh/config cn-target 'tar xzf - -C /home/ubuntu/cn-incoming' 2>&1 | tee -a /tmp/cn-upload.log
           ssh -F ~/.ssh/config cn-target 'du -sh /home/ubuntu/cn-incoming; ls -la /home/ubuntu/cn-incoming/app' 2>&1 | tee -a /tmp/cn-upload.log
+
+      - name: 同步备份定时器
+        # 备份脚本与定时器不属于「换产物」，单独一步：它不重启任何服务，
+        # 失败也不该影响本次部署，所以放在重启之前，出错时更有辨识度。
+        run: |
+          set -o pipefail
+          ssh -F ~/.ssh/config cn-target 'bash /home/ubuntu/cn-incoming/install-backup.sh' 2>&1 | tee /tmp/cn-backup-install.log
 
       - name: 更新部署脚本并重启服务
         run: |

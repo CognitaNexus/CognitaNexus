@@ -105,7 +105,6 @@ else
   CN_INGESTION_DB_OWNER_PASSWORD="$(gen)"; CN_INGESTION_DB_PASSWORD="$(gen)"
   CN_SESSION_REDIS_PASSWORD="$(gen)";      CN_CACHE_REDIS_PASSWORD="$(gen)"
   CN_INGESTION_SERVICE_TOKEN="$(gen)";     CN_QUERY_SERVICE_TOKEN="$(gen)"
-  CN_INTERNAL_SERVICE_TOKENS_CORE="$(gen)"
   CN_BOOTSTRAP_ADMIN_PASSWORD="$(gen)"
 
   cat > "$CN_HOME/conf/cn-env.sh" <<EOF
@@ -125,13 +124,20 @@ CN_SESSION_REDIS_PASSWORD=$CN_SESSION_REDIS_PASSWORD
 CN_CACHE_REDIS_PASSWORD=$CN_CACHE_REDIS_PASSWORD
 
 # —— 服务间令牌 ——
-# ⚠️ 这里没有、也绝不能出现 CN_CORE_SERVICE_TOKEN 这个变量名。
-# 它经 Spring 宽松绑定会命中 cn.core.service-token（ingestion 调用 core 时出示的令牌），
-# 把 CN_INGESTION_SERVICE_TOKEN 覆盖掉，导致采集管理全线 403。
-# ingestion 校验「core 调它」时该用的变量名是 CN_INTERNAL_SERVICE_TOKENS_CORE。
+# 三条链路，每条两侧必须是同一个值，但变量名不能混用：
+#   core → query      出站 CN_QUERY_SERVICE_TOKEN      / query 入站 CN_QUERY_INBOUND_CORE_TOKEN
+#   core → ingestion  出站 CN_INGESTION_SERVICE_TOKEN  / ingestion 入站 CN_INGESTION_INBOUND_CORE_TOKEN
+#   query/ingestion → core  出站各自的 *_SERVICE_TOKEN / core 入站按服务名查同一组同名变量
+# 为什么不共用：三个服务读同一份 EnvironmentFile，CN_QUERY_SERVICE_TOKEN 在 core 里
+# 是「我调 query 时出示的」，在 query 里是「我调 core 时出示的」，同名不同义；
+# 旧写法用 CN_INTERNAL_SERVICE_TOKENS_CORE 统一给接收方用一个值，结果与 core 出站
+# 的三个值全都对不上，线上表现为事件投递 403、投影水位停在 21270 不动。
+# ⚠️ 仍然绝不能出现 CN_CORE_SERVICE_TOKEN：它经宽松绑定会命中 cn.core.service-token，
+# 把 ingestion 调 core 时出示的令牌覆盖掉，导致采集管理全线 403。
 CN_INGESTION_SERVICE_TOKEN=$CN_INGESTION_SERVICE_TOKEN
 CN_QUERY_SERVICE_TOKEN=$CN_QUERY_SERVICE_TOKEN
-CN_INTERNAL_SERVICE_TOKENS_CORE=$CN_INTERNAL_SERVICE_TOKENS_CORE
+CN_QUERY_INBOUND_CORE_TOKEN=$CN_QUERY_SERVICE_TOKEN
+CN_INGESTION_INBOUND_CORE_TOKEN=$CN_INGESTION_SERVICE_TOKEN
 CN_CORE_BASE_URL=http://127.0.0.1:8081
 CN_QUERY_INBOX_URL=http://127.0.0.1:8083/internal/v1/inbox/batches
 
@@ -163,7 +169,8 @@ for v in CN_CORE_DB_OWNER_PASSWORD CN_CORE_DB_PASSWORD \
          CN_QUERY_DB_OWNER_PASSWORD CN_QUERY_DB_PASSWORD \
          CN_INGESTION_DB_OWNER_PASSWORD CN_INGESTION_DB_PASSWORD \
          CN_SESSION_REDIS_PASSWORD CN_CACHE_REDIS_PASSWORD \
-         CN_INGESTION_SERVICE_TOKEN CN_QUERY_SERVICE_TOKEN CN_INTERNAL_SERVICE_TOKENS_CORE \
+         CN_INGESTION_SERVICE_TOKEN CN_QUERY_SERVICE_TOKEN \
+         CN_QUERY_INBOUND_CORE_TOKEN CN_INGESTION_INBOUND_CORE_TOKEN \
          CN_BOOTSTRAP_ADMIN_PASSWORD; do
   [ -n "${!v:-}" ] || die "cn-env.sh 缺少 $v，请删除该文件后重跑本脚本以重新生成"
 done
@@ -266,7 +273,9 @@ done
 
 log "安装 systemd 服务"
 # unit 与 nginx 配置里写的是 ubuntu 与 /home/ubuntu/cn；按实际用户替换后再装。
-for u in "$SCRIPT_DIR"/systemd/cn-*.service; do
+# 同时覆盖 .service 与 .timer：备份用的是定时器，漏掉 *.timer 会让备份永远不触发。
+for u in "$SCRIPT_DIR"/systemd/cn-*.service "$SCRIPT_DIR"/systemd/cn-*.timer; do
+  [ -e "$u" ] || continue
   sed -e "s|User=ubuntu|User=$CN_USER|" \
       -e "s|Group=ubuntu|Group=$CN_USER|" \
       -e "s|/home/ubuntu/cn|$CN_HOME|g" "$u" \

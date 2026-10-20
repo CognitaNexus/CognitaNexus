@@ -82,10 +82,16 @@ management:
 cn:
   internal:
     service-tokens:
-      # core 投递事件时携带的令牌，取自 core 侧 cn.internal.service-tokens.query，
-      # 也就是「query 这个接收者」的令牌，而不是为 core 自身另签一个。
-      # 两侧必须配成同一个值，否则事件会被 403 拒收，而现象只是水位不动。
-      core: ${CN_QUERY_SERVICE_TOKEN:cn_query_service_dev}
+      # 「core 调 query 时该出示什么」。
+      #
+      # 变量名必须与 core 出站用的 CN_QUERY_SERVICE_TOKEN 分开，不能直接复用它：
+      # 三个服务共用同一份 EnvironmentFile，而 CN_QUERY_SERVICE_TOKEN 在 core 里
+      # 是「我调 query 时出示的令牌」、在 query 里是「我调 core 时出示的令牌」，
+      # 同名不同义。要区分开，就只能让入站期望有自己的变量。
+      #
+      # 值必须等于 core 侧 cn.internal.service-tokens.query，也就是 core 投递给
+      # query 时实际带的那个令牌；两侧不一致的表现只是 403 与水位不动。
+      core: ${CN_QUERY_INBOUND_CORE_TOKEN:cn_query_service_dev}
   core:
     # 公开查询每次都需要向 core 核实权威公开水位（架构 §7.2）。
     # 超时必须显式设置：屏障校验在公开请求的必经路径上，缺读超时会让 core 的慢响应拖垮公开查询线程。
