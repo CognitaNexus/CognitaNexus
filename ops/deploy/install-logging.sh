@@ -91,4 +91,7 @@ log "完成"
 echo "当前占用："
 sudo journalctl --disk-usage
 du -sh "$LOG_DIR" 2>/dev/null || true
-systemctl list-timers logrotate.timer --no-pager 2>/dev/null | head -2 | tail -1
+# 用 sed 而不是 head：head 读够行数就关闭管道，上游 systemctl 会收到 SIGPIPE（退出码 141），
+# 在 set -o pipefail 下整条命令算失败——CI 里表现为「同步日志上限」这一步莫名红掉，
+# 而日志上限其实已经装好了。
+systemctl list-timers logrotate.timer --no-pager 2>/dev/null | sed -n '2p' || true

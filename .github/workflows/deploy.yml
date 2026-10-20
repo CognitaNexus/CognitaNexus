@@ -174,7 +174,10 @@ jobs:
 
       - name: 同步日志上限
         # journald 配额与 logrotate 规则由仓库维护，每次部署对齐一次（脚本幂等）。
-        # 与备份同理放在重启之前：它不碰业务进程，失败也不该阻断部署。
+        # continue-on-error：这是运维加固，不该成为业务上线的单点阻塞——日志规则没装上
+        # 的后果是磁盘慢慢涨，而部署被跳过是服务停在旧版本，后者更急。
+        # 失败仍会在运行记录里显示为警告，不会静默吞掉。
+        continue-on-error: true
         run: |
           set -o pipefail
           ssh -F ~/.ssh/config cn-target 'bash /home/ubuntu/cn-incoming/install-logging.sh' 2>&1 | tee /tmp/cn-logging-install.log

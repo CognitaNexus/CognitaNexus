@@ -34,7 +34,8 @@ sudo systemctl daemon-reload
 # enable --now 对 timer 是幂等的：已启用就是空操作，否则立刻登记并计算下次触发。
 sudo systemctl enable --now cn-db-backup.timer >/dev/null
 echo "已启用 cn-db-backup.timer"
-systemctl list-timers cn-db-backup.timer --no-pager | head -3
+# 不用 head 截断：它关闭管道会让上游 systemctl 收到 SIGPIPE，pipefail 下整条命令算失败。
+systemctl list-timers cn-db-backup.timer --no-pager | sed -n '1,3p' || true
 
 if [ "${1:-}" = "--run-now" ]; then
   log "立刻执行一次备份（验证脚本可用）"
