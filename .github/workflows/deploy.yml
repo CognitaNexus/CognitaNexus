@@ -76,6 +76,8 @@ jobs:
           cp ops/deploy/deploy-update.sh out/deploy-update.sh
           # 备份脚本同理：仓库是唯一来源，服务器上的副本每次部署都覆盖一遍。
           cp ops/deploy/pg-backup.sh ops/deploy/install-backup.sh out/
+          # 日志上限的初始化脚本：幂等，每次部署顺手对齐一次 journald 配额与 logrotate 规则。
+          cp ops/deploy/install-logging.sh out/
           mkdir -p out/systemd
           cp ops/deploy/systemd/cn-db-backup.service ops/deploy/systemd/cn-db-backup.timer out/systemd/
           du -sh out out/app out/web
@@ -169,6 +171,13 @@ jobs:
         run: |
           set -o pipefail
           ssh -F ~/.ssh/config cn-target 'bash /home/ubuntu/cn-incoming/install-backup.sh' 2>&1 | tee /tmp/cn-backup-install.log
+
+      - name: 同步日志上限
+        # journald 配额与 logrotate 规则由仓库维护，每次部署对齐一次（脚本幂等）。
+        # 与备份同理放在重启之前：它不碰业务进程，失败也不该阻断部署。
+        run: |
+          set -o pipefail
+          ssh -F ~/.ssh/config cn-target 'bash /home/ubuntu/cn-incoming/install-logging.sh' 2>&1 | tee /tmp/cn-logging-install.log
 
       - name: 更新部署脚本并重启服务
         run: |

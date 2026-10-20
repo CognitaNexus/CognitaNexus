@@ -6,6 +6,7 @@
 !nginx-cn.conf
 !install-server.sh
 !install-backup.sh
+!install-logging.sh
 !upload.sh
 !deploy-update.sh
 !pg-backup.sh

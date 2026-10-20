@@ -284,6 +284,12 @@ done
 sudo systemctl daemon-reload
 sudo systemctl enable cn-core cn-query cn-ingestion >/dev/null
 
+# 日志上限：首次安装就设好，否则要等第一次磁盘告警才想起来。
+# CI 每次部署也会再调一次（脚本幂等），保证规则与仓库一致。
+if [ -f "$SCRIPT_DIR/install-logging.sh" ]; then
+  bash "$SCRIPT_DIR/install-logging.sh" || echo "警告：日志上限配置失败，不影响本次安装，可稍后单独重跑"
+fi
+
 log "配置 nginx"
 sed "s|/home/ubuntu/cn|$CN_HOME|g" "$SCRIPT_DIR/nginx-cn.conf" | sudo tee /etc/nginx/sites-available/cn >/dev/null
 sudo ln -sf /etc/nginx/sites-available/cn /etc/nginx/sites-enabled/cn
