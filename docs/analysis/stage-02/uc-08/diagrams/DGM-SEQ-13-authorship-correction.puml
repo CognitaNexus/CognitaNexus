@@ -1,0 +1,141 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 13
+skinparam dpi 150
+skinparam sequenceMessageAlign left
+title DGM-SEQ-13 UC-08 确认、补录和纠错成果（分析序列）
+actor "已获授权学者" as Owner
+actor "有权审核的管理员" as Reviewer
+boundary "AchievementCorrectionUI" as UI
+control "AchievementCorrectionCoordinator" as Ctl
+entity "User" as User
+entity "Scholar" as Scholar
+entity "ScholarAuthorization" as Auth
+entity "Authorship" as Rel
+entity "WorkEntity" as Work
+entity "SourceRecord" as Source
+entity "CorrectionRequest" as Request
+entity "ReviewEvidence" as Material
+entity "AuditEvidence" as Audit
+
+Owner -> UI : M1 打开本人成果关系视图，选定目标成果与本人参与关系并选择操作（确认/补录/纠错）（E1）
+UI -> Ctl : M2 请求确认、补录或纠错（目标成果引用＋关系引用＋操作类型＋已认证请求上下文）
+Ctl -> User : M3 校验请求者身份与账号状态（E2）
+Ctl -> Auth : M4 读取请求者对该 Scholar 的有效对象级授权与授权范围（E3）
+Ctl -> Scholar : M5 确认目标学者正是授权所指学者，提供本人身份事实与本人相关关系（E4）
+Ctl -> Rel : M6 读取所选参与关系（归属学者/角色/顺序/确认状态/冲突标记）（E4）
+Ctl -> Ctl : M7 判定 账号可用 ∧ 授权有效 ∧ 目标学者一致 ∧ 关系属于本学者（E4）
+alt 未认证或账号已停用（A1）
+  Ctl --> UI : M8 拒绝，无任何写入
+  UI --> Owner : M9 显示拒绝（与越权/失败区分）
+  Ctl -> Audit : M10 记录受控拒绝审计（不含凭据）
+else 无对象级授权：他人学者关系/同名另一学者/授权已失效（A2）
+  Ctl --> UI : M11 拒绝越权，目标关系与成果无变更
+  UI --> Owner : M12 显示越权结果
+  Ctl -> Audit : M13 记录受控越权尝试审计
+else 账号可用且对象授权有效（E5）
+  Ctl -> Ctl : M14 判定操作类型：确认本人参与关系 / 补录已发表成果元数据 / 申请修改误归属或字段
+  alt 确认本人参与关系（E6）
+    Ctl -> Ctl : M15 状态守卫：非已排除/争议 ∧ 无未决冲突 ∧ 确认范围覆盖本关系 ∧ 仅本关系（A3/A7）
+    alt 该关系已是"已排除"或"争议"（A3）
+      Ctl --> UI : M16 拒绝确认：已排除/争议不得由本人改为本人确认
+      UI --> Owner : M17 显示"该关系需有权审核者处置"
+      Ctl -> Audit : M18 记录被拒绝的确认尝试
+    else 出现相反归属主张或未决冲突（A7）
+      Ctl -> Rel : M19 该关系状态=争议（保留双方证据），不置本人确认
+      Ctl -> Audit : M20 记录争议提出方/证据/时间并进入审核处置
+      Ctl --> UI : M21 本人确认未生效：关系已转争议
+      UI --> Owner : M22 显示"已转争议处理"
+    else 状态允许确认
+      alt 确认证据或状态写入失败（A6）
+        Ctl --> UI : M25 失败：关系状态保持原值，不报告已确认
+        UI --> Owner : M26 显示失败与重试
+      else 写入成功
+        Ctl -> Rel : M23 追加本人确认证据（确认人/时间/范围），仅该关系状态→本人确认
+        Ctl -> Audit : M24 记录本人确认（身份/对象/前后状态/时间）
+        Ctl -> Ctl : M27 不扩散核对：其余 N 条候选署名关系保持原状态（AC-IMPL-FR15-06）
+        Ctl --> UI : M28 本条关系已确认，其余候选关系不变
+        UI --> Owner : M29 显示"仅本条关系为本人确认"
+      end
+    end
+  else 补录已发表成果元数据或申请修改误归属/字段（E9）
+    Ctl -> Ctl : M30 判定对象范围：本人关系字段 / 成果共享字段 / 他人参与关系（A4）
+    alt 目标为他人参与关系（A4）
+      Ctl --> UI : M31 拒绝：只可申请修改本人关系
+      UI --> Owner : M32 显示"不得修改他人关系"
+      Ctl -> Audit : M33 记录受控越界尝试
+    else 目标为本人关系或成果共享字段（须审核）
+      Ctl -> Work : M34 读取成果当前公开字段与共享字段现值（E9）
+      Ctl -> Source : M35 只读读取来源事实以核验补录元数据，原值保留（E10）
+      Ctl -> Ctl : M36 判定最低字段与可核验性：类型/名称/来源定位，缺失不造值（E10；A5）
+      alt 缺最低字段或证据不可核验（A5）
+        Ctl --> UI : M37 拒绝登记：说明缺项与不可核验原因
+        UI --> Owner : M38 显示缺项/不可核验
+        Ctl -> Audit : M39 记录被拒绝的补录/纠错尝试
+      else 可核验
+        Ctl -> Request : M40 登记待审纠错请求（类型/目标/前后值/理由/提交者/待审核/版本）
+        Ctl -> Material : M41 记录本次请求的证据材料与可见范围（本人＋有权审核者）
+        Ctl -> Audit : M42 记录待审登记（前后值标记为未生效）
+        Ctl --> UI : M43 已提交待审：公开字段与关系状态保持旧值，本人可查
+        UI --> Owner : M44 显示待审状态与"公开未变更"
+      end
+    end
+  end
+end
+group 本人查询处理过程（AC-IMPL-FR07-02）
+  Owner -> UI : M45 查询本人提交的补录/纠错请求
+  UI -> Ctl : M46 请求本人请求状态（请求引用＋提交者上下文）
+  Ctl -> Request : M47 读取本人请求状态、决定理由与版本（仅本人或有权审核者）
+  Request --> Ctl : M48 状态=待审核/通过/驳回；公开字段与关系状态仍为旧值
+  Ctl -> Material : M49 读取本人可见的证据摘要（不含材料原件）
+  Ctl --> UI : M50 返回状态、决定理由与公开未变更事实
+  UI --> Owner : M51 显示处理过程与驳回原因（可查）
+end
+group 审核待审请求并生效（次要参与者：有权审核的管理员；E12–E14）
+  Reviewer -> UI : M52 打开待审请求并提交决定（批准/驳回）与理由
+  UI -> Ctl : M53 提交审核决定（请求引用＋理由＋已认证请求上下文）
+  Ctl -> User : M54 校验审核者身份、账号状态与审核权限（E13）
+  Ctl -> Request : M55 读取待审内容、证据引用与状态版本
+  Ctl -> Material : M56 读取证据材料（仅有权审核者）
+  Ctl -> Ctl : M57 复核守卫：权限有效 ∧ 理由完整 ∧ 仍为待审核 ∧ 版本未变（A10/A9）
+  alt 无审核权限、账号停用或理由缺失（A10）
+    Ctl --> UI : M58 拒绝该决定：请求状态与公开值不变
+    UI --> Reviewer : M59 显示拒绝原因（无权限/理由必填）
+  else 请求已被处理或版本已变化（A9）
+    Ctl --> UI : M60 拒绝并返回当前状态，不覆盖已有决定
+    UI --> Reviewer : M61 显示"状态已变化"与当前状态
+  else 决定有效
+    alt 批准—成果共享字段补录/纠正（E14）
+      Ctl -> Work : M62 写入生效规范值（仅批准字段；来源原值与未批准字段保留）
+      Ctl -> Request : M63 记录决定=通过（理由/时间/操作者）
+      Ctl -> Audit : M64 记录生效（对象/前后值/时间/理由/依据来源=学者申请）
+      Ctl --> UI : M65 已生效：检索/门户/统计/合作网络采用同一生效值
+      UI --> Reviewer : M66 显示生效结果
+    else 批准—解除本人参与关系
+      Ctl -> Rel : M67 该关系状态→已排除（仅本关系）
+      Ctl -> Ctl : M68 核对：成果实体、全部来源与其余参与关系保留；已排除不得被自动恢复
+      Ctl -> Request : M69 记录决定=通过
+      Ctl -> Audit : M70 记录解除（依据/申请编号/前后状态）
+      Ctl --> UI : M71 仅本关系解除，成果与其他合法关系保留
+      UI --> Reviewer : M72 显示解除结果
+    else 驳回
+      Ctl -> Request : M73 记录决定=驳回（理由/时间/操作者）
+      Ctl -> Audit : M74 记录驳回（公开值与关系状态不变）
+      Ctl --> UI : M75 已驳回：公开旧值不变，处理过程可查
+      UI --> Reviewer : M76 显示驳回结果
+    end
+  end
+end
+legend right
+  只分析 UC-08 确认、补录和纠错成果；认领申请/认领审核、Scholar 档案字段维护、普通主页编辑、身份消歧与归属改派/拆分、公开浏览、审计查询不在本图。
+  M3-M7 是服务端每次校验：账号状态＋对象级授权主体＋授权范围＋目标学者一致＋关系属于本学者；前端隐藏入口不代替拒绝。
+  M23 只改变被确认的一条 Authorship；M27 核对其余 N 条候选署名关系不因单次确认升级（AC-IMPL-FR15-06）。
+  共享成果字段、误归属与解除只在审核通过后生效：M40 登记待审时公开字段与关系状态保持旧值，M62/M67 才改变生效值或状态。
+  解除只把该关系置为已排除：M68 核对成果实体、全部来源与其余合法参与关系保留（AC-IMPL-FR07-01；FR15-S11；INV-05）。
+  待核验/争议/已排除不得成为确定合作边；已排除不得被后续来源自动恢复（§6.4；AC-IMPL-FR15-04；AC-IMPL-FR12-04）。
+  本图不提供论文投稿/出版，也不为未收录成果新建 WorkEntity；A8 审计失败不得报告已确认/已生效（顺序约束，无独立消息）。
+  待审请求状态集合、可由本人直接生效的字段清单、审核证据最低集合待确认（B-01/B-04/B-05）。
+endlegend
+@enduml

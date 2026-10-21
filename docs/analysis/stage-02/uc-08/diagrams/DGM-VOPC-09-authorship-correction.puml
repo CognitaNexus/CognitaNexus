@@ -1,0 +1,55 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 55
+skinparam ranksep 80
+hide circle
+hide empty members
+top to bottom direction
+title DGM-VOPC-09 UC-08 确认、补录和纠错成果参与类类图（VOPC）
+boundary "AchievementCorrectionUI" as UI
+control "AchievementCorrectionCoordinator" as Ctl
+entity "User" as User
+entity "ScholarAuthorization" as Auth
+entity "Scholar" as Scholar
+entity "Authorship" as Rel
+entity "WorkEntity" as Work
+entity "SourceRecord" as Source
+entity "CorrectionRequest" as Request
+entity "ReviewEvidence" as Material
+entity "AuditEvidence" as Audit
+UI --> Ctl : M2/M46/M53 请求\nM8/M11/M16/M21/M25/M28/M31/M37\nM43/M50/M58/M60/M65/M71/M75 返回结果
+Ctl --> User : M3/M54 校验身份、账号状态与审核权限
+Ctl ..> Auth : M4 读取对象级授权与范围（只读）
+Ctl --> Scholar : M5 读取目标学者与本人相关关系
+Ctl --> Rel : M6 读取关系；M19 置争议；M23 本人确认；M67 置已排除
+Ctl --> Work : M34 读取公开/共享字段；M62 写入生效规范值
+Ctl ..> Source : M35 只读来源事实与原值（不覆盖）
+Ctl --> Request : M40 登记待审；M47/M55 读取；M63/M69/M73 决定
+Ctl --> Material : M41 记录证据与可见范围；M49/M56 读取
+Ctl --> Audit : M10/M13/M18/M20/M24/M33/M39/M42/M64/M70/M74 受控审计
+Auth "0..*" --> "1" User : 被授权主体
+Auth --> Scholar : 目标学者（未定）
+Rel "0..*" --> "1" Work : 归属成果
+Rel "0..*" --> "1" Scholar : 归属学者
+Work "1" --> "0..*" Source : 出处（解除不删）
+Request "0..*" --> "1" Work : 目标成果
+Request "0..*" --> "0..1" Rel : 涉及的本人员关系
+legend right
+  只包含 UC-08 顺序图中的 11 个参与对象；学者与有权审核的管理员是参与者，不画成系统类。
+  边上的编号对应 04 逐消息表：M2 请求；M3/M54 身份、账号状态与审核权限；M4 授权只读；M5 目标学者；
+  M6/M19/M23/M67 关系读取与状态变化；M34/M62 成果读取与生效写入；M35 来源只读；
+  M40/M47/M55/M63/M69/M73 待审请求登记、读取与决定；M41/M49/M56 证据材料；
+  M10/M13/M18/M20/M24/M33/M39/M42/M64/M70/M74 受控审计。
+  Rel 0..*→1 Work 与 Work 1→0..* Source 沿用 UC-02；Rel 0..*→1 Scholar 依 BR-353/FR15-S07（每条参与关系只归于一位学者），
+  与登记表“未定”的差异留 R5。Request 0..*→1 Work：一条待审请求指向一个成果；Request 0..*→0..1 Rel：解除/归属类请求指向
+  一条本人员关系，共享字段类请求可无。Auth→User 0..*:1 沿用 UC-06；Auth→Scholar 多重性沿用 UC-06/07 未定（SPEC ID-12）。
+  控制/边界到实体的关联按消息方向表达协作，不定义持久多重性；材料与审计指向的对象写成属性，不另画实体关联。
+  本图无 UserProfile、ClaimApplication、WorkVersion、CollectionTask、IdentityCandidate 消息：不写普通主页、不做认领、
+  不做去重/消歧/归属改派、不删除成果与来源。
+endlegend
+@enduml

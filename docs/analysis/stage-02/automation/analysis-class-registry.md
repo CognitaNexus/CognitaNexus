@@ -13,6 +13,9 @@
 | RegistrationCoordinator | Control | UC-04 | — | 注册校验、User+UserProfile 创建、稳定地址、幂等/回滚 | 注册请求状态（单次） | → User、→ UserProfile | 不定义持久多重性 | 全局 `RegCtl` | 统一命名 |
 | User | Entity | UC-04 | UC-05/06/22 | 账号、会话、对象授权主体 | stableId、accountState | 1:1 UserProfile；提交 Claim | 1:1（UserProfile） | 不等于 Scholar | 保留 |
 | UserProfile | Entity | UC-04 | UC-03/22 | 唯一公开普通主页 | stableId/publicUrl、公开普通资料、零成果空态 | 属于 User | 1:1 | 不强制对应 Scholar | 保留 |
+| AchievementCorrectionUI | Boundary | UC-08 | — | 成果关系确认/补录/纠错、待审/拒绝/失败/查询 | 无持久业务属性 | → AchievementCorrectionCoordinator | 不定义持久多重性 | 全局 `ScholarPortalUI`/`ClaimUI` 邻近 | R5 统一门户边界 |
+| AchievementCorrectionCoordinator | Control | UC-08 | — | 授权/归属/状态守卫；确认；补录纠错；待审；生效/审计 | 单次操作状态 | → User/Auth/Scholar/Authorship/WorkEntity/SourceRecord/CorrectionRequest/ReviewEvidence/AuditEvidence | 不定义持久多重性 | 全局 `GovernCtl` 部分 | R5 分界 |
+| CorrectionRequest | Entity | UC-08 | — | 待审纠错/补录请求、前后值、状态、证据 | 类型/目标/前后值/理由/状态/版本/submitter | → WorkEntity/Authorship；→ReviewEvidence | 未定 | 全局无 | R5 决定 |
 | ScholarMaintenanceUI | Boundary | UC-07 | — | 已授权学者档案维护输入/待审/拒绝/结果 | 无持久业务属性 | → ScholarMaintenanceCoordinator | 不定义持久多重性 | 全局 `ScholarPortalUI` | 统一命名 |
 | ScholarMaintenanceCoordinator | Control | UC-07 | — | 对象授权/范围守卫；Scholar事实编辑；待审变更；审核生效 | 单次维护请求状态 | → User/Scholar/Auth/ScholarChangeRequest/AuditEvidence | 不定义持久多重性 | 全局 `ProfileCtl` 部分 | R5 分界 |
 | ScholarChangeRequest | Entity | UC-07 | — | 已授权学者档案待审变更、理由、状态 | 目标Scholar/变更字段/前后值/状态/理由 | → Scholar；→User 提交者 | 未定 | 全局无 | R5 决定是否保留 |

@@ -133,9 +133,10 @@
       "dir": "docs/analysis/stage-02/uc-08/",
       "seq": "DGM-SEQ-13",
       "vopc": "DGM-VOPC-09",
-      "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "PENDING"
+      "reviewRounds": 1,
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-08-review-R2.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "MINOR"
     },
     "UC-09": {
       "title": "核验和纠正成果数据",
@@ -313,6 +314,12 @@
       "head": "56237fa0eac2cda6201fa76a22abcc97d56a89f6",
       "at": "2026-10-21",
       "note": "UC-07 complete; R1 PASS/MINOR"
+    },
+    {
+      "id": "CP-008",
+      "head": "e6dcac9b4a166422fd456b08fa1b47592747b9f0",
+      "at": "2026-10-21",
+      "note": "UC-08 complete after one fix; R2 PASS/MINOR; batch 2 done"
     }
   ]
 }
