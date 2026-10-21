@@ -38,7 +38,7 @@
 | 备选/异常 | A1–A7 | 均有正式来源或标注分析推导 |
 | BCE候选 | 4个：UI/Coordinator/User/UserProfile | 每个有事件流/消息依据 |
 | 被拒绝候选 | Scholar/Auth/Claim/Authorship/Work/AddressAllocator/Session/Evidence | 见03第4节 |
-| 顺序图消息 | M1–M17 | 每条有发送者/接收者/职责/依据 |
+| 顺序图消息 | M1–M17 | 每条有发送者/接收者/职责/依据；E6/E9/A4–A6覆盖核对见04 §3.6 |
 | VOPC类数 | 4 | 与顺序图对象集合一致 |
 | VOPC是否含Scholar/Auth/Claim | 否 | 只含UI/Coordinator/User/UserProfile |
 | User—UserProfile | 1:1 | FR04；AC-IMPL-FR04-03；SRS §12 |
@@ -143,6 +143,7 @@ UC-04已按教材§5.4.1–§5.4.4和§5.5.1–§5.5.4完成一次可追溯的�
 | 事件流→消息 | M1–M17逐条有事件步骤；M11已更新为“唯一/稳定/可分享” |
 | 消息→VOPC | 4个VOPC类均出现在序列；关系来自M2/M4/M7/M9/M10/M11/M13/M15/M16及1:1业务约束 |
 | 控制类职责 | Coordinator只做校验、重复检查、创建协调、整体生效和结果返回；不承载User/UserProfile属性 |
+| E6/E9/A4–A6覆盖 | 见04 §3.6；E6/E9/A5/A6无独立消息，A4由M15覆盖 | 不遗漏、不扩张 |
 | 技术实现 | 未引入Java/DB/API/框架/中间件；仅保留分析级原子性/幂等/持久性描述 |
 | 69 AC | 未新增、未删除、未改号；`verify_69_ac.py` PASS |
 | 其他UC | 未改分析成果；仅做03追踪核对，未发现差异 |
