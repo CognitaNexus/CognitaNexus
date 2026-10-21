@@ -88,6 +88,8 @@ S02采用教材第5章 §5.4–§5.5 的用例分析与分析类方法，并结�
 | UC-13 VOPC | `stage-02/uc-13/diagrams/DGM-VOPC-17-hotspots.puml` | `stage-02/uc-13/diagrams/generated/` |
 | UC-14 专项合作网络序列 | `stage-02/uc-14/diagrams/DGM-SEQ-22-collaboration-network.puml` | `stage-02/uc-14/diagrams/generated/` |
 | UC-14 VOPC | `stage-02/uc-14/diagrams/DGM-VOPC-18-collaboration-network.puml` | `stage-02/uc-14/diagrams/generated/` |
+| UC-15 专项最短路径序列 | `stage-02/uc-15/diagrams/DGM-SEQ-23-shortest-path.puml` | `stage-02/uc-15/diagrams/generated/` |
+| UC-15 VOPC | `stage-02/uc-15/diagrams/DGM-VOPC-19-shortest-path.puml` | `stage-02/uc-15/diagrams/generated/` |
 
 复用并核对：认领活动图、认领申请状态图、采集任务状态图、Authorship关系状态图。
 

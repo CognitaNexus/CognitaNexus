@@ -211,8 +211,9 @@
       "seq": "DGM-SEQ-23",
       "vopc": "DGM-VOPC-19",
       "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "PENDING"
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-15-review-R1.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "MINOR"
     },
     "UC-16": {
       "title": "核对四类覆盖与来源",
@@ -395,6 +396,12 @@
       "head": "bb2701c93c70826e8209c1ebf4eb71823dd21ca7",
       "at": "2026-10-21",
       "note": "UC-14 complete after time-predicate fix and residual pass; R3 PASS/NONE"
+    },
+    {
+      "id": "CP-019",
+      "head": "6ff7f54fce881e4956b99ac5e2d997637af04995",
+      "at": "2026-10-21",
+      "note": "UC-15 complete; R1 PASS/MINOR"
     }
   ],
   "providerSubstitution": {

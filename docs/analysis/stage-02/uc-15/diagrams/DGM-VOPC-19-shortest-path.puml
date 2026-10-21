@@ -1,0 +1,56 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 75
+skinparam ranksep 135
+hide circle
+hide empty members
+left to right direction
+title DGM-VOPC-19 UC-15 筛选合作网络及查询论文最短路径（参与类类图）
+boundary "CollaborationNetworkUI" as UI
+control "CollaborationPathCoordinator" as Ctl
+entity "Scholar" as Sch
+entity "WorkEntity" as Work
+entity "Authorship" as Auth
+entity "CollaborationEdge" as Edge
+entity "PathResult" as Path
+UI --> Ctl : M2/M41 请求；其余为返回
+Ctl ..> Work : M6/M33 只读
+Ctl ..> Auth : M9 只读
+Ctl ..> Sch : M12/M23/M42 只读
+Ctl ..> Edge : M16/M20/M26/M31 建投影与只读
+Ctl ..> Path : M28/M35 构建与只读
+Edge "0..*" --> "2" Sch : 两端节点（无序对，两学者不同）
+Edge "0..*" --> "1..*" Work : 边级合格共同论文证据（仅论文）
+Path "0..*" --> "1..*" Sch : 有序节点序列
+Path "0..*" --> "0..*" Edge : 逐跳边（跳数＝边数＝节点数−1）
+Auth "0..*" --> "1" Work : 论文参与关系所属成果
+Auth "0..*" --> "0..1" Sch : 参与者身份（身份未定时为空，不进入子图）
+legend bottom
+  只包含 UC-15 顺序图中的 7 个参与对象；访客是参与者，不画成系统类。
+  边上的编号对应 04 逐消息表：M2/M41 请求；M38/M44/M47/M50/M52 返回；M39/M45/M48/M53 由边界展示给访客；
+  M6/M33 只读读取论文范围字段与证据论文公开字段（不写成果）；
+  M9 只读读取论文作者角色、关系状态、角色证据与成果发生时机构证据（不改关系状态）；
+  M12/M23/M42 只读读取学者 canonical_id、公开状态与合并指向（不合并身份、不改公开范围）。
+  CollaborationEdge 在本 UC 只表达其论文子图投影：由合格共同论文与两端合格论文作者关系在本次查询内推导（M15–M21），
+  边键为学者对 min/max canonical_id，证据集合只含论文 canonical ID，k＝去重论文数；
+  k 不等于 FR12 四类共同成果强度 weight（M16–M18/M35；BR-518；待确认 B-06）。
+  PathResult 是读时投影：承载节点序列、跳数（＝边数）、逐跳边引用、逐跳论文证据与图版本（M28–M36），
+  同一图版本与筛选条件下可复现同一条路径（AC-IMPL-IN01-02）；本 UC 不把它保存为持久路径结果（待确认 B-08）。
+  Edge 0..*→2 Scholar：每条论文边恰有两个不同学者端点（无序对，自环不生成）；Edge 0..*→1..* WorkEntity：
+  每条边至少一篇合格共同论文，专利/项目/获奖证据不进本投影（M15/M18；IN01-R1；AC-IMPL-FR12-05）。
+  Path 0..*→1..* Scholar：不同起点/终点时节点数≥2（跳数≥1）；端点相同按 SPEC §4 为 0 跳单节点，
+  是否允许见待确认 C-05。Path 0..*→0..* Edge：跳数＝边数＝节点数−1，0 跳时无逐跳边。
+  Authorship 0..*→1 WorkEntity、0..*→0..1 Scholar：参与关系属于一篇论文，参与者身份未定时没有确定学者，
+  该关系不进入论文子图（M11；待确认 B-05）。
+  同机构、同领域、相似姓名、非论文共同成果都不产生节点合并或路径边：本图没有 Edge→Institution、Edge→Field 关联，
+  机构与领域只作为筛选条件与“成果发生时”证据被读取（M19；IN01-R3；AC-IMPL-FR12-04；BR-524）。
+  本图无质量评分、影响力指数、个人综合排名类：路径长度与论文证据数不代表学术水平（BR-522；M39）。
+  本图无图数据库、索引、缓存、任务或 DTO 类：规模上限与图版本是本次查询的分析状态（待确认 B-07/B-08）。
+  控制/边界到实体的关联按消息方向表达协作，不定义持久多重性。
+endlegend
+@enduml
