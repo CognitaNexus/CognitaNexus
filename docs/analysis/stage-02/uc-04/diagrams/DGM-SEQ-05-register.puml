@@ -25,7 +25,7 @@ else 信息有效
     UI --> Visitor : M8 显示已有账号/主页结果
   else 新注册请求
     Coordinator -> User : M9 创建User
-    Coordinator -> Profile : M10 创建唯一UserProfile
+    Coordinator -> Profile : M10 创建与该User绑定的唯一UserProfile
     Coordinator -> Profile : M11 绑定唯一、稳定、可分享的公开地址
     alt 创建或地址分配失败
       Coordinator -> Coordinator : M12 使本次业务创建整体不生效

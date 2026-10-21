@@ -7,7 +7,7 @@
 
 ## 1. 顺序图范围
 
-本序列只实现UC-04的注册主流程及创建失败/重复请求分支。公开主页浏览的完整交互属于UC-03；本人编辑属于UC-22；Scholar认领属于UC-05/06。它们只作为本UC的后置条件或权限守卫出现，不进入本序列。
+本序列只实现UC-04的注册主流程，以及A1校验失败、A2重复请求、A3创建失败分支。公开主页浏览的完整交互属于UC-03；本人编辑属于UC-22；Scholar认领属于UC-05/06。它们只作为本UC的后置条件或权限守卫出现，不进入本序列。
 
 参与对象：
 
@@ -29,7 +29,7 @@
 | M7 | 不创建第二个主页；返回已有结果 | RegistrationCoordinator | RegistrationUI | A2 | 维持幂等结果；返回形式待定 | FR04-03；Q-02 |
 | M8 | 显示已有账号/主页结果 | RegistrationUI | 访客 | A2 | 告知已有结果，不将重复请求标成新注册 | FR04-03；分析推导 |
 | M9 | 创建User | RegistrationCoordinator | User | E3 | 创建账号对象，记录账号标识/状态 | FR04；SRS §12 |
-| M10 | 创建唯一UserProfile | RegistrationCoordinator | UserProfile | E4 | 创建与User绑定的唯一主页 | FR04；AC-IMPL-FR04-03 |
+| M10 | 创建与该User绑定的唯一UserProfile | RegistrationCoordinator | UserProfile | E4 | 创建与User绑定的唯一主页 | FR04；AC-IMPL-FR04-03 |
 | M11 | 绑定唯一、稳定、可分享的公开地址 | RegistrationCoordinator | UserProfile | E5 | 为UserProfile绑定唯一、稳定、可分享地址 | FR04；AC-IMPL-FR04-03；格式Q-03 |
 | M12 | 使本次业务创建整体不生效 | RegistrationCoordinator | RegistrationCoordinator | A3 | 保证不留下无主主页/半完成账号 | FR04“一次性创建”；AC-IMPL-FR04-03 |
 | M13 | 注册失败；无账号/无主页 | RegistrationCoordinator | RegistrationUI | A3 | 返回失败，不返回虚假成功 | FR04；分析推导 |
@@ -103,7 +103,7 @@ M10或M11失败时：
 |---|---|
 | 每条消息是否有发送者/接收者 | 是，M1–M17 |
 | 接收者是否有职责描述 | 是 |
-| 是否对应事件流步骤 | 是；M1–M5/E1–E2/A1，M6–M8/A2，M9–M17/E3–E8 |
+| 是否对应事件流步骤 | 是；M1–M5/E1–E2/A1，M6–M8/A2，M9–M17/E3–E8/A3 |
 | 是否出现实现技术 | 否 |
 | 是否出现参与者作为系统类 | 否；访客只在图外作为Actor |
 | 是否有无依据的新业务规则 | 否；规则来源/假设见表 |

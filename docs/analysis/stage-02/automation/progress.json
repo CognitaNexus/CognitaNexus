@@ -57,8 +57,9 @@
       "seq": "DGM-SEQ-06",
       "vopc": "DGM-VOPC-02",
       "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "EXISTING_REVIEW_PENDING"
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-01-review-existing.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "MINOR"
     },
     "UC-02": {
       "title": "查看成果详情与来源",
@@ -86,9 +87,10 @@
       "dir": "docs/analysis/stage-02/uc-04/",
       "seq": "DGM-SEQ-05",
       "vopc": "DGM-VOPC-01",
-      "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "EXISTING_REVIEW_PENDING"
+      "reviewRounds": 1,
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-04-review-R2.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "MINOR"
     },
     "UC-05": {
       "title": "提交和查询 Scholar 认领",
@@ -263,6 +265,12 @@
       "head": "1664c65c797747f329022fba9c68e4295c6bc3b8",
       "at": "2026-10-21T10:09:42+08:00",
       "note": "automation initialized before existing-UC review"
+    },
+    {
+      "id": "CP-001",
+      "head": "1664c65c797747f329022fba9c68e4295c6bc3b8",
+      "at": "2026-10-21",
+      "note": "UC-01/UC-04 existing review complete; UC-04 minimal fixes applied; reports saved"
     }
   ]
 }

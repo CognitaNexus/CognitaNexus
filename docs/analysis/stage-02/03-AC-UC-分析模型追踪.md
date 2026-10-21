@@ -55,8 +55,8 @@
 | 5 | `AC-IMPL-FR02-02` | FR02 | BR-IMP-01/02 | UC-02、UC-16 | DGM-USECASE-04 / ACT-07 / SEQ-03 | 多来源详情/外链失败 | 计划验收，未执行 |
 | 6 | `AC-IMPL-FR03-01` | FR03 | BR-IMP-01/03/11 | UC-03、UC-22 | DGM-USECASE-07 / CLASS-01 | 零成果主页/同名隔离 | 计划验收，未执行 |
 | 7 | `AC-IMPL-FR03-02` | FR03 | BR-IMP-01/03/11 | UC-03、UC-22 | DGM-USECASE-07 / CLASS-01 | 零成果主页/同名隔离 | 计划验收，未执行 |
-| 8 | `AC-IMPL-FR03-03` | FR03 | BR-IMP-01/03/11 | UC-03、UC-04、UC-22 | DGM-USECASE-07 / ACT-05 / SEQ-04 | 零成果主页/同名隔离 | 计划验收，未执行 |
-| 9 | `AC-IMPL-FR03-04` | FR03 | BR-IMP-01/03/11 | UC-03、UC-04、UC-22 | DGM-USECASE-07 / ACT-05 / SEQ-04 | 零成果主页/同名隔离 | 计划验收，未执行 |
+| 8 | `AC-IMPL-FR03-03` | FR03 | BR-IMP-01/03/11 | UC-03、UC-04、UC-22 | DGM-USECASE-07 / ACT-05 / SEQ-04 / SEQ-05 / VOPC-01 | 零成果主页/同名隔离 | 计划验收，未执行 |
+| 9 | `AC-IMPL-FR03-04` | FR03 | BR-IMP-01/03/11 | UC-03、UC-04、UC-22 | DGM-USECASE-07 / ACT-05 / SEQ-04 / SEQ-05 / VOPC-01 | 零成果主页/同名隔离 | 计划验收，未执行 |
 | 10 | `AC-IMPL-FR04-01` | FR04 | BR-IMP-05/10/11 | UC-04 | DGM-USECASE-07 / ACT-05 / SEQ-04 / SEQ-05 / VOPC-01 | 注册唯一主页/权限 | 计划验收，未执行 |
 | 11 | `AC-IMPL-FR04-02` | FR04 | BR-IMP-05/10/11 | UC-04 | DGM-USECASE-07 / ACT-05 / SEQ-04 / SEQ-05 / VOPC-01 | 注册唯一主页/权限 | 计划验收，未执行 |
 | 12 | `AC-IMPL-FR04-03` | FR04 | BR-IMP-05/10/11 | UC-04 | DGM-USECASE-07 / ACT-05 / SEQ-04 / SEQ-05 / VOPC-01 | 注册唯一主页/权限 | 计划验收，未执行 |

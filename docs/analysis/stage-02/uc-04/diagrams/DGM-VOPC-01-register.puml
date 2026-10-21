@@ -14,7 +14,7 @@ package "UC-04 参与类" {
   entity "User" as User
   entity "UserProfile" as Profile
 }
-UI --> Coordinator : M2/M4/M7/M13/M16 提交/显示结果
+UI --> Coordinator : M2 请求；M4/M7/M13/M16 返回结果
 Coordinator --> User : M9 创建/校验账号
 Coordinator --> Profile : M10/M11/M15 创建/绑定/发布
 User "1" -- "1" Profile : 唯一拥有

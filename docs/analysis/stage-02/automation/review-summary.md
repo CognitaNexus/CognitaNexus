@@ -4,8 +4,8 @@
 
 | UC | R1 | 修复轮次 | R2/R3 | 最终状态 | 报告 |
 |---|---|---|---|---|---|
-| UC-01 | 待复核 | 0 | — | 待复核 | — |
-| UC-04 | 待复核 | 0 | — | 待复核 | — |
+| UC-01 | PASS/MINOR | 0 | — | AUTO_REVIEW_PASS | `reviews/UC-01-review-existing.md` |
+| UC-04 | ISSUES/MAJOR | 1 | R2 PASS/MINOR | AUTO_REVIEW_PASS | `reviews/UC-04-review-existing.md`; `UC-04-review-R2.md` |
 | UC-02 | 未开始 | — | — | PENDING | — |
 | UC-03 | 未开始 | — | — | PENDING | — |
 | UC-22 | 未开始 | — | — | PENDING | — |

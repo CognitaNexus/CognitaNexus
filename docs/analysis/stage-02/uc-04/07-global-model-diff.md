@@ -41,7 +41,7 @@
 
 - `01`第49行说User“被授予Auth”；
 - `01`第53行说`ScholarAuthorization`是“User×Scholar”；
-- 但`DGM-CLASS-01`第116–120行只有`User—Claim`、`Claim—Scholar`、`Claim ..> Auth`、`Auth—Scholar`，**没有User—Auth关联**。
+- 但`DGM-CLASS-01`第117–120行只有`User—Claim`、`Claim—Scholar`、`Claim ..> Auth`、`Auth—Scholar`，**没有User—Auth关联**。
 
 对本UC的影响：
 
@@ -62,7 +62,7 @@
 
 ## 6. 追踪文件差异
 
-UC-04 R1已在`03-AC-UC-分析模型追踪.md`（V1.1）中把`AC-IMPL-FR03-03/04`补入UC-04反向追踪，并给FR04行补上`SEQ-05/VOPC-01`；其他UC行未改。此前该反向行只列FR04，属于已修正的追踪缺口。
+UC-04 R1已在`03-AC-UC-分析模型追踪.md`（V1.1）中把`AC-IMPL-FR03-03/04`补入UC-04反向追踪，并给FR03-03/04和FR04行补上`SEQ-05/VOPC-01`；其他UC行未改。此前该反向行只列FR04，属于已修正的追踪缺口。
 
 ## 7. 差异结论
 
