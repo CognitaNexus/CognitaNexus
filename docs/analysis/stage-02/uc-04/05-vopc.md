@@ -14,7 +14,7 @@ VOPC只包含以下4个类：
 | `RegistrationUI` | Boundary | M1、M2、M4–M8、M13–M17 | E1、E8、A1–A3 |
 | `RegistrationCoordinator` | Control | M2–M4、M6–M7、M9–M16 | E2–E8、A1–A3 |
 | `User` | Entity | M9 | E3、E6、A6 |
-| `UserProfile` | Entity | M10、M11、M15 | E4、E5、E7、A4 |
+| `UserProfile` | Entity | M10、M11、M15 | E4、E5、E7、A4；M11绑定唯一/稳定/可分享地址，作为属性而非新类 |
 
 访客不进入VOPC，因为参与者不是系统内部类（教材§5.4.4）。
 
@@ -37,8 +37,8 @@ VOPC只包含以下4个类：
 - `ScholarAuthorization`/`Auth`：本人普通主页的编辑权来自UserProfile所有权（FR04/BR-IMP-05），不是Scholar对象授权；授权只在UC-05/06批准后产生。
 - `Claim`：注册不是认领，没有申请、证据、审核状态。
 - `Authorship`/`WorkEntity`：注册不创建成果/参与关系；零成果是主页显示空态（AC-IMPL-FR03-03），不是空实体。
-- `ReviewEvidence`/`AuditEvidence`：FR04没有把注册定义为必须产生独立审计证据；是否适用BR-IMP-10待Q-04。
-- `AddressAllocator`：稳定地址是UserProfile的属性/职责；没有独立的地址生命周期或分配策略证据，不能凭空造类。
+- `ReviewEvidence`/`AuditEvidence`：BR-IMP-10按“受保护写入”语境解释；注册是未认证账号创建，当前不要求独立注册审计证据（Q-04已核对）。
+- `AddressAllocator`：唯一、稳定、可分享地址是UserProfile的属性/职责；没有独立的地址生命周期或分配策略证据，不能凭空造类。
 - `Session`：本UC没有登录/会话建立消息；访问守卫在04 §3.5作为后置边界说明。
 
 ## 3. 从顺序图到VOPC的对应

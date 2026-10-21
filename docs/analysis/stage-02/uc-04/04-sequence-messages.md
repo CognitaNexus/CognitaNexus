@@ -25,12 +25,12 @@
 | M3 | 校验注册信息与账号资格 | RegistrationCoordinator | RegistrationCoordinator | E2 | 校验输入和可继续条件；不合格转A1 | FR04成功条件；具体规则Q-01 |
 | M4 | 拒绝注册并说明原因 | RegistrationCoordinator | RegistrationUI | A1 | 返回可区分的失败原因，不创建实体 | FR04；分析推导 |
 | M5 | 显示校验失败 | RegistrationUI | 访客 | A1 | 显示校验失败，不展示成功主页 | FR04；分析推导 |
-| M6 | 检查重复请求/既有主页 | RegistrationCoordinator | RegistrationCoordinator | A2 | 在创建前识别重复/重试；不创建第二主页 | FR04-03；**分析假设A-01：幂等识别键未冻结** |
+| M6 | 检查重复请求/既有主页 | RegistrationCoordinator | RegistrationCoordinator | A2 | 在创建前识别重复/重试；不创建第二主页 | FR04-03；**业务幂等已确认，识别键A-01未冻结** |
 | M7 | 不创建第二个主页；返回已有结果 | RegistrationCoordinator | RegistrationUI | A2 | 维持幂等结果；返回形式待定 | FR04-03；Q-02 |
 | M8 | 显示已有账号/主页结果 | RegistrationUI | 访客 | A2 | 告知已有结果，不将重复请求标成新注册 | FR04-03；分析推导 |
 | M9 | 创建User | RegistrationCoordinator | User | E3 | 创建账号对象，记录账号标识/状态 | FR04；SRS §12 |
 | M10 | 创建唯一UserProfile | RegistrationCoordinator | UserProfile | E4 | 创建与User绑定的唯一主页 | FR04；AC-IMPL-FR04-03 |
-| M11 | 绑定稳定公开地址 | RegistrationCoordinator | UserProfile | E5 | 为UserProfile绑定稳定、可分享地址 | FR04；AC-IMPL-FR04-03；格式Q-03 |
+| M11 | 绑定唯一、稳定、可分享的公开地址 | RegistrationCoordinator | UserProfile | E5 | 为UserProfile绑定唯一、稳定、可分享地址 | FR04；AC-IMPL-FR04-03；格式Q-03 |
 | M12 | 使本次业务创建整体不生效 | RegistrationCoordinator | RegistrationCoordinator | A3 | 保证不留下无主主页/半完成账号 | FR04“一次性创建”；AC-IMPL-FR04-03 |
 | M13 | 注册失败；无账号/无主页 | RegistrationCoordinator | RegistrationUI | A3 | 返回失败，不返回虚假成功 | FR04；分析推导 |
 | M14 | 显示失败与重试入口 | RegistrationUI | 访客 | A3 | 显示可重试失败，不显示空态冒充成功 | FR04；分析推导 |
@@ -46,7 +46,7 @@ M9–M11是同一个注册成功结果的分析级组合：
 
 - M9创建User；
 - M10创建唯一UserProfile；
-- M11绑定稳定地址；
+- M11绑定唯一、稳定、可分享地址；
 - 任一步失败，M12要求本次业务创建整体不生效，不能出现“有User无主页”或“有无主主页”；
 - 成功才进入M15/M16，公开主页和成功结果不能先于完整性成立。
 
@@ -54,7 +54,7 @@ M9–M11是同一个注册成功结果的分析级组合：
 
 ### 3.2 重复注册
 
-M6在M9之前检查重复/重试。若已有结果：
+M6在M9之前检查重复/重试（业务幂等已确认；识别键/保留时长待Q-02）。若已有结果：
 
 - 不执行M9–M11；
 - 不创建第二个UserProfile；

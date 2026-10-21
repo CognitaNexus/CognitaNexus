@@ -9,7 +9,7 @@
 | UC-04类/概念 | 全局图对应 | 一致点 | 证据 |
 |---|---|---|---|
 | `User` | `User`（全局图第49–52行） | 都是账号/状态/所有权主体；不因注册生成Scholar或Authorship | FR04；SRS §12 |
-| `UserProfile` | `UserProfile`（全局图第53–57行） | 都有稳定公开地址、普通公开资料、零成果空态 | FR03；FR04；A1c |
+| `UserProfile` | `UserProfile`（全局图第53–57行） | 都有唯一/稳定/可分享公开地址、普通公开资料、零成果空态 | FR03；FR04；A1c |
 | User—UserProfile 1:1 | 全局图第116行 `User "1" -- "1" UserProfile` | 唯一拥有；注册成功绑定 | FR04；AC-IMPL-FR04-03 |
 | `RegistrationCoordinator`职责 | 全局`RegCtl`（第23–25行） | 都负责注册、唯一主页、回滚 | FR04；UC-04 |
 | `RegistrationUI`职责 | 全局`AccountUI`（第13行） | 都承接账号/注册交互 | FR04；UC-04 |
@@ -30,9 +30,9 @@
 |---|---|---|---|---|
 | 注册的幂等 | FR04-03“重试不产生第二个主页” | 全局`RegCtl`只写“注册/唯一主页/回滚”；未明确幂等检查和结果 | 全局职责缺少可验证的重复请求分支 | 把“检查重复/幂等”加入`RegistrationCoordinator`职责；幂等键另立Q-02 |
 | 注册的整体生效 | FR04“一次性创建”；AC-IMPL-FR04-03 | 全局`RegCtl`有“回滚”但无“不得留下无主主页”的明确约束 | 回滚不等于完整定义；需明确User/UserProfile/地址整体不生效 | 在统一类职责中写清“整体成功或整体不生效” |
-| 地址分配 | FR04；AC-IMPL-FR04-03 | 全局`UserProfile`有`稳定公开地址()`，无职责归属到协调器 | 地址由谁分配不清晰 | 明确`RegistrationCoordinator`协调、`UserProfile`持有；是否独立分配器待Q-03 |
+| 地址分配 | FR04；AC-IMPL-FR04-03；Q-03 | 全局`UserProfile`有`稳定公开地址()`，无职责归属到协调器 | 地址必须唯一/稳定/可分享；由谁分配不清晰 | 明确`RegistrationCoordinator`协调、`UserProfile`持有；格式/分配器待后续，当前不新增类 |
 | 本人所有权与Scholar授权 | FR04；BR-IMP-05 | 全局有`Auth`和`ProfileCtl ..> Scholar` | 本UC不需要Auth；不能把UserProfile所有权误画成Scholar授权 | 统一时把“UserProfile所有权”与“ScholarAuthorization”分开表达 |
-| 注册审计 | FR04未要求独立审计 | 全局`AuditCtl/Evidence`存在 | BR-IMP-10是否覆盖注册未定 | 不加入本UC；R5/Q-04决定 |
+| 注册审计 | FR04未要求独立审计；BR-IMP-10按受保护写入解释 | 全局`AuditCtl/Evidence`存在 | 注册是未认证账号创建，当前不要求独立审计证据 | 不加入本UC；若安全负责人扩大解释，走需求变更 |
 | 公开读取边界 | FR04-04；FR03 | 全局`PublicUI/SearchCtl`等合并 | 本UC只到“主页可公开读”的后置，不展开公共读取交互 | UC-03/R5处理；本UC不引入PublicUI |
 
 ## 4. 全局图的Authorization关系问题
@@ -57,8 +57,8 @@
 | User—ScholarAuthorization | 只在认领审核通过后产生 | UC-05/06 |
 | UserProfile—Claim | 认领申请关联User/Scholar，不要求把UserProfile作为申请对象 | UC-05/06 |
 | UserProfile—Authorship/Work | 注册不创建学术关系/成果 | UC-07/08/14/15 |
-| 注册审计证据 | BR-IMP-10的适用范围未冻结 | Q-04/R5 |
-| UserProfile公开字段集合 | FR06/后续字段级策略未冻结 | UC-22/FR06 |
+| 注册审计证据 | 当前不要求；BR-IMP-10按受保护写入解释 | Q-04已核对；扩大解释需需求变更 |
+| UserProfile公开字段集合 | 注册邮箱/联系方式默认不公开；具体字段集合未冻结 | UC-22/FR06与Q-06 |
 
 ## 6. 追踪文件差异
 

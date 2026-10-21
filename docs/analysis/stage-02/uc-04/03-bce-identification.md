@@ -20,7 +20,7 @@
 | C1 | `RegistrationUI` | Boundary | E1、E8、A1/A2/A3 | 接收注册输入，显示校验失败、重复结果、创建失败、成功和主页地址 | `User`/`UserProfile`是业务实体，不应承担输入/显示；`RegistrationCoordinator`是内部协调者，不直接面对访客 |
 | C2 | `RegistrationCoordinator` | Control | E2–E8、A1–A3 | 校验请求、检查重复、协调User与UserProfile创建、保证整体结果、返回结果 | Boundary只负责交互，不能单独保证“User+UserProfile+稳定地址+幂等”的一致性；Entity各自只知道自己，不能独立协调跨对象创建 |
 | C3 | `User` | Entity | E3、E6、A6 | 承载账号标识/账号状态；与唯一UserProfile绑定；作为本人所有权主体 | UserProfile承载的是公开主页资料和稳定地址，不是账号状态；不能用UserProfile代替账号 |
-| C4 | `UserProfile` | Entity | E4、E5、E7、A4 | 承载公开主页、稳定公开地址、公开可见性、零成果空态；属于一个User | User不能承载公开主页字段；Scholar是平台采集/核验的学术身份，不是注册用户的普通主页 |
+| C4 | `UserProfile` | Entity | E4、E5、E7、A4 | 承载公开主页、唯一/稳定/可分享公开地址、公开可见性、零成果空态；属于一个User | User不能承载公开主页字段；Scholar是平台采集/核验的学术身份，不是注册用户的普通主页 |
 
 ## 3. 逐类选择理由
 
@@ -47,7 +47,7 @@
 ### C4 UserProfile（Entity）
 
 - 发现于E4创建唯一主页、E5稳定地址、E7公开主页/零成果空态、A4零成果。
-- 必要业务事实：稳定公开地址、公开可见性、所属User、普通公开资料。
+- 必要业务事实：唯一/稳定/可分享公开地址、公开可见性、所属User、普通公开资料。
 - 不能并入User：UserProfile是公开主页，User是账号；A1c要求所有注册用户有主页，且主页≠Scholar。
 - 不能并入Scholar：Scholar是平台采集/核验的学者身份，可无账号；UserProfile不因同名自动成为Scholar。
 
@@ -59,9 +59,9 @@
 | `ScholarAuthorization` / `Auth` | 本人普通主页的所有权直接来自UserProfile，不需要对象级Scholar授权；授权只在UC-05/06批准后产生 | FR04；BR-IMP-05；SRS §12 |
 | `Claim` / `ClaimApplication` | 注册不是认领；无申请、证据、审核状态 | FR04；FR05；SRS §12 |
 | `Authorship` / `WorkEntity` | 注册不创建成果或参与关系；零成果是空态，不是空实体 | AC-IMPL-FR03-03；FR07-03；A1c |
-| `AddressAllocator` | 稳定公开地址是UserProfile的属性/职责；需求没有独立的地址生命周期、分配策略或独立状态 | FR04；AC-IMPL-FR04-03；Q-03 |
+| `AddressAllocator` | 唯一、稳定、可分享地址是UserProfile的属性/职责；需求没有独立的地址生命周期、分配策略或独立状态 | FR04；AC-IMPL-FR04-03；Q-03 |
 | `Session` | 本UC没有登录/会话建立消息；会话是后续访问守卫，不是注册业务实体 | FR04仅说账号状态/受保护请求；Q-07 |
-| `ReviewEvidence` / `AuditEvidence` | FR04没有要求注册必须产生独立审计证据；BR-IMP-10是否适用于注册待确认 | BR-IMP-10；Q-04 |
+| `ReviewEvidence` / `AuditEvidence` | BR-IMP-10的“受保护写入”按现有身份/授权语境解释；注册是未认证的账号创建，当前不要求独立注册审计证据 | BR-IMP-10；Q-04已核对 |
 | `RegistrationRequest` | 注册请求是控制器的输入参数/分析上下文，不是有独立生命周期的业务实体 | 教材§5.4.2；01 |
 | `UserProfileView` / `DTO` | 公开视图是UserProfile的展示投影，不需要独立业务身份 | 教材§5.4.2；本UC事件流 |
 
@@ -83,4 +83,4 @@
 - Control：`RegistrationCoordinator`
 - Entity：`User`、`UserProfile`
 
-`Scholar`、`Authorization`、`Claim`、`Authorship`、`WorkEntity`、`Session`、`AddressAllocator`、`AuditEvidence`均不进入本UC VOPC。该集合将在04的顺序图中接受消息检验；若某类没有消息，则删除或降为属性/职责。
+`Scholar`、`Authorization`、`Claim`、`Authorship`、`WorkEntity`、`Session`、`AddressAllocator`、`AuditEvidence`均不进入本UC VOPC；其中AuditEvidence的排除依据为BR-IMP-10当前不覆盖未认证注册。该集合将在04的顺序图中接受消息检验；若某类没有消息，则删除或降为属性/职责。

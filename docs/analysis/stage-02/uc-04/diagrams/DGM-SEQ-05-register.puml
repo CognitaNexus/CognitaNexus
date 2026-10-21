@@ -26,7 +26,7 @@ else 信息有效
   else 新注册请求
     Coordinator -> User : M9 创建User
     Coordinator -> Profile : M10 创建唯一UserProfile
-    Coordinator -> Profile : M11 绑定稳定公开地址
+    Coordinator -> Profile : M11 绑定唯一、稳定、可分享的公开地址
     alt 创建或地址分配失败
       Coordinator -> Coordinator : M12 使本次业务创建整体不生效
       Coordinator --> UI : M13 注册失败；无账号/无主页
@@ -41,8 +41,8 @@ end
 legend right
   UC-04只分析注册与主页生成。
   登录/退出、UC-22编辑、UC-05/06认领不在本图。
-  M6幂等识别键待Q-02；不指定数据库事务/API。
-  User 1:1 UserProfile；零成果空态不创建WorkEntity/Authorship。
+  M6业务幂等已确认；识别键/保留时长待Q-02；不指定数据库事务/API。
+  主页地址唯一/稳定/可分享；User 1:1 UserProfile；零成果空态不创建WorkEntity/Authorship。
   Scholar/Auth/Claim不是本UC参与者。
 endlegend
 @enduml

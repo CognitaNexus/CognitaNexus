@@ -23,6 +23,6 @@ legend right
   访客不是系统类；Scholar/Auth/Claim/Authorship/Evidence不参与本UC。
   RegistrationUI是局部边界名，R5再决定是否并入AccountUI。
   UI/Coordinator到实体的单向关联按消息方向表达使用/创建；不定义持久多重性。
-  User–UserProfile的1:1来自FR04/AC-FR04-03/SRS §12。
+  UserProfile含唯一/稳定/可分享地址属性（见06）；User–UserProfile的1:1来自FR04/AC-FR04-03/SRS §12。
 endlegend
 @enduml
