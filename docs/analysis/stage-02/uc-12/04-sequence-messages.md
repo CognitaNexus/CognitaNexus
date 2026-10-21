@@ -71,6 +71,8 @@
 | M45 | 范围守卫：拒绝质量／影响力／机构优劣排名，拒绝以来源数／版本数／参与关系数／作者数当机构计数，拒绝把机构未知并入已知名次（A17/A18/A19；BR-522；BR-IMP-02/06） | InstitutionRankingCoordinator | InstitutionRankingCoordinator | A17/A18/A19 | 拒绝越界、错误单位与错误名次请求 | BR-522；SRS §2.1；BR-IMP-02/06；FR16-02 边界 |
 | M46 | 返回拒绝结论与可用范围说明（分布统计属 UC-11、领域热点属 UC-13、合作网络与路径属 UC-14/15） | InstitutionRankingCoordinator | InstitutionRankingUI | A19 | 返回拒绝与交接说明 | FR11/FR13/FR12/IN01 边界；B-10 |
 
+> `M41`–`M46` 的越界/类别/计数单位分支复用 `M21` 的「访客调整筛选」触发路径；不另设 Actor 消息，避免把同一交互画成两次。
+
 ## 3. 事件、分支与消息对照
 
 | 事件/分支 | 消息 | 关键守卫 | 可观察结果 |

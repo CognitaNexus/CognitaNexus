@@ -48,7 +48,7 @@
       "UC-16"
     ]
   },
-  "current": "UC-12",
+  "current": null,
   "ucs": {
     "UC-01": {
       "title": "公开成果检索",
@@ -177,11 +177,10 @@
       "dir": "docs/analysis/stage-02/uc-12/",
       "seq": "DGM-SEQ-20",
       "vopc": "DGM-VOPC-16",
-      "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "ANALYSIS_COMPLETE_REVIEW_BLOCKED",
-      "reviewSeverity": null,
-      "blocker": "deepseek provider returned 402 Insufficient Balance to reviewer subagents on 3 attempts"
+      "reviewRounds": 1,
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-12-review-R2.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "MINOR"
     },
     "UC-13": {
       "title": "查看领域热点",
@@ -376,6 +375,18 @@
       "head": "4539de99f6aafc2d8b74d2e60d2d538a70540fa3",
       "at": "2026-10-21",
       "note": "UC-12 analysis delivered, independent review blocked by provider balance; worktree preserved"
+    },
+    {
+      "id": "CP-016",
+      "head": "540681e8d35a64d1c9048344bc3e5cbd4b60a9ee",
+      "at": "2026-10-21",
+      "note": "UC-12 independent review PASS/MINOR after provider recovery; 16/20 complete"
     }
-  ]
+  ],
+  "providerSubstitution": {
+    "required": "deepseek/deepseek-flash",
+    "used": "opencode-go/deepseek-v4.1-flash",
+    "reason": "stored api.deepseek.com key returns HTTP 402 Insufficient Balance (verified by direct curl); opencode-go serves DeepSeek Flash and was already the main session provider since 2026-10-21T06:29",
+    "declaredAt": "2026-10-21"
+  }
 }

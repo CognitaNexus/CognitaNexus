@@ -13,7 +13,7 @@
 | `Authorship`（参与关系，含多机构署名原值） | 全局 `Authorship`（“+角色/顺序/证据()/+独立关系状态()”；`Authorship -- Work`） | 角色/顺序/证据与独立状态；关系不是成果实体的一部分，不能作为计数单位 | ID-05；§6.4；BR-IMP-10 |
 | `Institution` 的“规范名归并”需求 | `DGM-ACTIVITY-04`（机构排名活动图含归属口径说明）；CL-05 机构别名映射 | 都要求按机构规范名计数并说明归属口径 | FR11-S08；CL-05；BR-513 |
 | 真实/模拟/混合区分 | `DGM-ACTIVITY-02` 与 FR11-S12 的“真实/模拟标识与过滤” | 默认结果只取真实数据；模拟/混合必须标识 | BR-IMP-07；`AC-IMPL-FR11-02` |
-| “机构未知单列、不进入名次” | 全局图无专用步骤；`DGM-ACTIVITY-02` 的输出项与模块细化 A3/E1 要求一致（缺口登记于 §5） | 未知不参与排名，不与已知机构混合 | BR-IMP-06；BR-513；FR11-S08 E1；AC-FR11-S05-03 |
+| “机构未知单列、不进入名次” | 全局图无专用步骤；`DGM-ACTIVITY-02` 的输出项与模块细化 A3/E1 要求一致（缺口登记于 §5） | 未知不参与排名，不与已知机构混合 | BR-IMP-06；BR-513；FR11-S05 E1；AC-FR11-S08-03 |
 | “不按来源数/版本数计” | `01` §4、INV-02；`AC-IMPL-FR16-02` | 一成果跨两个来源且有版本关联，仍按去重实体计 1 | BR-IMP-02；FR16 |
 | “计数排序不得表述为质量/优劣” | BR-522；SRS §2.1 | 机构排名仅表达计数与名次 | BR-522；A17 |
 | 统计口径与数据范围披露 | `DGM-USECASE-02` 的 `INCL_Caliber` 对 UC-11/12/13/14 全部 `<<include>>` | 排名与披露同屏，不由页面入口决定公开性 | FR11；BR-514；BR-526 |
@@ -30,6 +30,11 @@
 | `Institution.mergedIntoRef`（合并链） | 全局无 | 模块细化 FR11-S08 E2 与 CL-05 要求按已审别名字典归并 | R5 明确合并链的读侧契约与未映射处理（B-01） |
 | `Authorship`（本 UC 只读） | 全局 `Authorship` | 命名一致；但全局未注明“关系条数不是机构计数单位”“不得用任职期推断成果归属” | R5 在 `Authorship` 注记两条禁令，并注明实体资格与关系资格分离（Q-SPEC-08） |
 | UC-12 用例名 | 模块细化“UC-12 查看机构分类排名”；SRS/统一清单“查看机构排名” | 模块名多了“分类”，易被理解为“按机构类别分组” | R5/需求侧澄清“类别”含义（B-02）；本 UC 按“机构身份维度排名”分析 |
+
+| 本 UC 名称 | 登记表名称 | 处理 |
+|---|---|---|
+| `InstitutionRankingUI` | `InstitutionRankUI` | 同一类别名，R5 统一 |
+| `InstitutionRankingCoordinator` | `InstitutionRankCoordinator` | 同一类别名，R5 统一 |
 
 ## 3. 职责差异/需要补充
 
@@ -90,8 +95,8 @@
 
 | 文件 | 现状 | 建议（由父 Agent 决定） |
 |---|---|---|
-| [`03-AC-UC-分析模型追踪.md`](../03-AC-UC-分析模型追踪.md) | FR11 两行（`AC-IMPL-FR11-01/02`）的 UC 列为 UC-11/UC-12，分析模型列为 `DGM-USECASE-02 / CLASS-01`；UC-12 反向行只列两条 FR11 AC | 为 FR11 两行与 UC-12 反向行增补 `SEQ-20 / VOPC-16`；是否补 NF01/NF05 的 UC-12 列由父 Agent 决定（本 UC 只提供补充证据，不主张覆盖 UC-17/UC-08/UC-10） |
-| [`analysis-class-registry.md`](../automation/analysis-class-registry.md) | `StatisticsUI`/`StatisticsCoordinator` 的“后续参与 UC”含 UC-12/13；`Institution` 行已登记（UC-11/12/14）；无 `InstitutionRankingUI`/`InstitutionRankingCoordinator` | 增量登记 `InstitutionRankingUI`、`InstitutionRankingCoordinator`，并注明与 `StatisticsUI`/`StatisticsCoordinator` 的合并候选（B-10/R5）；`Institution` 行补“未映射是否进名次待确认”；`WorkEntity` 行补“机构归属为集合＋证据引用”（与 UC-11 建议同源） |
+| [`03-AC-UC-分析模型追踪.md`](../03-AC-UC-分析模型追踪.md) | 已由父 Agent 增补 `SEQ-20 / VOPC-16`（2026-10-21）；是否补 NF01/NF05 的 UC-12 列仍待 R5 | 无（已更新） |
+| [`analysis-class-registry.md`](../automation/analysis-class-registry.md) | 父 Agent 已登记 `InstitutionRankUI`/`InstitutionRankCoordinator` 与 `Institution`；本 UC 使用 `InstitutionRankingUI`/`InstitutionRankingCoordinator` | 同一类别名（见 §2 别名表），R5 统一为全名；与 `StatisticsUI`/`StatisticsCoordinator` 的合并候选（B-10/R5） |
 | [`unresolved-decisions.md`](../automation/unresolved-decisions.md) | 已有 D-04（真实/模拟展示）与 UC-11 建议的统计口径项（未写入） | 可评估新增：机构别名合并与未映射处理（B-01）、机构类别语义（B-02）、并列与破并列键（B-03）、占比分母（B-04）、样本阈值（B-05）、展示上限（B-06）、更新时间语义（B-07）、Q-4 与 BR-IMP-06 冲突（B-08/C-02）、待核验关系参与资格（B-09）、UC-11/12 视图分工（B-10）；本包不直接修改该文件 |
 | 全局 `DGM-CLASS-01-analysis.puml` | `AnalyticsUI ..> GraphCtl`；无机构排名协调者、无 `Institution`、`Work` 无 `dataOrigin` 与机构归属集合 | 按 §2–§4 在 R5 统一分析类时处理；本 UC 不修改全局图 |
 | `DGM-ACTIVITY-04` / `DGM-ACTIVITY-02` / `DGM-STATE-03` / `DGM-USECASE-02` | 见 §5 | 建议 R5/评审处理；本 UC 不改动这些图 |

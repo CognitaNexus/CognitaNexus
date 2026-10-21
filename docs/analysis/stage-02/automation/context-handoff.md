@@ -13,7 +13,7 @@
 
 ## 2. 当前状态
 
-> **2026-10-21 阻断：** deepseek provider 对审查子 Agent 连续3次返回 `402 Insufficient Balance`。按规则未切换模型、未假装审查通过。UC-12 分析已完成但独立审查为 `REVIEW_BLOCKED`；UC-13/14/15/16 未开始。恢复条件：账户余额恢复后，从 UC-12 独立审查继续。
+> **2026-10-21 恢复：** 存储的 `deepseek` 直连密钥仍返回 402；主会话自 06:29 使用 `opencode-go/deepseek-v4.1-flash`。子 Agent 改用同一 provider/模型（DeepSeek Flash 家族），已在 `progress.json.providerSubstitution` 声明。UC-12 已通过独立审查（R2 PASS/MINOR）。剩余 UC-13/14/15/16。
 - 已完成/待复核：UC-04、UC-01（已有9份文档+SEQ/VOPC图）。
 - 本轮顺序：先只读复核 UC-04/UC-01；再按批次 1（02/03/22）→ 2（05–08）→ 3（09/10/17/18/19）→ 4（11–16）。
 - 当前 UC：见 `progress.json.current`。
