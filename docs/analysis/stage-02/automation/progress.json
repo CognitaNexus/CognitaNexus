@@ -237,9 +237,10 @@
       "dir": "docs/analysis/stage-02/uc-18/",
       "seq": "DGM-SEQ-17",
       "vopc": "DGM-VOPC-13",
-      "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "PENDING"
+      "reviewRounds": 2,
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-18-review-R4.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "NONE"
     },
     "UC-19": {
       "title": "管理来源更新",
@@ -341,6 +342,12 @@
       "head": "a2aecdaf6bbf1ea51d9694600071c640ba98a61d",
       "at": "2026-10-21",
       "note": "UC-17 complete; R1 PASS/MINOR"
+    },
+    {
+      "id": "CP-012",
+      "head": "a292d1357e246f5158c3b236b7a292ee7a00ff82",
+      "at": "2026-10-21",
+      "note": "UC-18 complete after two fixes + residual confirmation; R4 PASS/NONE"
     }
   ]
 }

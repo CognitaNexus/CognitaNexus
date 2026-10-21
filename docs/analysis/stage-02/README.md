@@ -76,6 +76,8 @@ S02采用教材第5章 §5.4–§5.5 的用例分析与分析类方法，并结�
 | UC-10 VOPC | `stage-02/uc-10/diagrams/DGM-VOPC-11-identity.puml` | `stage-02/uc-10/diagrams/generated/` |
 | UC-17 专项后台待办/审计序列 | `stage-02/uc-17/diagrams/DGM-SEQ-16-admin-audit.puml` | `stage-02/uc-17/diagrams/generated/` |
 | UC-17 VOPC | `stage-02/uc-17/diagrams/DGM-VOPC-12-admin-audit.puml` | `stage-02/uc-17/diagrams/generated/` |
+| UC-18 专项采集任务序列 | `stage-02/uc-18/diagrams/DGM-SEQ-17-collection.puml` | `stage-02/uc-18/diagrams/generated/` |
+| UC-18 VOPC | `stage-02/uc-18/diagrams/DGM-VOPC-13-collection.puml` | `stage-02/uc-18/diagrams/generated/` |
 
 复用并核对：认领活动图、认领申请状态图、采集任务状态图、Authorship关系状态图。
 

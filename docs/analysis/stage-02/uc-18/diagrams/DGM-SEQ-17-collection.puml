@@ -1,0 +1,173 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 13
+skinparam dpi 150
+skinparam sequenceMessageAlign left
+title DGM-SEQ-17 UC-18 管理来源及采集任务（分析序列）
+actor "管理员" as Admin
+actor "获准数据来源" as SourceExt
+actor "未授权请求者" as Requester
+boundary "AdminConsole" as UI
+boundary "SourceAdapter" as Adapter
+control "CollectionCoordinator" as Ctl
+control "GovernanceCoordinator" as Gov
+entity "User" as User
+entity "SourceDefinition" as Def
+entity "CollectionTask" as Task
+entity "SourceRecord" as Rec
+entity "GovernanceException" as Exc
+entity "AuditEvidence" as Audit
+
+group 入口与权限校验（E1–E2）
+  Admin -> UI : M1 打开采集管理入口（来源与任务）（E1）
+  UI -> Ctl : M2 请求采集管理入口与任务概览（已认证请求上下文）
+  Ctl -> User : M3 校验账号状态（E2）
+  Ctl -> User : M4 校验“数据来源/采集”具体管理权限（E2）
+  Ctl -> Ctl : M5 权限守卫：无该具体权限不放行，不因“是管理员”默认全量（E2；A1）
+  Ctl --> UI : M6 返回可访问的来源与任务入口（E2）
+  UI --> Admin : M7 显示来源与任务入口（E2）
+end
+
+group 来源配置（E3–E5；A2）
+  Admin -> UI : M8 提交来源定义：来源身份、输入方式（API 或文件，二选一）、许可/使用范围、数据性质（真实/模拟/混合）、允许范围（E3）
+  UI -> Ctl : M9 提交来源定义（E3）
+  Ctl -> Ctl : M10 来源定义守卫：已获准∧输入方式为已支持的一种∧许可与范围可声明∧数据性质可标识（E4；A2）
+  Ctl -> Def : M11 保存来源定义（来源身份/输入方式/许可与范围/数据性质）（E5）
+  Def --> Ctl : M12 返回来源定义引用与可用作启动前置的判定事实（E5）
+  Ctl -> Audit : M13 记录来源配置写入（操作者/对象/时间/前后值/理由）（E5）
+  Ctl --> UI : M14 返回来源定义结果；不满足守卫时拒绝保存并说明（E4–E5；A2）
+  UI --> Admin : M15 显示来源定义结果与拒绝原因，与失败/空结果可区分（E4–E5；A2）
+end
+
+group 创建与启动（E6–E10；A2/A8/A9）
+  Admin -> UI : M16 创建采集任务并请求启动：选定来源定义、声明本次计划输入范围（E6）
+  UI -> Ctl : M17 提交创建与启动请求（E6）
+  Ctl -> Def : M18 只读读取来源有效性与许可/允许范围（E7）
+  Def --> Ctl : M19 返回来源有效性与许可/允许范围（E7）
+  Ctl -> Task : M20 检查该来源是否已有未结束任务：成功/已停止后须另建关联任务（E7；A9）
+  Task --> Ctl : M21 返回现有任务状态与关联任务引用（E7；A9）
+  Ctl -> Ctl : M22 启动守卫：来源有效∧范围可定位∧计划输入可确定∧权限有效（E8；A2/A8）
+  alt 启动守卫通过
+    Ctl -> Task : M23 保存参数快照与初始检查点，创建任务（待执行）（E9）
+    Task --> Ctl : M24 返回任务引用、待执行状态与快照标识（E9）
+    Ctl -> Task : M25 追加任务历史：创建、参数快照与启动决定（E9）
+    Ctl -> Audit : M26 记录启动决定（操作者/对象/时间/前后值/理由）（E9）
+    Task --> Ctl : M27 启动生效：待执行→运行中（E10）
+    Ctl --> UI : M28 返回任务已启动与范围快照（E10）
+    UI --> Admin : M29 显示运行中、范围快照与“成功不代表人工治理完成”（E10）
+  else 来源无效/范围不可定位/计划输入不可确定
+    Ctl --> UI : M30 拒绝启动：不创建任务、无业务写入（E8；A2/A8）
+    UI --> Admin : M31 显示拒绝原因，与失败/空结果可区分（E8；A2/A8）
+  end
+end
+
+group 读取、登记与逐条移交（E11–E15；A4/A5/A12）
+  Ctl -> Task : M32 读取参数快照、检查点与失败点（E11）
+  Task --> Ctl : M33 返回快照、检查点与已完成范围（E11）
+  Ctl -> Adapter : M34 按来源定义与快照请求本批输入（API 或文件）（E11）
+  Adapter -> SourceExt : M35 请求本批记录（按许可与允许范围）（E11）
+  SourceExt --> Adapter : M36 返回记录、读取失败或断连反馈（E11；A4）
+  Adapter --> Ctl : M37 返回本批输入与来源证据，读取失败时返回失败反馈（E11；A4）
+  loop 每条本批记录（E12–E14）
+    Ctl -> Rec : M38 逐条登记来源身份、到达事件、原值、数据性质、许可与到达时间（E12）
+    Rec --> Ctl : M39 返回逻辑出处标识（source_id＋source_record_key）与是否重复到达（E12；A12）
+    Ctl -> Gov : M40 逐条移交清洗/去重/身份归属处置（E13）
+    Gov --> Ctl : M41 返回处置结果（已登记结果/待核验）或“需异常移交”与原因（E13；A5）
+    Ctl -> Exc : M42 对无法处置的记录建立异常项：原因、对象引用、待处理状态，不设公开可见性（E14；A11）
+    Exc --> Ctl : M43 返回异常项引用与待处理状态（E14；A11）
+  end
+  Ctl -> Task : M44 保存本批互斥处置计数与检查点（已登记结果/待核验/异常）（E15）
+  Ctl -> Task : M45 追加任务历史：本批尝试、处置计数与检查点（E15）
+end
+
+group 进度查询（E16；A13）
+  Admin -> UI : M46 查询任务进度（E16）
+  UI -> Ctl : M47 转交进度查询（E16）
+  Ctl -> Task : M48 只读读取状态、检查点与批次计数（已登记结果/待核验/异常）（E16；A13）
+  Task --> Ctl : M49 返回进度事实（E16；A13）
+  Ctl -> Exc : M50 只读读取待处理异常数量（E16；A13）
+  Exc --> Ctl : M51 返回待处理异常数量（E16；A13）
+  Ctl --> UI : M52 返回进度（只读派生，不推进状态）（E16；A13）
+  UI --> Admin : M53 显示进度、检查点与单列的待核验/异常计数（E16；A13）
+end
+
+group 批次结束与成功（E17–E18；A5）
+  Ctl -> Task : M54 读取计划输入清单与已记录计数（结果/异常）（E17）
+  Task --> Ctl : M55 返回计划输入清单与已记录计数（E17）
+  Ctl -> Exc : M56 核对每条异常项均已建立且为待处理（可追踪移交）（E17；A5）
+  Exc --> Ctl : M57 返回异常项核对结果（E17；A5）
+  Ctl -> Ctl : M58 完成守卫：计划输入全部记录到结果或异常队列；交接失败或未记录不算完成（E17；A5）
+  Task --> Ctl : M59 完成生效：运行中→成功（E18）
+  Ctl -> Audit : M60 记录完成结论与计数（含待核验/异常；不写“人工治理完成”）（E18）
+  Ctl --> UI : M61 返回成功＋单列的待核验与异常数量（E18）
+  UI --> Admin : M62 显示成功结论、单列计数与“不等于已公开/已核验”（E18）
+end
+
+group 停止先于完成（A3）
+  Admin -> UI : M63 请求停止任务（A3）
+  UI -> Ctl : M64 转交停止请求（A3）
+  Ctl -> Task : M65 停止决定生效：先于完成则运行中→已停止，保留已完成项与未完成范围（A3）
+  Task --> Ctl : M66 返回已停止与保留范围（A3）
+  Ctl -> Audit : M67 记录停止决定（操作者/时间/理由/前后状态）（A3）
+  Ctl --> UI : M68 返回已停止与保留项（A3）
+  UI --> Admin : M69 显示已停止、保留完成项，已停止为终态；仅可另建关联任务（A3）
+end
+
+group 失败与重试（A4/A6/A7）
+  Task --> Ctl : M70 运行中→失败：保存失败点、已成功结果与恢复范围（A4）
+  Ctl -> Audit : M71 记录失败事实与失败点（不含凭据与秘密）（A4）
+  Ctl --> UI : M72 返回失败、失败点与恢复入口（A4）
+  UI --> Admin : M73 显示失败、失败点与“已完成项仍保留”（A4）
+  Admin -> UI : M74 请求重试（A6）
+  UI -> Ctl : M75 转交重试请求（A6）
+  Ctl -> Task : M76 只读读取失败点、检查点与已完成项（A6）
+  Task --> Ctl : M77 返回失败点、检查点与已完成项（历史成功记录保留）（A6）
+  Ctl -> User : M78 校验账号状态与“数据来源/采集”具体管理权限（A6）
+  Ctl -> Ctl : M79 重试守卫：执行条件有效∧未超过重试上限∧不重做已完成项（A6–A7）
+  alt 重试守卫通过
+    Ctl -> Task : M80 失败→重试→运行中：从检查点续跑并保留历史成功记录（A6）
+    Task --> Ctl : M81 返回重试中与续跑范围（A6）
+    Ctl -> Audit : M82 记录重试决定（操作者/时间/理由/失败点/前后状态）（A6）
+    Ctl --> UI : M83 返回重试已启动与续跑范围（A6）
+    UI --> Admin : M84 显示重试中、续跑范围与失败点定位（A6）
+  else 执行条件无效或超过重试上限（上限待确认）
+    Ctl --> UI : M85 拒绝重试：保持失败状态并提供恢复入口（A7）
+    UI --> Admin : M86 显示重试被拒原因（A7）
+  end
+end
+
+group 任务历史与失败定位（E19；NF07-01）
+  Admin -> UI : M87 查看任务历史与失败定位（E19）
+  UI -> Ctl : M88 转交历史查询（E19）
+  Ctl -> Task : M89 只读读取任务历史：尝试次数、起止、结果、失败点、检查点与计数（E19）
+  Task --> Ctl : M90 返回任务历史与检查点（E19）
+  Ctl -> Audit : M91 只读读取该任务相关受控写入留痕（E19）
+  Audit --> Ctl : M92 返回留痕（操作者/时间/前后值/理由）（E19）
+  Ctl --> UI : M93 返回任务历史与可定位的错误项（E19）
+  UI --> Admin : M94 显示任务历史、失败点与关联留痕（E19）
+end
+
+group 未授权访问拒绝（A1；FR08 执行前提）
+  Requester -> UI : M95 未授权请求者提交采集操作（A1）
+  UI -> Ctl : M96 转交请求（已认证上下文）
+  Ctl -> User : M97 校验账号状态与“数据来源/采集”具体管理权限（A1）
+  Ctl --> UI : M98 拒绝：无业务变更，不返回来源定义与任务明细（A1）
+  UI --> Requester : M99 显示拒绝，与失败/空结果可区分（A1）
+  Ctl -> Audit : M100 记录受控拒绝与越权尝试（不含凭据）（A1）
+end
+
+legend right
+  对象边界：SourceDefinition（配置：来源身份/输入方式 API 或文件/许可与范围/数据性质）≠ SourceRecord（到达证据：原值/到达时间）
+  ≠ CollectionTask（一次执行的状态、参数快照、检查点与任务历史）≠ GovernanceException（待处置异常项，不是成果）。
+  完成判据：只有计划输入全部记录到“结果”（已交治理受理并登记处置结果）或“异常队列”（异常项待处理）才可成功（M54–M58）。
+  计数：待核验与异常数量单列；成功不表示人工治理完成、不表示已公开或已核验（M60–M62）。
+  异常：异常项无公开可见性，本 UC 不创建/不发布成果，不建 WorkEntity/Authorship（M42；A11）。
+  重试：从检查点续跑，不重做已完成项，历史成功记录与任务历史保留，重复到达不新增第二条逻辑出处（M76–M81；A6/A12）。
+  状态：只用 §6.2／DGM-STATE-01 六状态；成功/已停止后另建关联任务，不新增状态与转移（M20/M21；A9）。
+  边界：来源更新与增量、来源停用/更换属 UC-19；清洗/去重/身份归属判定属 UC-09/10；发布与公开可见性属治理与读侧。
+  不建：Scheduler/TaskQueue/JobRunner/RetryPolicy/Checkpoint 独立类/ExceptionQueue 类（检查点与任务历史为 CollectionTask 的追加式属性）。
+  待确认：重试上限与检查点间隔/批次大小（D-10）、计划输入口径、空范围是否成功、进度与计数口径（B-01～B-09）。
+endlegend
+@enduml

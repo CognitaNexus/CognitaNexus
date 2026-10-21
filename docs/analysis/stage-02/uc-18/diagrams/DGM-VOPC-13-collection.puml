@@ -1,0 +1,50 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 45
+skinparam ranksep 70
+hide circle
+hide empty members
+top to bottom direction
+title DGM-VOPC-13 UC-18 管理来源及采集任务（参与类类图）
+boundary "AdminConsole" as UI
+boundary "SourceAdapter" as Adapter
+control "CollectionCoordinator" as Ctl
+control "GovernanceCoordinator" as Gov
+entity "User" as User
+entity "AuditEvidence" as Audit
+entity "SourceDefinition" as Def
+entity "CollectionTask" as Task
+entity "SourceRecord" as Rec
+entity "GovernanceException" as Exc
+UI --> Ctl : 请求（M2/M9/M17/M47/M64/M75/M88/M96）\n返回（M6/M14/M28/M30/M52/M61/M68/M72/M83/M85/M93/M98）
+Ctl --> Adapter : M34 请求本批输入；M37 返回输入或失败反馈
+Ctl --> Gov : M40 移交处置\nM41 处置结果/需异常移交
+Ctl --> User : M3/M4/M78/M97 校验账号与权限
+Ctl --> Audit : M13/M26/M60/M67/M71/M82/M100 追加留痕\nM91/M92 只读读取
+Ctl --> Def : M11 保存来源定义；M18/M12/M19 读取与返回
+Ctl --> Task : M20–M27 检查/快照/检查点/历史/启动\nM32–M59 读取、计数、完成判据\nM65/M66 停止；M80/M81 重试
+Ctl --> Rec : M38 登记到达事件与原值\nM39 返回逻辑出处/重复到达
+Ctl --> Exc : M42 建立异常项\nM43/M50/M51/M56/M57 读取核对
+User <-- Audit : 操作者 0..*:0..1
+Def --> Rec : 来源身份/许可/范围 1:0..*
+Def --> Task : 该来源的任务 1:0..*
+Task --> Rec : 首次登记 1:0..*
+Task --> Exc : 任务异常项 1:0..*
+Rec --> Exc : 异常可指向来源记录/任务/范围 0..1:0..*
+legend bottom
+  只包含 UC-18 顺序图中的 10 个参与对象；“管理员”“获准数据来源”“未授权请求者”是参与者，不画成系统类。
+  编号对应 04 逐消息表；SourceDefinition（配置）≠ SourceRecord（到达证据）≠ CollectionTask（状态/快照/检查点/历史）≠ GovernanceException（待处置异常项）。
+  GovernanceException 没有公开可见性，本 UC 不创建 WorkEntity/Authorship，也不发布：异常须经 UC-09/10 治理与生效规则（A11）。
+  GovernanceCoordinator 是属主 UC-09/10 的协作控制类：本 UC 只移交与取回处置结果，不建模清洗/去重/身份归属规则。
+  SourceAdapter 只与获准来源交换记录与失败信息（API 或文件任选），不决定公开、归属或去重，故不连业务实体。
+  状态：只用 §6.2／DGM-STATE-01 六状态（待执行/运行中/成功/失败/已停止/重试）；不新增状态与转移。
+  不画 Scheduler/TaskQueue/JobRunner/RetryPolicy/ExceptionQueue/Checkpoint 独立类：检查点与任务历史是 CollectionTask 的追加式属性；
+  重试上限与检查点间隔未冻结（D-10；B-01/B-02），不写数值。
+  控制/边界到实体的关联按消息方向表达协作，不定义持久多重性；业务多重性只给 6 条业务事实关联。
+endlegend
+@enduml

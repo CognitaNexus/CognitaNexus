@@ -13,6 +13,11 @@
 | RegistrationCoordinator | Control | UC-04 | — | 注册校验、User+UserProfile 创建、稳定地址、幂等/回滚 | 注册请求状态（单次） | → User、→ UserProfile | 不定义持久多重性 | 全局 `RegCtl` | 统一命名 |
 | User | Entity | UC-04 | UC-05/06/22 | 账号、会话、对象授权主体 | stableId、accountState | 1:1 UserProfile；提交 Claim | 1:1（UserProfile） | 不等于 Scholar | 保留 |
 | UserProfile | Entity | UC-04 | UC-03/22 | 唯一公开普通主页 | stableId/publicUrl、公开普通资料、零成果空态 | 属于 User | 1:1 | 不强制对应 Scholar | 保留 |
+| SourceAdapter | Boundary | UC-18 | UC-19 | 与获准来源交换记录/失败，不决定公开/归属 | 无持久业务属性 | → 获准来源；→ CollectionCoordinator | 不定义持久多重性 | 全局 `SourceAdapter` | 保留 |
+| CollectionCoordinator | Control | UC-18 | UC-19 | 来源配置、启动/进度/停止/重试、检查点、完成判据、异常移交 | 单次任务控制状态 | → SourceDefinition/CollectionTask/SourceRecord/GovernanceException/AuditEvidence | 不定义持久多重性 | 全局 `CollectCtl` | 统一命名 |
+| SourceDefinition | Entity | UC-18 | UC-19 | 来源配置、许可/范围、输入类型 | sourceId/inputType/rightsScope/dataOrigin | →SourceRecord 1:0..*；→Task 1:0..* | 1:0..* | 全局 `Source` | R5 区分定义/记录 |
+| CollectionTask | Entity | UC-18 | UC-19 | 任务六状态、快照、检查点、历史、异常关联 | taskId/status/scope/checkpoint/history | →SourceRecord 1:0..*；→Exception 1:0..* | 1:0..* | 全局 `Task` | 统一命名 |
+| GovernanceException | Entity | UC-18 | UC-09/10/17 | 待治理异常、目标引用、状态、领域 | exceptionRef/reason/targetRefs/state/domain | →Task 0..*:1；→SourceRecord 0..*:0..1 | 0..*:1 / 0..*:0..1 | 与 UC-09 `CleanRecord` 冲突 | R5 统一 |
 | AdminConsole | Boundary | UC-17 | UC-18/19 | 统一管理入口、待办、导航、审计查询 | 无持久业务属性 | → AuditCoordinator | 不定义持久多重性 | 全局 `AdminUI`/`AdminConsole` | 统一命名 |
 | AuditCoordinator | Control | UC-17 | UC-18/19 | 权限守卫、待办投影、导航、审计五要素/脱敏 | 单次管理请求状态 | → AuditEvidence/ReviewEvidence/ClaimApplication/ Auth/Authorship/CollectionTask/DedupCandidate/IdentityCandidate | 不定义持久多重性 | 全局 `AuditCtl` | 统一命名 |
 | IdentityVerificationUI | Boundary | UC-10 | — | 身份/归属核验、候选、决定、结果查询 | 无持久业务属性 | → IdentityVerificationCoordinator | 不定义持久多重性 | 全局 `AdminUI`/`GovernCtl` 邻近 | R5 统一 |
