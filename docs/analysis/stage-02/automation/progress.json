@@ -188,9 +188,10 @@
       "dir": "docs/analysis/stage-02/uc-13/",
       "seq": "DGM-SEQ-21",
       "vopc": "DGM-VOPC-17",
-      "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "PENDING"
+      "reviewRounds": 1,
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-13-review-R2.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "NONE"
     },
     "UC-14": {
       "title": "查看四类共同成果合作网络",
@@ -381,6 +382,12 @@
       "head": "540681e8d35a64d1c9048344bc3e5cbd4b60a9ee",
       "at": "2026-10-21",
       "note": "UC-12 independent review PASS/MINOR after provider recovery; 16/20 complete"
+    },
+    {
+      "id": "CP-017",
+      "head": "2b19a8648bd83ac59a31df57e111972cb913d088",
+      "at": "2026-10-21",
+      "note": "UC-13 complete; R1 minor fixes then R2 PASS/NONE"
     }
   ],
   "providerSubstitution": {

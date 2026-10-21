@@ -90,8 +90,8 @@
 | 40 | `AC-IMPL-FR12-03` | FR12 | BR-IMP-01/03/07/08 | UC-14 | DGM-USECASE-02 / ACT-08 / CLASS-01 | 四类共同成果基础边 | NOT RUN |
 | 41 | `AC-IMPL-FR12-04` | FR12 | BR-IMP-01/03/07/08 | UC-14 | DGM-USECASE-02 / ACT-08 / CLASS-01 | 四类共同成果基础边 | NOT RUN |
 | 42 | `AC-IMPL-FR12-05` | FR12 | BR-IMP-01/03/07/08 | UC-14 | DGM-USECASE-02 / ACT-08 / CLASS-01 | 四类共同成果基础边 | NOT RUN |
-| 43 | `AC-IMPL-FR13-01` | FR13 | BR-IMP-06/07 | UC-13 | DGM-USECASE-02 | 关键词热点/稀疏 | 计划验收，未执行 |
-| 44 | `AC-IMPL-FR13-02` | FR13 | BR-IMP-06/07 | UC-13 | DGM-USECASE-02 | 关键词热点/稀疏 | 计划验收，未执行 |
+| 43 | `AC-IMPL-FR13-01` | FR13 | BR-IMP-06/07 | UC-13 | DGM-USECASE-02 | 关键词热点/稀疏 | 计划验收，未执行  / SEQ-21 / VOPC-17 |
+| 44 | `AC-IMPL-FR13-02` | FR13 | BR-IMP-06/07 | UC-13 | DGM-USECASE-02 | 关键词热点/稀疏 | 计划验收，未执行  / SEQ-21 / VOPC-17 |
 | 45 | `AC-IMPL-FR14-01` | FR14 | BR-IMP-05/10 | UC-17 | DGM-USECASE-06 / CLASS-01 | 越权拒绝/审计可查 | 计划验收，未执行  / SEQ-16 / VOPC-12 |
 | 46 | `AC-IMPL-FR14-02` | FR14 | BR-IMP-05/10 | UC-17 | DGM-USECASE-06 / CLASS-01 | 越权拒绝/审计可查 | 计划验收，未执行  / SEQ-16 / VOPC-12 |
 | 47 | `AC-IMPL-FR15-01` | FR15 | BR-IMP-03/10 | UC-10、UC-08 | governance-relation / SEQ-02 / CLASS-01 | 身份候选/排除不恢复 | 计划验收，未执行 |

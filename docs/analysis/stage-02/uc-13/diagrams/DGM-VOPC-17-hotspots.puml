@@ -1,0 +1,37 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 70
+skinparam ranksep 110
+hide circle
+hide empty members
+top to bottom direction
+title DGM-VOPC-17 UC-13 查看领域热点（参与类类图）
+boundary "HotspotUI" as UI
+control "HotspotCoordinator" as Ctl
+entity "WorkEntity" as Work
+entity "TopicTerm" as Term
+UI --> Ctl : M2/M19/M24 请求；其余为返回
+Ctl ..> Work : M5 只读
+Ctl ..> Term : M8/M25 只读
+Work "0..*" --> "0..*" Term : 论文关键词事实按有凭证映射归入规范词
+legend right
+  只包含 UC-13 顺序图中的 4 个参与对象；访客是参与者，不画成系统类。
+  边上的编号对应 04 逐消息表：M2/M19/M24 请求；M16/M21/M27/M30/M32/M34/M36/M38 返回；
+  M5 只读读取成果公开生效状态、数据类别、时间语义、领域取值与论文关键词事实（不写、不合并、不改公开状态）；
+  M8/M25 只读读取规范词、原始写法与同义词映射凭证（不写术语表、不新增或改合并关系）。
+  Work 0..*→0..* Term：一项论文成果的关键词事实可为零个（无关键词）或多个，一个规范词可对应多项成果；
+  该关联只表达“按已生效凭证映射得到的取值关系”，未映射关键词按规范化原写法单列、不构成到规范词的有效关联（CL-05；05 §2.2）。
+  同一论文同一规范词只计一次是计数规则，不是多重性（M11；BR-UC13-06）。
+  领域取值写成 WorkEntity 属性 fieldRefs，不建 Field／FieldTaxonomy 类：领域层级与映射未冻结（Q-SPEC-03；待确认 B-09）。
+  控制／边界到实体的关联按消息方向表达协作，不定义持久多重性。
+  本图无持久“热点结果／热点快照／口径版本”类，无 DTO、图表数据类：热点结果是读时投影（分析态），不是业务实体（05 §4；07 §5 C-01）。
+  本图无 SourceRecord／WorkVersion 消息：来源数、版本数不参与计数（BR-IMP-02）。
+  本图无 Scholar／User／UserProfile 消息：不做按学者个人的热点排名，也不用作者画像推断主题（A17；SRS §2.1）。
+  本图无质量评分、影响力指数、趋势预测或语义主题模型类：热点只表达关键词／主题计数与并列名次（FR13 明文）。
+endlegend
+@enduml

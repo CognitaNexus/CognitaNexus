@@ -84,6 +84,8 @@ S02采用教材第5章 §5.4–§5.5 的用例分析与分析类方法，并结�
 | UC-11 VOPC | `stage-02/uc-11/diagrams/DGM-VOPC-15-statistics.puml` | `stage-02/uc-11/diagrams/generated/` |
 | UC-12 专项机构排名序列 | `stage-02/uc-12/diagrams/DGM-SEQ-20-institution-rank.puml` | `stage-02/uc-12/diagrams/generated/` |
 | UC-12 VOPC | `stage-02/uc-12/diagrams/DGM-VOPC-16-institution-rank.puml` | `stage-02/uc-12/diagrams/generated/` |
+| UC-13 专项热点序列 | `stage-02/uc-13/diagrams/DGM-SEQ-21-hotspots.puml` | `stage-02/uc-13/diagrams/generated/` |
+| UC-13 VOPC | `stage-02/uc-13/diagrams/DGM-VOPC-17-hotspots.puml` | `stage-02/uc-13/diagrams/generated/` |
 
 复用并核对：认领活动图、认领申请状态图、采集任务状态图、Authorship关系状态图。
 
