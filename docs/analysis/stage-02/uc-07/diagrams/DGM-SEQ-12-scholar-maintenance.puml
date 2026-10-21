@@ -1,0 +1,104 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 13
+skinparam dpi 150
+skinparam sequenceMessageAlign left
+title DGM-SEQ-12 UC-07 维护已授权 Scholar 档案（分析序列）
+actor "已获授权 Scholar 管理者" as Manager
+actor "有权审核的管理员" as Reviewer
+boundary "ScholarMaintenanceUI" as UI
+control "ScholarMaintenanceCoordinator" as Ctl
+entity "User" as User
+entity "Scholar" as Scholar
+entity "ScholarAuthorization" as Auth
+entity "ScholarChangeRequest" as Change
+entity "AuditEvidence" as Audit
+
+Manager -> UI : M1 打开被授权 Scholar 档案维护入口并提交档案事实变更（E1）
+UI -> Ctl : M2 请求维护档案变更（目标 Scholar 引用＋变更字段＋已认证请求上下文）
+Ctl -> User : M3 校验请求者身份与账号状态（E2）
+Ctl -> Auth : M4 读取请求者对该目标 Scholar 的有效对象级授权与授权范围（E3）
+Ctl -> Scholar : M5 确认目标档案正是授权所指 Scholar，读取当前公开事实与生效版本（E3）
+Ctl -> Ctl : M6 判定 账号可用 ∧ 授权有效 ∧ 目标一致（E3）
+alt 未认证或账号已停用（A1）
+  Ctl --> UI : M7 拒绝，无任何写入
+  UI --> Manager : M8 显示拒绝（与越权/失败区分）
+  Ctl -> Audit : M9 记录受控拒绝审计（不含凭据）
+else 无有效对象授权：他人档案/同名另一 Scholar/授权已失效（A2）
+  Ctl --> UI : M10 拒绝越权维护，目标档案无变更
+  UI --> Manager : M11 显示越权结果
+  Ctl -> Audit : M12 记录受控越权尝试审计
+else 账号可用且对象授权有效（E4）
+  Ctl -> Ctl : M13 判定字段范围：授权范围 ∧ Scholar 学术事实 ∧ 排除普通 UserProfile 字段
+  alt 字段超出授权范围或目标档案已非同一对象（A3）
+    Ctl --> UI : M14 拒绝并说明授权范围（stale scope），无写入
+    UI --> Manager : M15 显示"超出授权范围"
+    Ctl -> Audit : M16 记录受控范围外尝试审计
+  else 含普通 UserProfile 字段（A4）
+    Ctl --> UI : M17 本 UC 不写普通主页字段；转 UC-22
+    UI --> Manager : M18 说明普通资料维护走 UC-22
+  else 仅 Scholar 学术事实且在授权范围内
+    Ctl -> Ctl : M19 判定变更性质：需审核的重要变更 / 可直接生效的公开字段（E5；B-01 待确认）
+    alt 需审核的重要变更（E6）
+      Ctl -> Change : M20 登记待审变更（旧值/新值/提交者/理由/证据引用/版本）；公开版保持旧值
+      Ctl -> Audit : M21 记录待审登记审计（前后值标记为未生效）
+      Ctl --> UI : M22 已提交待审：公开仍为旧值，本人可查待审状态
+      UI --> Manager : M23 显示待审状态与"公开未变更"
+    else 按审核规则可直接生效（A5；B-01/B-02 待确认）
+      Ctl -> Scholar : M24 写入该变更范围内的公开字段并生成生效版本
+      alt 写入或生成生效版本失败（A6）
+        Ctl --> UI : M25 失败：公开保持旧值
+        UI --> Manager : M26 显示失败与重试，不显示为已生效
+      else 生效成功
+        Ctl -> Audit : M27 记录生效写入审计（身份/对象/前后值/时间/理由）
+        Ctl --> UI : M28 已生效：公开按生效版本读取
+        UI --> Manager : M29 显示生效结果
+      end
+    end
+  end
+end
+group 待审状态查询（提交者本人；AC-IMPL-FR06-01）
+  Manager -> UI : M30 查询本人提交的待审变更状态
+  UI -> Ctl : M31 请求待审状态（目标档案＋提交者上下文）
+  Ctl -> Change : M32 读取该提交者的待审变更状态与版本（仅本人或有权审核者）
+  Change --> Ctl : M33 待审状态=待审核；公开版仍为旧值
+  Ctl --> UI : M34 返回待审状态与公开未变更事实
+  UI --> Manager : M35 显示待审状态（不显示新值为已公开）
+end
+group 审核待审变更（次要参与者：有权审核的管理员；AC-IMPL-FR06-01）
+  Reviewer -> UI : M36 打开待审变更并提交决定（批准/驳回）与理由
+  UI -> Ctl : M37 提交审核决定（待审变更引用＋理由＋已认证请求上下文）
+  Ctl -> User : M38 校验审核者身份、账号状态与审核权限
+  Ctl -> Ctl : M39 复核守卫：权限有效 ∧ 理由完整 ∧ 待审变更仍为待审核且版本未变
+  alt 无审核权限、账号停用或理由缺失（A8）
+    Ctl --> UI : M40 拒绝该决定：待审状态不变，公开版不变
+    UI --> Reviewer : M41 显示拒绝原因（无权限/理由必填）
+  else 待审变更已被处理或版本已变化（A7）
+    Ctl --> UI : M42 拒绝并返回当前状态，不覆盖已有决定
+    UI --> Reviewer : M43 显示"状态已变化"与当前状态
+  else 决定有效
+    alt 批准
+      Ctl -> Change : M44 记录决定：状态=通过（理由/时间/操作者）
+      Ctl -> Scholar : M45 以该待审变更生成生效版本并更新公开字段（仅变更范围内字段）
+      Ctl -> Audit : M46 记录批准与生效（对象/前后值/时间/理由）
+      Ctl --> UI : M47 已批准并生效：检索/门户/统计使用同一生效版本
+      UI --> Reviewer : M48 显示生效结果与传播说明
+    else 驳回
+      Ctl -> Change : M49 记录决定：状态=驳回（理由/时间）
+      Ctl -> Audit : M50 记录驳回（前后值：公开值不变）
+      Ctl --> UI : M51 已驳回：公开仍为旧值
+      UI --> Reviewer : M52 显示驳回结果
+    end
+  end
+end
+legend right
+  只分析 UC-07 维护已授权 Scholar 档案；认领申请/认领审核、普通主页编辑、成果归属纠正、公开浏览、审计查询不在本图。
+  M3/M4/M5 是服务端每次校验：账号状态＋对象级授权主体＋授权范围＋目标档案一致；前端隐藏入口不代替拒绝。
+  待审变更（ScholarChangeRequest）与公开生效版本并存：公开旧值在批准前继续公开，待审内容不进入公开视图，提交者本人可查待审状态。
+  M44–M48 才使变更生效；M49–M52 驳回时公开值不变。A9 审计留痕失败时不得报告已批准/已生效（顺序约束，无独立消息）。
+  本图无 UserProfile、ClaimApplication、Authorship、WorkEntity 消息：不建第二主页、不建认领、不转授权、不确认成果归属。
+  原始来源事实不被人工修订覆盖；Scholar 字段清单与需审核口径待确认（B-01/B-02/B-05）。
+endlegend
+@enduml

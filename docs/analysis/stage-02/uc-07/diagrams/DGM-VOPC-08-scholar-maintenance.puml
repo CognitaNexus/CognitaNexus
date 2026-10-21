@@ -1,0 +1,41 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 70
+skinparam ranksep 90
+hide circle
+hide empty members
+top to bottom direction
+title DGM-VOPC-08 UC-07 维护已授权 Scholar 档案参与类类图（VOPC）
+package "UC-07 参与类" {
+  boundary "ScholarMaintenanceUI" as UI
+  control "ScholarMaintenanceCoordinator" as Ctl
+  entity "User" as User
+  entity "ScholarAuthorization" as Auth
+  entity "ScholarChangeRequest" as Change
+  entity "Scholar" as Scholar
+  entity "AuditEvidence" as Audit
+}
+UI --> Ctl : M2 请求维护\nM7/M10/M14/M17/M22/M25/M28/M31/M34/M37/M40/M42/M47/M51 返回结果
+Ctl --> User : M3/M38 校验身份、账号状态与审核权限
+Ctl ..> Auth : M4 读取授权与范围（只读）
+Ctl --> Scholar : M5 读取公开事实与生效版本；M24/M45 生成生效版本
+Ctl --> Change : M20 登记待审；M32/M33 查状态；M44/M49 决定
+Ctl --> Audit : M9/M12/M16/M21/M27/M46/M50 记录受控审计
+Auth "0..*" --> "1" User : 被授权主体
+Auth --> Scholar : 目标档案（未定）
+Change "0..*" --> "1" Scholar : 待审变更的目标档案；公开版保持旧值
+legend right
+  只包含 UC-07 顺序图中的 7 个参与对象；管理者与有权审核的管理员是参与者，不画成系统类。
+  边上的编号对应 04 逐消息表：M2 请求；M7/M10/M14/M17/M22/M25/M28/M31/M34/M37/M40/M42/M47/M51 返回拒绝/越权/超范围/转交/待审/失败/生效；
+  M3/M38 身份与账号状态（含审核权限）；M4 授权与范围只读；M5 读取公开事实与生效版本；M20 登记待审变更；M32/M33 待审状态；M44/M49 决定；M24/M45 生成生效版本；M9/M12/M16/M21/M27/M46/M50 受控审计。
+  Auth→User 的 0..*:1 沿用 UC-06 依据（一次批准产生一条授权，主体为该申请人）；Auth→Scholar 多重性沿用 UC-06 未定（同一 Scholar 是否允许并列管理者，SPEC ID-12）。
+  Change 0..* → 1 Scholar：一条待审变更指向一个档案；同一档案是否允许并存多条待审变更待确认（B-09）。
+  控制/边界到实体的关联按消息方向表达协作，不定义持久多重性；审计指向被写对象是其业务属性，不另画关联。
+  UserProfile/第二个 UserProfile、ClaimApplication、Authorship、WorkEntity、SourceRecord、PublicProfileUI、AuditCoordinator、Session、ReviewerRole 不参与本 UC（无消息）。
+endlegend
+@enduml

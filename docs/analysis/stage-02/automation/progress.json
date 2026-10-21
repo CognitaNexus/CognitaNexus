@@ -123,8 +123,9 @@
       "seq": "DGM-SEQ-12",
       "vopc": "DGM-VOPC-08",
       "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "PENDING"
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-07-review-R1.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "MINOR"
     },
     "UC-08": {
       "title": "确认、补录和纠错成果",
@@ -306,6 +307,12 @@
       "head": "b57f1019fc696945321a6c75be51f9828c29a994",
       "at": "2026-10-21",
       "note": "UC-06 complete after one fix; R2 PASS/NONE"
+    },
+    {
+      "id": "CP-007",
+      "head": "56237fa0eac2cda6201fa76a22abcc97d56a89f6",
+      "at": "2026-10-21",
+      "note": "UC-07 complete; R1 PASS/MINOR"
     }
   ]
 }
