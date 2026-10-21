@@ -145,8 +145,9 @@
       "seq": "DGM-SEQ-14",
       "vopc": "DGM-VOPC-10",
       "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "PENDING"
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-09-review-R1.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "MINOR"
     },
     "UC-10": {
       "title": "核验学者身份与归属",
@@ -320,6 +321,12 @@
       "head": "e6dcac9b4a166422fd456b08fa1b47592747b9f0",
       "at": "2026-10-21",
       "note": "UC-08 complete after one fix; R2 PASS/MINOR; batch 2 done"
+    },
+    {
+      "id": "CP-009",
+      "head": "a9e1c0099ce1c0931b3d39156ecac0572371546f",
+      "at": "2026-10-21",
+      "note": "UC-09 complete; R1 PASS/MINOR"
     }
   ]
 }

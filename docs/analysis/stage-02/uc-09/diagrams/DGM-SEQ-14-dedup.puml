@@ -1,0 +1,165 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 13
+skinparam dpi 150
+skinparam sequenceMessageAlign left
+title DGM-SEQ-14 UC-09 核验和纠正成果数据（确定性清洗与去重治理，分析序列）
+actor "来源采集/增量任务\n（UC-18/19）" as Upstream
+actor "治理管理员" as Admin
+boundary "DedupGovernanceUI" as UI
+control "DedupCoordinator" as Ctl
+entity "User" as User
+entity "SourceRecord" as Source
+entity "CleanRecord" as Clean
+entity "DedupCandidate" as Candidate
+entity "WorkEntity" as Work
+entity "WorkVersion" as Version
+entity "AuditEvidence" as Audit
+
+Upstream -> UI : M1 交付已获准接入的来源记录批次（批次标识/到达事件/来源记录引用）（E1）
+UI -> Ctl : M2 提交治理批次（批次引用＋来源记录引用＋已认证系统/账号上下文）
+Ctl -> Source : M3 只读读取来源原值/来源身份/类型线索/许可/数据性质/到达时间（E2）
+Ctl -> Ctl : M4 校验来源身份与成果类型与名称（空白规范化后为空则异常）（E2）
+alt 缺名称、缺来源身份或类型不支持（A1）
+  Ctl -> Clean : M5 登记异常待处理（原因/缺项；原值完整保留）
+  Ctl -> Audit : M6 记录异常入队与原因
+  Ctl -> UI : M7 该记录异常待处理，不形成有效公开实体
+  UI -> Admin : M8 显示异常与缺项
+else 校验通过
+  Ctl -> Clean : M9 建立规范化记录（逐字段原值＋规范值＋规则版本；原值不覆盖）（E3）
+  Ctl -> Ctl : M10 按类型校验最小字段集：论文/专利/项目/获奖的名称、类型、来源身份（E4）
+  Ctl -> Clean : M11 记录最小字段结果：齐备或缺项标"未知"，区分空白/缺失/确认为无，不造值（E13）
+  Ctl -> Clean : M12 规范化时间事件（事件语义/数值/精度/原字符串；仅年份不补1月1日；采集时间不冒充发生时间）（E5）
+  Ctl -> Clean : M13 规范化稳定标识（DOI按解析前缀与大小写无关；专利申请/公开/授权号按辖区＋体系；项目号限授予机构；未知辖区保留原值标待核验）（E6）
+  alt 日期非法、顺序歧义或年份可疑（A8）
+    Ctl -> Clean : M14 标异常待处理或待核验，不写生效发生日，保留原字符串
+    Ctl -> UI : M15 返回日期异常/待核验（不静默补值）
+  end
+  alt 机构/领域映射字典不可用（A12）
+    Ctl -> Clean : M16 保留未映射/待分类值，本次部分成功
+    Ctl -> UI : M17 提示部分成功与可重试映射
+  end
+  Ctl -> Clean : M18 置规范化记录治理状态：有效／异常待处理／待核验（E3）
+end
+Ctl -> Source : M19 按 source_id ＋ source_record_key 定位同一逻辑出处（E7）
+alt 同一逻辑出处已处理：重复到达或批次重跑（A2）
+  Ctl -> Source : M20 追加重复到达事件（不改写原值、不新增有效出处）
+  Ctl -> Ctl : M21 核对：不新增实体、不新增有效出处；到达事件计数可增加
+  Ctl -> Audit : M22 记录重复到达与幂等结论
+  Ctl -> UI : M23 该记录已处理（distinct实体数、distinct有效出处数均不变）
+else 新逻辑出处
+  Ctl -> Work : M24 按（标识体系，辖区/命名空间，规范键）精确查找同类型实体，跨类型不自动合并（E8）
+  Work --> Ctl : M25 命中数量/实体类型/标识争议状态（0／唯一／多个／类型不一致）
+  alt 唯一命中∧类型一致∧证据相容（AC-IMPL-FR09-01）
+    Ctl -> Ctl : M26 证据相容判定：同类型∧无矛盾证据∧无争议标记
+    Ctl -> Work : M27 关联出处（source_id，source_record_key），实体数不变
+    Ctl -> Work : M28 字段合并：已人工确认值优先呈现；新来源证据保留为冲突项，不静默覆盖（E12）
+    Ctl -> Audit : M29 记录自动关联依据（标识类型与规范值）
+    Ctl -> UI : M30 命中既有实体（实体数＋0、有效出处＋1）
+  else 命中多个实体/类型不一致/标识处于争议（A3）
+    Ctl -> Candidate : M31 建立候选待核验（列出全部候选与命中标识/不一致原因，不任选其一）（E10）
+    Ctl -> Audit : M32 记录待核验生成（原因/候选数量）
+    Ctl -> UI : M33 该记录待核验（不自动合并）
+  else 无命中
+    Ctl -> Ctl : M34 进入候选生成：同类型＋标题比对键＋年份窗召回（召回不赋予合并资格）（E9）
+    Ctl -> Candidate : M35 生成候选与逐项证据（标题/年份/参与者/成果类型：命中或冲突）
+    alt 仅标题相似或参与者/年份冲突（A5）
+      Ctl -> Candidate : M36 标记候选待核验（标题相似本身不构成合并依据）
+      Ctl -> UI : M37 候选待核验（不自动合并）
+    else 无稳定标识但多证据一致（A6）
+      Ctl -> Candidate : M38 仍为候选待核验；无稳定标识的自动合并未获批准，不可执行
+      Ctl -> UI : M39 候选待核验（须人工确认，阈值待确认）
+    else 候选过多或标题比对键过短（A7）
+      Ctl -> Candidate : M40 限制候选清单长度并标注"候选过多，需人工筛查"
+      Ctl -> UI : M41 候选过多提示（不默认选第一个）
+    else 无任何候选
+      Ctl -> Work : M42 新建成果实体（依据＝无标识新建；类型/名称/标识按规范值）
+      Ctl -> Work : M43 关联首个出处（source_id，source_record_key）
+      Ctl -> Audit : M44 记录新建依据与出处
+      Ctl -> UI : M45 新建实体（实体数＋1）
+    end
+  end
+  alt 存在来源明示版本指向（AC-IMPL-FR09-05 正向）
+    Ctl -> Version : M46 归入同一成果实体的版本清单（版本种类/明示证据/关联来源）（E11）
+    Ctl -> Audit : M47 记录版本归并（实体数不增）
+  else 疑似版本但无明示证据（A10）
+    Ctl -> Candidate : M48 保持两个独立实体并标疑似版本关联（待核验）
+  end
+end
+Ctl -> Ctl : M49 批次核对：distinct(生效WorkEntity canonical_id)／distinct(source_id,source_record_key)／到达事件数／异常数／待核验数分别计数（E14）
+Ctl -> UI : M50 返回批次结论（命中/新建/候选/异常计数；"批次处理完成"不等于"治理全部通过"）
+UI -> Upstream : M51 显示批次结论与待核验计数（异常不得直接成为已公开成果）
+group 管理员核验与处置（次要参与者：治理管理员；E15–E16）
+  Admin -> UI : M52 打开处理项（候选/异常/字段冲突）并查看证据
+  UI -> Ctl : M53 请求处理项详情（处理项引用＋管理员上下文）
+  Ctl -> User : M54 校验管理员身份、账号状态与治理处置权限（A16）
+  alt 无治理处置权限或账号停用（A16）
+    Ctl -> UI : M55 拒绝：无治理处置权限，处理项与公开值不变
+    UI -> Admin : M56 显示拒绝（与"已处置/失败"区分）
+    Ctl -> Audit : M57 记录拒绝/越权尝试
+  else 具备处置权限
+    Ctl -> Candidate : M58 读取候选实体清单、逐项证据、候选规模与状态版本
+    Ctl -> Clean : M59 读取异常原因、字段冲突项与原始内容
+    Ctl -> UI : M60 返回处理项内容（候选证据/异常原因/冲突字段与双方来源）
+    UI -> Admin : M61 显示处理项与可执行处置动作
+    Admin -> UI : M62 提交处置动作与理由
+    UI -> Ctl : M63 提交处置（处理项引用＋动作＋理由＋状态版本）
+    alt 处置＝确认不同（保留独立实体）
+      Ctl -> Candidate : M64 置确定不同并保留理由与证据
+      Ctl -> Audit : M65 记录确定不同依据
+      Ctl -> UI : M66 结果：确定不同（不合并，实体数不变）
+    else 处置＝确认新实体（人工判定）
+      Ctl -> Work : M67 新建成果实体（依据＝人工判定；原署名与来源保留）
+      Ctl -> Candidate : M68 置已处理（确认新实体）
+      Ctl -> Audit : M69 记录人工新建依据
+      Ctl -> UI : M70 结果：新建实体（实体数＋1）
+    else 处置＝合并至目标实体
+      Ctl -> Ctl : M71 合并守卫：类型一致∧无循环合并∧状态版本未变∧目标实体非待核验/争议（A11）
+      alt 循环合并或写入中断（A11）
+        Ctl -> UI : M72 拒绝循环合并或整体回滚，不留部分合并状态
+        Ctl -> Audit : M73 记录拒绝与回滚
+      else 守卫通过
+        Ctl -> Work : M74 合并到目标实体（迁移全部唯一出处与版本；字段按优先级合并）
+        Ctl -> Work : M75 目标实体记录合并链；来源实体标"已合并"并重定向旧标识（旧ID可溯源）
+        Ctl -> Work : M76 字段完整性核对：来源更完整值用于补充；冲突入同一可累积处理项
+        Ctl -> Candidate : M77 置已处理（合并）
+        Ctl -> Audit : M78 记录人工合并（依据/操作者/前后出处数与实体归属）
+        Ctl -> UI : M79 合并生效（全部出处保留、实体数减少、旧标识可定位）
+      end
+    else 处置＝拆分（把已合并实体还原）
+      Ctl -> Work : M80 拆分：重建来源映射与实体归属（不删除任何出处与版本）
+      Ctl -> Work : M81 更新拆分后实体标识与重定向，原合并链保留
+      Ctl -> Candidate : M82 置已处理（拆分）
+      Ctl -> Audit : M83 记录拆分（依据/操作者/前后归属；撤销另写新记录，不覆盖历史）
+      Ctl -> UI : M84 拆分生效（历史合并记录与审计保留）
+    else 处置＝确认字段生效值（人工确认字段冲突项）
+      Ctl -> Work : M85 写入人工确认值（原已确认值保留在证据链；来源原值不改写）（A9）
+      Ctl -> Clean : M86 关闭该字段冲突项（记录确认者/时间/依据）
+      Ctl -> Audit : M87 记录字段确认（前后值/双方来源）
+      Ctl -> UI : M88 字段确认生效（此后来源更新不得静默覆盖该值）
+    else 处置＝修正字段后重新判定
+      Ctl -> Clean : M89 修正规范值（原值与规则版本保留，记录修正者与理由）
+      Ctl -> Ctl : M90 重新进入标识匹配与候选判定（不新建并列处理项）
+      Ctl -> Audit : M91 记录字段修正（前后值/操作者/理由）
+    else 处置＝忽略（含理由）
+      Ctl -> Clean : M92 置已处理（忽略，理由保留；不进入公开检索）
+      Ctl -> Audit : M93 记录忽略依据
+      Ctl -> UI : M94 结果：已忽略（不公开）
+    end
+  end
+end
+Ctl -> UI : M95 留痕写入失败：不报告成功，可重试，不留"已生效但无记录"（A13）
+UI -> Admin : M96 显示失败与重试
+legend right
+  只分析 UC-09 核验和纠正成果数据：按类型最小字段校验、原值与时间精度保留、标识按作用域归一、稳定标识匹配、无标识候选、版本归并、重复到达幂等、人工合并/拆分与字段确认。
+  不分析：来源接入/采集任务（UC-18）、增量同步与恢复（UC-19）、学者身份消歧与归属改派（UC-10）、学者纠错申请（UC-08）、检索/门户/统计展示（UC-01/02/03/11）、后台待办与审计查询（UC-17）。
+  M24/M26 是唯一的自动关联路径：同类型∧稳定标识精确且唯一命中∧证据相容；M31/M34–M41 说明无稳定标识只产生候选，标题相似本身绝不自动合并（AC-IMPL-FR09-02）。
+  M19–M23 是幂等路径：distinct 实体数与 distinct(source_id,source_record_key) 有效出处数均不增加，只允许到达事件增加（AC-IMPL-FR09-03/06）。
+  M12/M14 只按已记录的事件语义与精度处理时间：仅年份不补日期，采集时间不冒充发生时间（AC-IMPL-FR09-04）；M28/M85 保证已人工确认值不被静默覆盖。
+  M46/M48 只在存在明示版本证据时归并版本；版本归并不增加成果实体数（AC-IMPL-FR09-05）；辖区未知的专利标识不作稳定键（M13）。
+  无标识相似度阈值、候选年份窗、候选截断长度、字段优先级与复核比例均未冻结，标待确认，不得写成已批准规则（D-07；Q-SPEC-01）。
+  本图不采集来源、不改写原始来源事实、不新建采集任务、不做学者身份判定、不删除成果与来源；下游检索/门户/统计的一致性要求只作声明（NF05 实测未运行）。
+endlegend
+@enduml

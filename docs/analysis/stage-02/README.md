@@ -70,6 +70,8 @@ S02采用教材第5章 §5.4–§5.5 的用例分析与分析类方法，并结�
 | UC-07 VOPC | `stage-02/uc-07/diagrams/DGM-VOPC-08-scholar-maintenance.puml` | `stage-02/uc-07/diagrams/generated/` |
 | UC-08 专项成果确认/纠错序列 | `stage-02/uc-08/diagrams/DGM-SEQ-13-authorship-correction.puml` | `stage-02/uc-08/diagrams/generated/` |
 | UC-08 VOPC | `stage-02/uc-08/diagrams/DGM-VOPC-09-authorship-correction.puml` | `stage-02/uc-08/diagrams/generated/` |
+| UC-09 专项去重治理序列 | `stage-02/uc-09/diagrams/DGM-SEQ-14-dedup.puml` | `stage-02/uc-09/diagrams/generated/` |
+| UC-09 VOPC | `stage-02/uc-09/diagrams/DGM-VOPC-10-dedup.puml` | `stage-02/uc-09/diagrams/generated/` |
 
 复用并核对：认领活动图、认领申请状态图、采集任务状态图、Authorship关系状态图。
 

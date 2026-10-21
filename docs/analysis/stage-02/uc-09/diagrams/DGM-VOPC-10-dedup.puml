@@ -1,0 +1,52 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 55
+skinparam ranksep 80
+hide circle
+hide empty members
+top to bottom direction
+title DGM-VOPC-10 UC-09 核验和纠正成果数据参与类类图（VOPC）
+boundary "DedupGovernanceUI" as UI
+control "DedupCoordinator" as Ctl
+entity "User" as User
+entity "SourceRecord" as Source
+entity "CleanRecord" as Clean
+entity "DedupCandidate" as Candidate
+entity "WorkEntity" as Work
+entity "WorkVersion" as Version
+entity "AuditEvidence" as Audit
+UI --> Ctl : M2 提交治理批次；M53 请求处理项详情\nM7/M15/M17/M23/M30/M33/M37/M39/M41/M45\nM50/M55/M60/M66/M70/M72/M79/M84/M88/M94/M95 返回结果
+Ctl --> User : M54 校验管理员身份、账号状态与处置权限
+Ctl --> Source : M3/M19 只读取原值与逻辑出处（不覆盖）\nM20 追加重复到达事件（不改写原值）
+Ctl --> Clean : M5 登记异常；M9/M11/M12/M13/M18 建立与置状态；M59 读冲突项；\nM86/M89/M92 关闭或修正
+Ctl --> Candidate : M31/M35/M36/M38/M40/M48 生成与标记候选；M58 读证据；\nM64/M68/M77/M82 置已处理
+Ctl --> Work : M24/M25 按标识查找；M27/M28 关联出处与字段合并；M42/M43/M67 新建；\nM74–M76 合并；M80/M81 拆分；M85 写入人工确认值
+Ctl --> Version : M46 归入明示版本清单
+Ctl --> Audit : M6/M22/M29/M32/M44/M47/M57/M65/M69/M73/M78/M83/M87/M91/M93 治理留痕
+Source "1" --> "0..*" Clean : 规范记录（原值只读保留）
+Candidate "0..*" --> "1" Clean : 待核验的规范化记录
+Candidate "1" --> "0..*" Work : 候选实体清单（证据逐项列出）
+Work "1" --> "0..*" Source : 出处（全部保留，重复不增）
+Work "1" --> "0..*" Version : 明示版本关系（无证据不建立）
+Version "0..*" --> "1" Source : 明示版本指向（版本证据来源）
+legend right
+  只包含 UC-09 顺序图中的 9 个参与对象；"来源采集/增量任务（UC-18/19）"与"治理管理员"是参与者，不画成系统类。
+  边上的编号对应 04 逐消息表：M2/M53 请求；M54 权限；M3/M19 原值与逻辑出处（M20 只追加到达事件）；
+  M5/M9/M11/M12/M13/M18 规范记录与治理状态；M31/M35–M41/M48 候选生成，M58/M64/M68/M77/M82 候选读取与置已处理；
+  M24–M28 稳定标识查找、出处关联与字段合并；M42/M43/M67 新建，M74–M76 合并，M80/M81 拆分，M85 人工确认值；
+  M46 明示版本归并；M6/M22/M29/M32/M44/M47/M57/M65/M69/M73/M78/M83/M87/M91/M93 治理留痕。
+  Source 1→0..* Clean：规范记录按逻辑出处与规则版本产生，原值不被覆盖（INV-01/CL-11）。
+  Candidate 0..*→1 Clean 与 Candidate 1→0..* Work：一条待核验记录对照多个候选实体，逐项列出证据；候选不得默认选第一个。
+  Work 1→0..* Source 沿用 UC-02：出处全部保留，重复来源与版本不增加实体数（INV-02/DD-11）。
+  Work 1→0..* Version 只在明示证据时建立；Version 0..*→1 Source 由本 UC 依 DD-08/M46 建立（UC-02 明示留待 UC-09/16）。
+  未单画的两条关系：①"记录归入成果实体"由 Work 1→0..* Source 的出处与 CleanRecord.matchOutcome 表达（待核验时无归属）；
+  ②合并/拆分链与旧标识重定向由 WorkEntity.redirectRefs 与追加式 AuditEvidence 表达（DD-09/DD-10；M75/M78/M83），不画自关联。
+  控制/边界到实体的关联按消息方向表达协作，不定义持久多重性；到 SourceRecord 的实线表示"只读原值＋仅追回到达事件"，不是可改写原始证据。
+  本图无 UC-18/19 采集任务、UC-10 学者身份、UC-08 纠错申请、UC-17 待办队列与 UC-01/02 展示对象：不采集、不做消歧、不发布、不删除成果与来源。
+endlegend
+@enduml

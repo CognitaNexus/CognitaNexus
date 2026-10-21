@@ -13,6 +13,10 @@
 | RegistrationCoordinator | Control | UC-04 | — | 注册校验、User+UserProfile 创建、稳定地址、幂等/回滚 | 注册请求状态（单次） | → User、→ UserProfile | 不定义持久多重性 | 全局 `RegCtl` | 统一命名 |
 | User | Entity | UC-04 | UC-05/06/22 | 账号、会话、对象授权主体 | stableId、accountState | 1:1 UserProfile；提交 Claim | 1:1（UserProfile） | 不等于 Scholar | 保留 |
 | UserProfile | Entity | UC-04 | UC-03/22 | 唯一公开普通主页 | stableId/publicUrl、公开普通资料、零成果空态 | 属于 User | 1:1 | 不强制对应 Scholar | 保留 |
+| DedupGovernanceUI | Boundary | UC-09 | — | 清洗/去重核验、候选/合并/拆分、结果与审计查询 | 无持久业务属性 | → DedupCoordinator | 不定义持久多重性 | 全局 `AdminUI`/`GovernCtl` 邻近 | R5 统一 |
+| DedupCoordinator | Control | UC-09 | — | 字段校验、稳定ID匹配、候选、版本证据、合并/拆分、幂等、审计 | 单批处理状态 | → SourceRecord/CleanRecord/DedupCandidate/WorkEntity/WorkVersion/AuditEvidence | 不定义持久多重性 | 全局 `GovernCtl` | 统一命名 |
+| CleanRecord | Entity | UC-09 | — | 来源原值的规范化工作记录、缺失/未知标记 | 规范值/原值引用/字段状态/年份精度 | →SourceRecord | 未定 | 全局无 | R5 决定 |
+| DedupCandidate | Entity | UC-09 | — | 多证据候选、相似/冲突、待人工判定 | 候选集/证据/差异/状态 | →WorkEntity；→SourceRecord | 未定 | 全局无 | R5 决定 |
 | AchievementCorrectionUI | Boundary | UC-08 | — | 成果关系确认/补录/纠错、待审/拒绝/失败/查询 | 无持久业务属性 | → AchievementCorrectionCoordinator | 不定义持久多重性 | 全局 `ScholarPortalUI`/`ClaimUI` 邻近 | R5 统一门户边界 |
 | AchievementCorrectionCoordinator | Control | UC-08 | — | 授权/归属/状态守卫；确认；补录纠错；待审；生效/审计 | 单次操作状态 | → User/Auth/Scholar/Authorship/WorkEntity/SourceRecord/CorrectionRequest/ReviewEvidence/AuditEvidence | 不定义持久多重性 | 全局 `GovernCtl` 部分 | R5 分界 |
 | CorrectionRequest | Entity | UC-08 | — | 待审纠错/补录请求、前后值、状态、证据 | 类型/目标/前后值/理由/状态/版本/submitter | → WorkEntity/Authorship；→ReviewEvidence | 未定 | 全局无 | R5 决定 |
