@@ -13,6 +13,8 @@
 | RegistrationCoordinator | Control | UC-04 | — | 注册校验、User+UserProfile 创建、稳定地址、幂等/回滚 | 注册请求状态（单次） | → User、→ UserProfile | 不定义持久多重性 | 全局 `RegCtl` | 统一命名 |
 | User | Entity | UC-04 | UC-05/06/22 | 账号、会话、对象授权主体 | stableId、accountState | 1:1 UserProfile；提交 Claim | 1:1（UserProfile） | 不等于 Scholar | 保留 |
 | UserProfile | Entity | UC-04 | UC-03/22 | 唯一公开普通主页 | stableId/publicUrl、公开普通资料、零成果空态 | 属于 User | 1:1 | 不强制对应 Scholar | 保留 |
+| InstitutionRankUI | Boundary | UC-12 | — | 机构排名筛选、范围/口径/更新时间、空/失败 | 无持久业务属性 | → InstitutionRankCoordinator | 不定义持久多重性 | 与 `StatisticsUI` 邻近 | R5 评估合并 |
+| InstitutionRankCoordinator | Control | UC-12 | — | 去重计数、发生期机构、别名归并、未知披露、排序 | 单次排名请求状态 | → WorkEntity/Institution/Authorship | 不定义持久多重性 | 与 `StatisticsCoordinator` 邻近 | R5 评估合并 |
 | StatisticsUI | Boundary | UC-11 | UC-12/13 | 统计筛选、口径/范围/更新时间、空/失败展示 | 无持久业务属性 | → StatisticsCoordinator | 不定义持久多重性 | 全局 `AnalyticsUI` | 统一命名 |
 | StatisticsCoordinator | Control | UC-11 | UC-12/13 | 去重计数、真实/模拟过滤、机构发生期、范围/口径、投影 | 单次统计请求状态 | → WorkEntity/Authorship/Institution | 不定义持久多重性 | 全局 `GraphCtl`/`AnalyticsNetworkCoordinator` | R5 分界 |
 | Institution | Entity | UC-11 | UC-12/14 | 机构规范名/别名/合并链/未映射，发生期归属 | canonicalName/aliases/mergeChain/unmapped | 被统计读取；成果发生期归属 | 未定 | 全局无 | R5 决定 |

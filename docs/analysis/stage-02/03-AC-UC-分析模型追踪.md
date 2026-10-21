@@ -83,8 +83,8 @@
 | 33 | `AC-IMPL-FR09-03` | FR09 | BR-IMP-02/04 | UC-09 | governance-dedup / CLASS-01 | 去重/冲突/版本/幂等 | 计划验收，未执行 |
 | 34 | `AC-IMPL-FR10-01` | FR10 | BR-IMP-04/10 | UC-19 | DGM-USECASE-03 / STATE-01 / SEQ-01 | 增量冲突/断连恢复 | 计划验收，未执行 |
 | 35 | `AC-IMPL-FR10-02` | FR10 | BR-IMP-04/10 | UC-19 | DGM-USECASE-03 / STATE-01 / SEQ-01 | 增量冲突/断连恢复 | 计划验收，未执行 |
-| 36 | `AC-IMPL-FR11-01` | FR11 | BR-IMP-06/07 | UC-11、UC-12 | DGM-USECASE-02 / CLASS-01 | 去重统计/真实资格 | 计划验收，未执行  / SEQ-19 / VOPC-15 |
-| 37 | `AC-IMPL-FR11-02` | FR11 | BR-IMP-06/07 | UC-11、UC-12 | DGM-USECASE-02 / CLASS-01 | 去重统计/真实资格 | 计划验收，未执行  / SEQ-19 / VOPC-15 |
+| 36 | `AC-IMPL-FR11-01` | FR11 | BR-IMP-06/07 | UC-11、UC-12 | DGM-USECASE-02 / CLASS-01 | 去重统计/真实资格 | 计划验收，未执行  / SEQ-19 / VOPC-15  / SEQ-20 / VOPC-16 |
+| 37 | `AC-IMPL-FR11-02` | FR11 | BR-IMP-06/07 | UC-11、UC-12 | DGM-USECASE-02 / CLASS-01 | 去重统计/真实资格 | 计划验收，未执行  / SEQ-19 / VOPC-15  / SEQ-20 / VOPC-16 |
 | 38 | `AC-IMPL-FR12-01` | FR12 | BR-IMP-01/03/07/08 | UC-14 | DGM-USECASE-02 / ACT-08 / CLASS-01 | 四类共同成果基础边 | NOT RUN |
 | 39 | `AC-IMPL-FR12-02` | FR12 | BR-IMP-01/03/07/08 | UC-14 | DGM-USECASE-02 / ACT-08 / CLASS-01 | 四类共同成果基础边 | NOT RUN |
 | 40 | `AC-IMPL-FR12-03` | FR12 | BR-IMP-01/03/07/08 | UC-14 | DGM-USECASE-02 / ACT-08 / CLASS-01 | 四类共同成果基础边 | NOT RUN |

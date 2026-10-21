@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" contentScriptType="application/ecmascript" contentStyleType="text/css" height="1746.875px" preserveAspectRatio="none" style="width:1429px;height:1746px;" version="1.1" viewBox="0 0 1429 1746" width="1429.6875px" zoomAndPan="magnify"><defs/><g><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="501.5625" x="462.5" y="25.3749">DGM-VOPC-16 UC-12 查看机构排名（参与类类图）</text><!--MD5=[c42ed81cef7fdd2e33758127945b9a5b]
+entity UI--><path d="M613.25,50.4249 L613.25,87.9249 M613.25,69.1749 L639.8125,69.1749 " fill="none" style="stroke: #383838; stroke-width: 3.125;"/><ellipse cx="658.5625" cy="69.1749" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="215.625" x="537.4688" y="119.5498">InstitutionRankingUI</text><!--MD5=[793d3c1671d31b6c1e8ec57652c36e20]
+entity Ctl--><ellipse cx="645.2813" cy="356.6749" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><polygon fill="#383838" points="639.0313,337.9249,648.4063,330.1124,645.2813,337.9249,648.4063,345.7374,639.0313,337.9249" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="315.625" x="487.4688" y="407.0498">InstitutionRankingCoordinator</text><!--MD5=[a77f957b2a6e22bdab97b457a46ed7f7]
+entity Work--><ellipse cx="495.2813" cy="931.6749" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="476.5313" x2="514.0313" y1="953.5499" y2="953.5499"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="110.9375" x="439.8125" y="982.0498">WorkEntity</text><!--MD5=[2adafb71f79b579cb10c451294768df0]
+entity Inst--><ellipse cx="681.2188" cy="1219.1749" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="662.4688" x2="699.9688" y1="1241.0499" y2="1241.0499"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="107.8125" x="627.3125" y="1269.5498">Institution</text><!--MD5=[6fc455826c98a6c9c88b855fa60d23bd]
+entity Rel--><ellipse cx="645.2813" cy="644.1749" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="626.5313" x2="664.0313" y1="666.0499" y2="666.0499"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="115.625" x="587.4688" y="694.5498">Authorship</text><!--MD5=[17fea0aa4954acf1c0acc7d7b643deef]
+link UI to Ctl--><path d="M645.2813,125.9092 C645.2813,177.6905 645.2813,268.3624 645.2813,323.6436 " fill="none" id="UI-&gt;Ctl" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="645.2813,331.5342,651.5313,317.4717,645.2813,323.7217,639.0313,317.4717,645.2813,331.5342" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="359.375" x="646.8438" y="238.2998">M2/M22/M28/M32 请求；其余为返回</text><!--MD5=[2969afc65a0ef887f7bc34b1ca90670b]
+link Ctl to Work--><path d="M588.7969,413.1592 C532.3438,456.2217 449.0313,531.0499 414.0313,619.1749 C375.7656,715.5811 429.6563,835.3155 466.2813,899.6749 " fill="none" id="Ctl-&gt;Work" style="stroke: #383838; stroke-width: 1.5625; stroke-dasharray: 7.0,7.0;"/><polygon fill="#383838" points="470.2031,906.4874,468.5822,891.1841,466.2958,899.7221,457.7578,897.4358,470.2031,906.4874" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="115.625" x="415.5938" y="669.5498">M4/M7 只读</text><!--MD5=[3006fbe2690c6cb5964247c205d44123]
+link Ctl to Rel--><path d="M645.2813,413.4092 C645.2813,465.1905 645.2813,555.8624 645.2813,611.1436 " fill="none" id="Ctl-&gt;Rel" style="stroke: #383838; stroke-width: 1.5625; stroke-dasharray: 7.0,7.0;"/><polygon fill="#383838" points="645.2813,619.0342,651.5313,604.9717,645.2813,611.2217,639.0313,604.9717,645.2813,619.0342" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="78.125" x="646.8438" y="525.7998">M9 只读</text><!--MD5=[9ad9c5748a6b5c0deb73d84460f6d6e7]
+link Ctl to Inst--><path d="M690.625,413.2061 C713.4688,435.8155 739.2031,466.1592 753.0938,498.8624 C853.5,735.0499 794.4062,817.4874 806.2188,1073.8624 C806.9219,1089.128 812.0781,1094.128 806.2188,1108.2374 C792.9063,1140.3936 766.8594,1168.5811 741.9844,1190.0186 " fill="none" id="Ctl-&gt;Inst" style="stroke: #383838; stroke-width: 1.5625; stroke-dasharray: 7.0,7.0;"/><polygon fill="#383838" points="735.6875,1195.3155,750.4763,1191.0601,741.6709,1190.2921,742.4389,1181.4867,735.6875,1195.3155" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="90.625" x="814.0313" y="813.2998">M12 只读</text><!--MD5=[c85b11af7123fbdce66a00aa66fed9af]
+link Rel to Work--><path d="M624.4375,700.9092 C597,752.8936 548.8906,844.1124 519.7656,899.3155 " fill="none" id="Rel-&gt;Work" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="515.9688,906.5342,528.0452,896.9962,519.6046,899.6194,516.9814,891.1788,515.9688,906.5342" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="87.5" x="581.2188" y="813.2998">归属成果</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="35.9375" x="580.0098" y="738.6948">0..*</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="12.5" x="506.8074" y="887.6188">1</text><!--MD5=[bdded77db989bcf54ed3dd7b83a0e2b7]
+link Work to Inst--><path d="M478.2656,988.1124 C466.3125,1022.0499 455.8125,1071.2999 476.5313,1108.2374 C506.7969,1162.1749 570.875,1195.6124 619.3125,1214.1749 " fill="none" id="Work-&gt;Inst" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="626.9531,1217.0186,615.9517,1206.2583,619.6307,1214.295,611.594,1217.9741,626.9531,1217.0186" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="306.25" x="478.0938" y="1100.7998">成果发生时机构归属（有证据）</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="35.9375" x="434.238" y="1026.5384">0..*</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="35.9375" x="579.0518" y="1205.6106">0..*</text><rect fill="#DDDDDD" height="427.3982" rx="7.8125" ry="7.8125" style="stroke: #000000; stroke-width: 1.5625;" width="1400" x="12.5" y="1303.5499"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="706.25" x="21.875" y="1336.7373">只包含 UC-12 顺序图中的 5 个参与对象；访客是参与者，不画成系统类。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="1109.375" x="21.875" y="1368.4121">边上的编号对应 04 逐消息表：M2/M22/M28/M32 请求；M19/M25/M29/M33/M36/M38/M40/M42/M44/M46 返回；</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="903.125" x="21.875" y="1400.087">M4/M7 只读读取去重成果实体、共享字段与发生时机构归属事实（不写、不删除、不合并）；</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="1065.625" x="21.875" y="1431.7618">M9 只读读取参与者署名机构原值（不写关系状态）；M12 只读读取机构规范名、别名与合并链（不写机构）。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="1142.1875" x="21.875" y="1463.4367">Rel 0..*→1 Work：一条参与关系只属于一项成果，一项成果可有多条参与关系（沿用 UC-02/UC-03/UC-10/UC-11）。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="1243.75" x="21.875" y="1495.1116">Work 0..*→0..* Inst：一项成果的“成果发生时机构归属”可有零个（缺失或无证据→机构未知）或多个（不同机构各计一次），</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="740.625" x="21.875" y="1526.7864">一个机构可对应多项成果；同一机构在同一成果上只计一次（BR-IMP-06）。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="1228.125" x="21.875" y="1558.4613">机构规范名与别名合并链写成 Institution 属性，不另画 Institution 自关联，也不画 Authorship→Institution 边（05 §2.3）。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="656.25" x="21.875" y="1590.1361">控制／边界到实体的关联按消息方向表达协作，不定义持久多重性。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="1381.25" x="21.875" y="1621.811">本图无持久“排名结果／排名快照／口径版本”类，无 DTO、报表、图表数据类：排名视图是读时投影（分析态），不是业务实体（05 §4）。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="1160.9375" x="21.875" y="1653.4859">本图无 SourceRecord／WorkVersion 消息：来源数、版本数都不参与计数；本图无 Scholar／User／UserProfile 消息：</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="935.9375" x="21.875" y="1685.1607">不以作者当前任职单位推断成果归属，也不做个人排名或学者维度排名（BR-513；SRS §2.1）。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="773.4375" x="21.875" y="1716.8356">本图无质量评分、影响力或机构优劣排序类：只做计数与并列名次（BR-522）。</text><!--MD5=[70ab49fc4834584dd2d7de58775b74ce]
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 70
+skinparam ranksep 110
+hide circle
+hide empty members
+top to bottom direction
+title DGM-VOPC-16 UC-12 查看机构排名（参与类类图）
+boundary "InstitutionRankingUI" as UI
+control "InstitutionRankingCoordinator" as Ctl
+entity "WorkEntity" as Work
+entity "Institution" as Inst
+entity "Authorship" as Rel
+UI - -> Ctl : M2/M22/M28/M32 请求；其余为返回
+Ctl ..> Work : M4/M7 只读
+Ctl ..> Rel : M9 只读
+Ctl ..> Inst : M12 只读
+Rel "0..*" - -> "1" Work : 归属成果
+Work "0..*" - -> "0..*" Inst : 成果发生时机构归属（有证据）
+legend right
+  只包含 UC-12 顺序图中的 5 个参与对象；访客是参与者，不画成系统类。
+  边上的编号对应 04 逐消息表：M2/M22/M28/M32 请求；M19/M25/M29/M33/M36/M38/M40/M42/M44/M46 返回；
+  M4/M7 只读读取去重成果实体、共享字段与发生时机构归属事实（不写、不删除、不合并）；
+  M9 只读读取参与者署名机构原值（不写关系状态）；M12 只读读取机构规范名、别名与合并链（不写机构）。
+  Rel 0..*→1 Work：一条参与关系只属于一项成果，一项成果可有多条参与关系（沿用 UC-02/UC-03/UC-10/UC-11）。
+  Work 0..*→0..* Inst：一项成果的“成果发生时机构归属”可有零个（缺失或无证据→机构未知）或多个（不同机构各计一次），
+  一个机构可对应多项成果；同一机构在同一成果上只计一次（BR-IMP-06）。
+  机构规范名与别名合并链写成 Institution 属性，不另画 Institution 自关联，也不画 Authorship→Institution 边（05 §2.3）。
+  控制／边界到实体的关联按消息方向表达协作，不定义持久多重性。
+  本图无持久“排名结果／排名快照／口径版本”类，无 DTO、报表、图表数据类：排名视图是读时投影（分析态），不是业务实体（05 §4）。
+  本图无 SourceRecord／WorkVersion 消息：来源数、版本数都不参与计数；本图无 Scholar／User／UserProfile 消息：
+  不以作者当前任职单位推断成果归属，也不做个人排名或学者维度排名（BR-513；SRS §2.1）。
+  本图无质量评分、影响力或机构优劣排序类：只做计数与并列名次（BR-522）。
+endlegend
+@enduml
+
+PlantUML version 1.2020.02(Sun Mar 01 18:22:07 CST 2020)
+(GPL source distribution)
+Java Runtime: Java(TM) SE Runtime Environment
+JVM: Java HotSpot(TM) 64-Bit Server VM
+Java Version: 22.0.2+9-70
+Operating System: Linux
+Default Encoding: UTF-8
+Language: en
+Country: US
+--></g></svg>

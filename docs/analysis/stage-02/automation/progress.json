@@ -48,7 +48,7 @@
       "UC-16"
     ]
   },
-  "current": null,
+  "current": "UC-12",
   "ucs": {
     "UC-01": {
       "title": "公开成果检索",
@@ -179,7 +179,9 @@
       "vopc": "DGM-VOPC-16",
       "reviewRounds": 0,
       "reviewReport": null,
-      "status": "PENDING"
+      "status": "ANALYSIS_COMPLETE_REVIEW_BLOCKED",
+      "reviewSeverity": null,
+      "blocker": "deepseek provider returned 402 Insufficient Balance to reviewer subagents on 3 attempts"
     },
     "UC-13": {
       "title": "查看领域热点",
@@ -269,7 +271,13 @@
   "compaction": {
     "automaticEnabled": null,
     "note": "Pi default auto-compaction enabled (settings has no override); manual /compact is interactive-only and was not run.",
-    "events": [],
+    "events": [
+      {
+        "at": "2026-10-21T14:34:26+08:00",
+        "type": "provider_failure",
+        "note": "reviewer subagent failed 3x with 402 Insufficient Balance; no model switch performed"
+      }
+    ],
     "lastCheckpointHead": "1664c65c797747f329022fba9c68e4295c6bc3b8"
   },
   "checkpoints": [
@@ -362,6 +370,12 @@
       "head": "0b534c25329a4eec8402d27f6d502bcf04e96655",
       "at": "2026-10-21",
       "note": "UC-11 complete; R1 PASS/MINOR"
+    },
+    {
+      "id": "CP-015",
+      "head": "4539de99f6aafc2d8b74d2e60d2d538a70540fa3",
+      "at": "2026-10-21",
+      "note": "UC-12 analysis delivered, independent review blocked by provider balance; worktree preserved"
     }
   ]
 }

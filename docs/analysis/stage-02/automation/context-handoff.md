@@ -12,6 +12,8 @@
 - 自动压缩：Pi 默认 `compaction.enabled=true`；settings 未覆盖（reserve 16384、keepRecent 20000）。手动 `/compact` 仅交互式，Agent 未执行。
 
 ## 2. 当前状态
+
+> **2026-10-21 阻断：** deepseek provider 对审查子 Agent 连续3次返回 `402 Insufficient Balance`。按规则未切换模型、未假装审查通过。UC-12 分析已完成但独立审查为 `REVIEW_BLOCKED`；UC-13/14/15/16 未开始。恢复条件：账户余额恢复后，从 UC-12 独立审查继续。
 - 已完成/待复核：UC-04、UC-01（已有9份文档+SEQ/VOPC图）。
 - 本轮顺序：先只读复核 UC-04/UC-01；再按批次 1（02/03/22）→ 2（05–08）→ 3（09/10/17/18/19）→ 4（11–16）。
 - 当前 UC：见 `progress.json.current`。

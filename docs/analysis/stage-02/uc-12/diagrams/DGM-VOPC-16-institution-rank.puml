@@ -1,0 +1,40 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 70
+skinparam ranksep 110
+hide circle
+hide empty members
+top to bottom direction
+title DGM-VOPC-16 UC-12 查看机构排名（参与类类图）
+boundary "InstitutionRankingUI" as UI
+control "InstitutionRankingCoordinator" as Ctl
+entity "WorkEntity" as Work
+entity "Institution" as Inst
+entity "Authorship" as Rel
+UI --> Ctl : M2/M22/M28/M32 请求；其余为返回
+Ctl ..> Work : M4/M7 只读
+Ctl ..> Rel : M9 只读
+Ctl ..> Inst : M12 只读
+Rel "0..*" --> "1" Work : 归属成果
+Work "0..*" --> "0..*" Inst : 成果发生时机构归属（有证据）
+legend right
+  只包含 UC-12 顺序图中的 5 个参与对象；访客是参与者，不画成系统类。
+  边上的编号对应 04 逐消息表：M2/M22/M28/M32 请求；M19/M25/M29/M33/M36/M38/M40/M42/M44/M46 返回；
+  M4/M7 只读读取去重成果实体、共享字段与发生时机构归属事实（不写、不删除、不合并）；
+  M9 只读读取参与者署名机构原值（不写关系状态）；M12 只读读取机构规范名、别名与合并链（不写机构）。
+  Rel 0..*→1 Work：一条参与关系只属于一项成果，一项成果可有多条参与关系（沿用 UC-02/UC-03/UC-10/UC-11）。
+  Work 0..*→0..* Inst：一项成果的“成果发生时机构归属”可有零个（缺失或无证据→机构未知）或多个（不同机构各计一次），
+  一个机构可对应多项成果；同一机构在同一成果上只计一次（BR-IMP-06）。
+  机构规范名与别名合并链写成 Institution 属性，不另画 Institution 自关联，也不画 Authorship→Institution 边（05 §2.3）。
+  控制／边界到实体的关联按消息方向表达协作，不定义持久多重性。
+  本图无持久“排名结果／排名快照／口径版本”类，无 DTO、报表、图表数据类：排名视图是读时投影（分析态），不是业务实体（05 §4）。
+  本图无 SourceRecord／WorkVersion 消息：来源数、版本数都不参与计数；本图无 Scholar／User／UserProfile 消息：
+  不以作者当前任职单位推断成果归属，也不做个人排名或学者维度排名（BR-513；SRS §2.1）。
+  本图无质量评分、影响力或机构优劣排序类：只做计数与并列名次（BR-522）。
+endlegend
+@enduml
