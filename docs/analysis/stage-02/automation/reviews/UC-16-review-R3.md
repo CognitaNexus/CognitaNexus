@@ -1,0 +1,9 @@
+REVIEW_STATUS: PASS (OK with notes)
+SEVERITY: none blocking — no CRITICAL/MAJOR remains
+
+## Review
+- Correct: Prior R2 finding is closed. `DGM-SEQ-24-four-types-scale.puml:11` now declares `actor "核对者（访客或核对执行者）" as Requester`, and M24 (`:51`-ish `UI --> Requester : M24 显示缺项…`) and M26 (`UI --> Requester : M26 显示结果…`) both terminate on that explicit lifeline; `01` §6 E1 and `04` M24/M26 receiver cells agree ("发起本次核对的核对者（访客或核对执行者）"). The regenerated SVG carries the same three actor lanes (`SVG` text nodes "核对者（访客或核对执行者）" at x≈101, M24/M26 arrows x1≈246→931), so diagram and tables are in sync; M24/M26 also stay inside the correct `alt` branches (缺项/不一致 vs 覆盖一致), preserving the mutual-exclusion rule in `04` §3.4.
+- Finding: P2 — residual receiver asymmetry. `M8` (read-failure) and `M27` (原站外链) still go only to `Visitor` (`puml` lines with `UI --> Visitor : M8`/`M27`; `04` rows M8/M27 receiver = 访客), so a checker-initiated scale check sees success (M26) on `Requester` but failure (M8) on `Visitor`. `04` M8 note documents this ("核对执行者发起时同一失败状态同样展示，不另设消息"), so it is a disclosed simplification, not an unreviewed defect. Smallest fix: change M8 to `UI --> Requester` and update the `04` M8 receiver cell.
+- Finding: P2 — stale self-check records after regeneration. `08-self-check.md:44` still says "与顺序图对象集合一致（两个 Actor…）" while the diagram now has three actor lanes; `08:145` records render size `3732×2306` but the current SVG is 3578×2307 (`viewBox="0 0 3578 2307"`). Also `05-vopc.md:71-72` object-mapping table omits the new `Requester` actor, though `05:100` otherwise claims full Actor exclusion. Smallest fix: update the three counts/dimension lines.
+- Not verified: PNG regeneration timestamp/dimensions (no shell access); `04` M24/M26 text matches source exactly, so no rendering divergence found in SVG markup.
+- Merge verdict: OK with notes — close P2s at next touch; nothing blocks.

@@ -100,8 +100,8 @@
 | 50 | `AC-IMPL-FR15-04` | FR15 | BR-IMP-03/10 | UC-10、UC-08 | governance-relation / SEQ-02 / CLASS-01 | 身份候选/排除不恢复 | NOT RUN |
 | 51 | `AC-IMPL-FR15-05` | FR15 | BR-IMP-03/10 | UC-10、UC-08 | governance-relation / SEQ-02 / CLASS-01 | 身份候选/排除不恢复 | NOT RUN |
 | 52 | `AC-IMPL-FR15-06` | FR15 | BR-IMP-03/10 | UC-10、UC-08 | governance-relation / SEQ-02 / CLASS-01 | 身份候选/排除不恢复 | NOT RUN |
-| 53 | `AC-IMPL-FR16-01` | FR16 | BR-IMP-02/07 | UC-16、UC-02 | DGM-USECASE-04 / ACT-07 | 四类来源与实体计数 | 计划验收，未执行 |
-| 54 | `AC-IMPL-FR16-02` | FR16 | BR-IMP-02/07 | UC-16、UC-02 | DGM-USECASE-04 / ACT-07 | 四类来源与实体计数 | 计划验收，未执行 |
+| 53 | `AC-IMPL-FR16-01` | FR16 | BR-IMP-02/07 | UC-16、UC-02 | DGM-USECASE-04 / ACT-07 | 四类来源与实体计数 | 计划验收，未执行  / SEQ-24 / VOPC-20 |
+| 54 | `AC-IMPL-FR16-02` | FR16 | BR-IMP-02/07 | UC-16、UC-02 | DGM-USECASE-04 / ACT-07 | 四类来源与实体计数 | 计划验收，未执行  / SEQ-24 / VOPC-20 |
 | 55 | `AC-IMPL-IN01-01` | IN01 | BR-IMP-08/09 | UC-15 | DGM-USECASE-02 / ACT-08 / CLASS-01 | 论文子图最短路径/规模 | 计划验收，未执行  / SEQ-23 / VOPC-19 |
 | 56 | `AC-IMPL-IN01-02` | IN01 | BR-IMP-08/09 | UC-15 | DGM-USECASE-02 / ACT-08 / CLASS-01 | 论文子图最短路径/规模 | 计划验收，未执行  / SEQ-23 / VOPC-19 |
 | 57 | `AC-IMPL-IN01-03` | IN01 | BR-IMP-08/09 | UC-15 | DGM-USECASE-02 / ACT-08 / CLASS-01 | 论文子图最短路径/规模 | 计划验收，未执行  / SEQ-23 / VOPC-19 |

@@ -1,0 +1,37 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 50
+skinparam ranksep 60
+hide circle
+hide empty members
+title DGM-VOPC-20 UC-16 核对四类覆盖与来源参与类类图（VOPC）
+package "UC-16 参与类" {
+  boundary "CoverageCheckUI" as UI
+  control "CoverageCheckCoordinator" as Ctl
+  entity "WorkEntity" as Work
+  together {
+    entity "SourceRecord" as Source
+    entity "WorkVersion" as Version
+  }
+  UI -down-> Ctl : M3/M7/M23/M25
+  Ctl ..> Work : M5/M9/M14/M19
+  Ctl ..> Source : M11
+  Ctl ..> Version : M16
+  Work "1" -down- "0..*" Source : 来源证据
+  Work "1" -down- "0..*" Version : 明示版本证据
+}
+legend right
+  只包含UC-16顺序图中的5个参与对象；访客与核对执行者是参与者，不画成系统类。
+  边上编号对应04逐消息表：M3提交核对请求/M7·M23·M25返回；M5·M9·M14·M19只读成果事实；
+  M11只读来源级事实；M16只读明示版本证据。虚线表示只读：不写实体、不改公开状态。
+  控制/边界到实体的关联不定义持久多重性（一次核对请求的协作，不是聚合）。
+  成果到来源/版本的多重性来自FR16/BR-IMP-02/DD-08：来源数、版本数不进入计数分子，
+  规模按去重成果实体计；无明示版本证据不建立WorkVersion关系。
+  类型适用字段事实是WorkEntity的类型范围属性，不另设类；核对结果投影不另设类。
+endlegend
+@enduml

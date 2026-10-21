@@ -23,4 +23,4 @@
 | UC-13 | ISSUES/MINOR | 1 | R2 PASS/NONE | AUTO_REVIEW_PASS | `reviews/UC-13-review-R1.md`; `R2` |
 | UC-14 | ISSUES/MAJOR | 2 | R3 PASS/NONE | AUTO_REVIEW_PASS | `reviews/UC-14-review-R1.md`…`R3` |
 | UC-15 | PASS/MINOR | 0 | — | AUTO_REVIEW_PASS | `reviews/UC-15-review-R1.md` |
-| UC-16 | 未开始 | — | — | PENDING | — |
+| UC-16 | ISSUES/MAJOR | 2 | R3 PASS（MINOR 残留） | AUTO_REVIEW_PASS | `reviews/UC-16-review-R1.md`…`R3` |

@@ -13,6 +13,8 @@
 | RegistrationCoordinator | Control | UC-04 | — | 注册校验、User+UserProfile 创建、稳定地址、幂等/回滚 | 注册请求状态（单次） | → User、→ UserProfile | 不定义持久多重性 | 全局 `RegCtl` | 统一命名 |
 | User | Entity | UC-04 | UC-05/06/22 | 账号、会话、对象授权主体 | stableId、accountState | 1:1 UserProfile；提交 Claim | 1:1（UserProfile） | 不等于 Scholar | 保留 |
 | UserProfile | Entity | UC-04 | UC-03/22 | 唯一公开普通主页 | stableId/publicUrl、公开普通资料、零成果空态 | 属于 User | 1:1 | 不强制对应 Scholar | 保留 |
+| CoverageCheckUI | Boundary | UC-16 | — | 四类覆盖/来源/规模核对展示 | 无持久业务属性 | → CoverageCheckCoordinator | 不定义持久多重性 | 与 `AdminUI`/`AnalyticsUI` 邻近 | R5 统一 |
+| CoverageCheckCoordinator | Control | UC-16 | — | 四类可识别、适用字段、来源要素、去重计数、分组 | 单次核对状态 | → WorkEntity/SourceRecord/WorkVersion | 不定义持久多重性 | 全局无 | R5 决定 |
 | ShortestPathUI | Boundary | UC-15 | — | 筛选/端点/路径/证据/无路径/超规模展示 | 无持久业务属性 | → ShortestPathCoordinator | 不定义持久多重性 | 与 `AnalyticsUI` 邻近 | R5 统一 |
 | ShortestPathCoordinator | Control | UC-15 | — | 论文子图、筛选、图版本、BFS、字典序、证据 | 单次查询状态 | → CollaborationEdge/WorkEntity/Scholar | 不定义持久多重性 | 全局 `GraphCtl` 部分 | R5 分界 |
 | CollaborationNetworkUI | Boundary | UC-14 | UC-15 | 网络视图、筛选、披露块、空/失败/拒绝 | 无持久业务属性 | → CollaborationNetworkCoordinator | 不定义持久多重性 | 与 `AnalyticsUI` 邻近 | R5 统一 |

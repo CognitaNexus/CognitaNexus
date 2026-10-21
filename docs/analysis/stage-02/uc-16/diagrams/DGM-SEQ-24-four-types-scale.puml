@@ -1,0 +1,60 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 13
+skinparam dpi 150
+skinparam sequenceMessageAlign left
+title DGM-SEQ-24 UC-16 核对四类覆盖与来源（分析序列）
+actor "访客" as Visitor
+actor "核对者（访客或核对执行者）" as Requester
+actor "核对执行者（管理员）" as Checker
+boundary "CoverageCheckUI" as UI
+control "CoverageCheckCoordinator" as Ctl
+entity "WorkEntity" as Work
+entity "SourceRecord" as Source
+entity "WorkVersion" as Version
+
+Visitor -> UI : M1 请求公开覆盖核对（四类样例与合法来源）
+Checker -> UI : M2 请求规模核对并声明数据范围与截止时间
+UI -> Ctl : M3 提交核对请求（核对种类、范围、截止时间）
+Ctl -> Ctl : M4 固定本次范围与截止时间，声明待核验口径与“读时投影、不回写”
+Ctl -> Work : M5 读取四类公开可识别事实（类型、公共字段、公开生效状态）
+Work --> Ctl : M6 类型与公共字段 / 类型缺失或不属四类 / 读取失败或超时
+alt 读取依赖失败或超时（A9）
+  Ctl --> UI : M7 返回执行失败，不伪装“覆盖为零”
+  UI --> Requester : M8 显示执行失败，与“零覆盖”区分
+else 读取成功
+  Ctl -> Work : M9 逐类取一条可公开样例及其类型适用专属字段
+  Work --> Ctl : M10 样例与字段值 / 该类无可公开样例 / 缺失字段标“未知”
+  Ctl -> Source : M11 读取样例的许可来源及来源级事实
+  Source --> Ctl : M12 来源ID·采集/导入时间·许可或使用范围·数据性质 / 无许可来源 / 性质未确认
+  Ctl -> Ctl : M13 逐类核对“类型可识别＋类型适用字段＋≥1条合法来源”，输出覆盖/缺项
+  Ctl -> Work : M14 以去重成果实体为单位计数（distinct canonical id）
+  Work --> Ctl : M15 去重实体总量与按类型计数（不计来源数、版本数）
+  Ctl -> Version : M16 读取有明示证据的版本关系
+  Version --> Ctl : M17 明示版本关联 / 无明示证据（保持独立，不并入实体）
+  Ctl -> Ctl : M18 跨两来源且有版本关联的成果仍计1个实体；来源数/版本数不入分子
+  Ctl -> Work : M19 读取数据性质分组事实
+  Work --> Ctl : M20 真实/模拟/混合标识 / 性质未确认
+  Ctl -> Ctl : M21 互斥分组计数：真实数单列，模拟/混合显式标注，未确认单列
+  Ctl -> Ctl : M22 样例只取原站外链，不取全文
+  alt 存在缺项或计数不一致（A1/A2/A3/A4/A8）
+    Ctl --> UI : M23 缺项清单与可定位差异，不宣布通过
+    UI --> Requester : M24 显示缺项、可定位差异与不通过项
+  else 覆盖与计数一致
+    Ctl --> UI : M25 核对结果投影（数据范围与截止时间、四类覆盖、按类型计数、去重实体总量、真实/模拟/混合分组、待核验与不确定版本口径、目标值实测状态、生成时间）
+    UI --> Requester : M26 显示结果，真实数单列，模拟/混合显式标注，目标值标“未运行”
+  end
+  UI --> Visitor : M27 样例只提供原站外链，不提供全文
+end
+Ctl -> Ctl : M28 全程不发出创建/修改/删除；核对结果为读时投影，不持久化为核对报告实体
+legend right
+  失败/超时守卫（M7/M8）覆盖 M5–M20 的任一次读取失败，不得显示为“零覆盖”。
+  只分析UC-16四类覆盖与来源核对及去重规模核对；检索、详情展示、治理核验、统计与网络不在本图。
+  覆盖以“类型可识别＋类型适用字段（缺失标未知）＋至少一条合法来源”判定。
+  规模按去重成果实体计数；跨两来源且有版本关联仍计1；来源数/版本数不入分子。
+  真实/模拟/混合互斥分组、真实数单列；1,000,000与5,000,000为目标值，未运行标NOT RUN。
+  核对为读时投影：不写实体、不改变公开状态、不持久化核对报告。
+endlegend
+@enduml

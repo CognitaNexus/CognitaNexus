@@ -221,9 +221,10 @@
       "dir": "docs/analysis/stage-02/uc-16/",
       "seq": "DGM-SEQ-24",
       "vopc": "DGM-VOPC-20",
-      "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "PENDING"
+      "reviewRounds": 2,
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-16-review-R3.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "NONE"
     },
     "UC-17": {
       "title": "后台待办与审计",
@@ -402,6 +403,12 @@
       "head": "6ff7f54fce881e4956b99ac5e2d997637af04995",
       "at": "2026-10-21",
       "note": "UC-15 complete; R1 PASS/MINOR"
+    },
+    {
+      "id": "CP-020",
+      "head": "dbbc713d893bf58569d71ca2815e7fd16567ced9",
+      "at": "2026-10-21",
+      "note": "UC-16 complete; 20/20 UC analysis done; R3 PASS with minor residuals"
     }
   ],
   "providerSubstitution": {
