@@ -1,0 +1,56 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 13
+skinparam dpi 150
+skinparam sequenceMessageAlign left
+title DGM-SEQ-06 UC-01 公开成果检索与稳定分页（分析序列）
+actor "访客" as Visitor
+boundary "SearchUI" as UI
+control "SearchCoordinator" as Coordinator
+entity "WorkEntity" as Work
+entity "Scholar" as Scholar
+
+Visitor -> UI : M1 提交范围/关键词/筛选/排序/页码
+UI -> Coordinator : M2 请求检索
+Coordinator -> Coordinator : M3 校验范围与筛选条件
+alt 范围/筛选/排序/页码非法
+  Coordinator --> UI : M4 指出非法条件，不查询
+  UI --> Visitor : M5 显示非法条件
+else 条件有效
+  Coordinator -> Coordinator : M6 固定本次查询上下文 (A-01)
+  alt 范围为成果
+    Coordinator -> Work : M7 查询公开有效成果
+    Work --> Coordinator : M8 候选结果或执行失败
+  else 范围为学者
+    Coordinator -> Scholar : M9 查询公开有效学者
+    Scholar --> Coordinator : M10 候选结果或执行失败
+  end
+  alt 执行失败/超时
+    Coordinator --> UI : M11 返回执行失败
+    UI --> Visitor : M12 显示失败，不显示无结果
+  else 执行成功
+    Coordinator -> Coordinator : M13 复核公开/有效与条件交集
+    Coordinator -> Coordinator : M14 按选定字段排序，以稳定ID破并列并分页
+    alt 无匹配
+      Coordinator --> UI : M15 返回无匹配
+      UI --> Visitor : M16 显示无匹配，保留条件
+    else 有匹配
+      Coordinator --> UI : M17 当前页 + 条件回显 + 查询上下文
+      UI --> Visitor : M18 显示当前页
+      Visitor -> UI : M19 下一页（同一查询上下文）
+      UI -> Coordinator : M20 请求下一页（同一上下文）
+      Coordinator -> Coordinator : M21 复用上下文与稳定排序取下一页
+      Coordinator --> UI : M22 下一页（不重不漏）
+      UI --> Visitor : M23 显示下一页
+    end
+  end
+end
+legend right
+  只分析UC-01公开检索；详情/主页/统计/网络不在本图。
+  成果与学者范围互斥；工作筛选只适用于成果。
+  无匹配与执行失败分开；分页复用同一上下文。
+  A-01：同一读取版本机制未冻结；不指定数据库/索引/API。
+endlegend
+@enduml

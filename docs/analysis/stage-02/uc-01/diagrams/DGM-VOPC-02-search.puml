@@ -1,0 +1,27 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+hide circle
+hide empty members
+title DGM-VOPC-02 UC-01 公开检索参与类类图（VOPC）
+package "UC-01 参与类" {
+  boundary "SearchUI" as UI
+  control "SearchCoordinator" as Coordinator
+  entity "WorkEntity" as Work
+  entity "Scholar" as Scholar
+}
+UI --> Coordinator : M2/M4/M11/M15/M17/M20/M22 请求/显示
+Coordinator --> Work : M7 查询公开有效成果
+Coordinator --> Scholar : M9 查询公开有效学者
+legend right
+  只包含UC-01顺序图中的4个参与对象。
+  访客不是系统类；SearchContext/SearchResult不单独建类。
+  Work与Scholar不建立关系：范围互斥，结果不混排。
+  控制器到实体的关联按查询消息方向；不定义持久多重性。
+  查询上下文的同一读取版本机制待Q-02/A-01。
+endlegend
+@enduml

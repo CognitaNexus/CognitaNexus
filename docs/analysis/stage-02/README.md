@@ -1,8 +1,8 @@
 # S02 需求分析（用例分析）交付
 
-**版本：** V1.1（2026-10-21）
+**版本：** V1.2（2026-10-21）
 **输入基线：** [`S01 FROZEN — 69 AC BASELINE`](../stage-01/09-S01冻结记录.md)
-**状态：** `S02 PARTIAL — UC-04 R1 COMPLETE; REMAINING UCs PENDING`（产品运行测试 `NOT RUN`；CodeArts `NOT VERIFIED`）
+**状态：** `S02 PARTIAL — UC-04 R1, UC-01 R2 COMPLETE; REMAINING UCs PENDING`（产品运行测试 `NOT RUN`；CodeArts `NOT VERIFIED`）
 
 ## 1. 课程阶段与范围
 
@@ -21,22 +21,23 @@ S02采用教材第5章 §5.4–§5.5 的用例分析与分析类方法，并结�
 | [05-分析序列与用例实现](05-分析序列与用例实现.md) | 4张分析序列、5组Use-Case Realization职责 | 历史交付；非逐UC分析 |
 | [06-自检与评审](06-自检与评审.md) | 课程、AC、UML、文档、Git检查 | 历史自检；已按专项审查更正为PARTIAL |
 | [UC-04 用例实现分析](uc-04/README.md) | 规约、事件流来源、BCE、序列、VOPC、类定义、全局差异、自检 | UC-04 R1 已完成 |
+| [UC-01 用例实现分析](uc-01/README.md) | 规约、事件流来源、BCE、序列、VOPC、类定义、全局差异、自检 | UC-01 R2 已完成 |
 
 ## 2.1 状态修订与已知缺口（2026-10-21）
 
 2026-10-20的`S02 DELIVERED`保留为历史交付声明，不再作为当前状态。专项审查确认以下缺口：
 
-- 教材§5.4.4的逐用例VOPC此前为0个；本次UC-04已补1个，其余19个本期UC尚未补；
+- 教材§5.4.4的逐用例VOPC此前为0个；UC-04 R1、UC-01 R2各补1个，其余18个本期UC尚未补；
 - 13个详细UC的规约字段不完整，7个摘要UC没有行为分析；
 - §5.5.2属性、§5.5.3关系/多重性和§5.5.5统一分析类综合过程不完整；
 - 全局`DGM-CLASS-01`是BCE总览，不能替代任何UC的VOPC；
 - 教师评分/人工验收仍未提供。
 
-本目录原有文档保留，不删除历史交付事实；当前状态以本修订和[06](06-自检与评审.md)为准。UC-04是本轮唯一修复的用例，其他UC不得据此声称已完成。
+本目录原有文档保留，不删除历史交付事实；当前状态以本修订和[06](06-自检与评审.md)为准。UC-04 R1、UC-01 R2是当前已修复的用例；其他UC不得据此声称已完成。
 
 ## 3. UML 源与导出
 
-全局/既有图源位于 `docs/uml/`；UC-04专项图源位于本目录 `uc-04/diagrams/`，导出均在各自 `generated/`：
+全局/既有图源位于 `docs/uml/`；UC-04/UC-01专项图源位于本目录对应子目录，导出均在各自 `generated/`：
 
 | 模型 | PUML | SVG/PNG |
 |---|---|---|
@@ -53,6 +54,8 @@ S02采用教材第5章 §5.4–§5.5 的用例分析与分析类方法，并结�
 | 注册/主页序列 | `analysis/DGM-SEQ-04-profile.puml` | `analysis/generated/` |
 | UC-04 专项注册序列 | `stage-02/uc-04/diagrams/DGM-SEQ-05-register.puml` | `stage-02/uc-04/diagrams/generated/` |
 | UC-04 VOPC | `stage-02/uc-04/diagrams/DGM-VOPC-01-register.puml` | `stage-02/uc-04/diagrams/generated/` |
+| UC-01 专项检索序列 | `stage-02/uc-01/diagrams/DGM-SEQ-06-search.puml` | `stage-02/uc-01/diagrams/generated/` |
+| UC-01 VOPC | `stage-02/uc-01/diagrams/DGM-VOPC-02-search.puml` | `stage-02/uc-01/diagrams/generated/` |
 
 复用并核对：认领活动图、认领申请状态图、采集任务状态图、Authorship关系状态图。
 
@@ -67,7 +70,7 @@ S02采用教材第5章 §5.4–§5.5 的用例分析与分析类方法，并结�
 
 - 69 AC数量/唯一性/正文一致性：自动脚本检查。
 - UC-01～19、UC-22：规约与追踪存在；UC-20/21仅延期。
-- S02完整度：**PARTIAL**；只有UC-04完成本轮教材四步+VOPC，其余待R2以后逐项审查。
+- S02完整度：**PARTIAL**；UC-04 R1、UC-01 R2已完成教材四步+VOPC，其余待后续逐项审查。
 - PUML：实际渲染SVG/PNG；XML可解析；目视检查。
 - 文档链接/编号：静态检查。
 - 软件测试/算法执行/容量/并发/恢复/覆盖率：**NOT RUN**。
@@ -77,4 +80,4 @@ S02采用教材第5章 §5.4–§5.5 的用例分析与分析类方法，并结�
 
 S02内完成的是分析模型，不是架构/数据库/API实现设计。后续阶段若改变业务语义、UC或69 AC，必须回到需求变更流程；不得直接改图替代需求批准。
 
-UC-04 R1的具体证据从[uc-04/README](uc-04/README.md)进入；R2/R5未获授权前不批量推进其他UC。
+UC-04 R1证据从[uc-04/README](uc-04/README.md)进入，UC-01 R2从[uc-01/README](uc-01/README.md)进入；未获授权前不批量推进其他UC。
