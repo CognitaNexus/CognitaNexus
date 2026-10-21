@@ -167,8 +167,9 @@
       "seq": "DGM-SEQ-19",
       "vopc": "DGM-VOPC-15",
       "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "PENDING"
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-11-review-R1.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "MINOR"
     },
     "UC-12": {
       "title": "查看机构排名",
@@ -355,6 +356,12 @@
       "head": "8b3d310efac6ace9d1e6a96b7c5361b4e2078089",
       "at": "2026-10-21",
       "note": "UC-19 complete after one fix; R2 PASS/NONE; batch 3 done"
+    },
+    {
+      "id": "CP-014",
+      "head": "0b534c25329a4eec8402d27f6d502bcf04e96655",
+      "at": "2026-10-21",
+      "note": "UC-11 complete; R1 PASS/MINOR"
     }
   ]
 }

@@ -13,6 +13,9 @@
 | RegistrationCoordinator | Control | UC-04 | — | 注册校验、User+UserProfile 创建、稳定地址、幂等/回滚 | 注册请求状态（单次） | → User、→ UserProfile | 不定义持久多重性 | 全局 `RegCtl` | 统一命名 |
 | User | Entity | UC-04 | UC-05/06/22 | 账号、会话、对象授权主体 | stableId、accountState | 1:1 UserProfile；提交 Claim | 1:1（UserProfile） | 不等于 Scholar | 保留 |
 | UserProfile | Entity | UC-04 | UC-03/22 | 唯一公开普通主页 | stableId/publicUrl、公开普通资料、零成果空态 | 属于 User | 1:1 | 不强制对应 Scholar | 保留 |
+| StatisticsUI | Boundary | UC-11 | UC-12/13 | 统计筛选、口径/范围/更新时间、空/失败展示 | 无持久业务属性 | → StatisticsCoordinator | 不定义持久多重性 | 全局 `AnalyticsUI` | 统一命名 |
+| StatisticsCoordinator | Control | UC-11 | UC-12/13 | 去重计数、真实/模拟过滤、机构发生期、范围/口径、投影 | 单次统计请求状态 | → WorkEntity/Authorship/Institution | 不定义持久多重性 | 全局 `GraphCtl`/`AnalyticsNetworkCoordinator` | R5 分界 |
+| Institution | Entity | UC-11 | UC-12/14 | 机构规范名/别名/合并链/未映射，发生期归属 | canonicalName/aliases/mergeChain/unmapped | 被统计读取；成果发生期归属 | 未定 | 全局无 | R5 决定 |
 | IncrementalChangeSet | Entity | UC-19 | — | 本轮比较结果、逐条分类、三类时间、计数、待办引用 | changeItems/classificationCounts/checkedAt/sourceReportedUpdatedAt/effectiveAt | →SourceRecord/WorkEntity/WorkVersion/GovernanceException | 未定 | 全局无 | R5 决定 |
 | SourceAdapter | Boundary | UC-18 | UC-19 | 与获准来源交换记录/失败，不决定公开/归属 | 无持久业务属性 | → 获准来源；→ CollectionCoordinator | 不定义持久多重性 | 全局 `SourceAdapter` | 保留 |
 | CollectionCoordinator | Control | UC-18 | UC-19 | 来源配置、启动/进度/停止/重试、检查点、完成判据、异常移交 | 单次任务控制状态 | → SourceDefinition/CollectionTask/SourceRecord/GovernanceException/AuditEvidence | 不定义持久多重性 | 全局 `CollectCtl` | 统一命名 |
