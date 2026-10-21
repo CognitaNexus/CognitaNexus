@@ -250,9 +250,10 @@
       "dir": "docs/analysis/stage-02/uc-22/",
       "seq": "DGM-SEQ-09",
       "vopc": "DGM-VOPC-05",
-      "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "PENDING"
+      "reviewRounds": 2,
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-22-review-R3.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "MINOR"
     }
   },
   "compaction": {
@@ -285,6 +286,12 @@
       "head": "8878e34e4178390bf4543ffbc8bf7b2753e86845",
       "at": "2026-10-21",
       "note": "UC-03 complete, independent review PASS/MINOR; minor notes recorded, no blocking fix"
+    },
+    {
+      "id": "CP-004",
+      "head": "0375d18cfee331df62bd8be8e8a1a0c8ffd77fca",
+      "at": "2026-10-21",
+      "note": "UC-22 complete after two fix rounds; R3 PASS/MINOR"
     }
   ]
 }

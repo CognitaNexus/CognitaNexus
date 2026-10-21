@@ -1,0 +1,66 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 13
+skinparam dpi 150
+skinparam sequenceMessageAlign left
+title DGM-SEQ-09 UC-22 编辑本人普通个人主页（分析序列）
+actor "注册用户（主页所有者）" as Owner
+boundary "ProfileUI" as UI
+control "ProfileCoordinator" as Ctl
+entity "User" as User
+entity "UserProfile" as Profile
+entity "AuditEvidence" as Audit
+
+Owner -> UI : M1 打开本人主页编辑并提交普通字段修改
+UI -> Ctl : M2 请求保存本人主页修改（含已认证请求上下文）
+Ctl -> User : M3 校验请求者身份与账号状态
+Ctl -> Profile : M4 核验编辑对象是否为该 User 的本人主页
+Ctl -> Ctl : M5 判定身份/账号状态/对象归属
+alt 未认证或账号已停用（A1）
+  Ctl --> UI : M6 拒绝保存，无任何写入
+  UI --> Owner : M7 显示拒绝与原因（与保存失败区分）
+  Ctl -> Audit : M8 记录受控拒绝审计（不含凭据）
+else 非本人主页·他人主页或同名不同对象（A2）
+  Ctl --> UI : M9 拒绝越权写入，被编辑主页无变更
+  UI --> Owner : M10 显示越权结果
+  Ctl -> Audit : M11 记录受控越权尝试审计
+else 本人主页且账号可用
+  Ctl -> Ctl : M12 校验字段是否属于本人可编辑的普通公开字段
+  alt 含重要学术身份/机构/归属/来源事实（A3）
+    Ctl --> UI : M13 本次普通编辑不写入学术事实；转 UC-07/UC-08
+    UI --> Owner : M14 说明需 Scholar 对象授权与学术审核
+  else 仅普通公开字段
+    Ctl -> Profile : M15 保存普通公开字段与展示设置
+    alt 保存失败（A4）
+      Ctl --> UI : M16 保存失败，公开版保持旧值
+      UI --> Owner : M17 显示保存失败与重试，不显示为已公开
+    else 保存成功
+      alt 公共资料策略要求审核（A5·B-01 待确认）
+        Ctl -> Profile : M19 登记待审版本；公开版保持旧值
+        Ctl -> Audit : M20 记录受控审计（身份/理由/前后值/时间）
+        Ctl --> UI : M21 返回已提交待审；公开版未变更
+        UI --> Owner : M22 显示待审状态与可查入口（零成果仍为空态）
+      else 即时生效
+        Profile --> Ctl : M18 按公共资料策略生成公开投影（私有字段不进入；零成果空态不变）
+        alt 公开投影生成失败（A4）
+          Ctl --> UI : M16 投影生成失败，公开版保持旧值
+          UI --> Owner : M17 显示失败与重试，不显示为已公开
+        else 投影成功
+          Ctl -> Audit : M20 记录受控审计（身份/理由/前后值/时间）
+          Ctl --> UI : M21 返回保存成功与公开生效结果
+          UI --> Owner : M22 显示已按公共资料策略公开生效（零成果仍为空态）
+        end
+      end
+    end
+  end
+end
+legend right
+  只分析 UC-22 本人普通主页编辑；注册、公开浏览、认领审核、学术档案维护、成果纠错不在本图。
+  M3/M4 是服务端每次校验：所有者为 User，被写对象为本人唯一 UserProfile；前端隐藏入口不代替拒绝。
+  普通字段无需学术审核；重要学术身份/机构/归属/来源事实不在本 UC 写入，只拒绝并转 UC-07/UC-08（无 Scholar 消息）。
+  公开投影只含明确允许公开的字段；私有联系方式不进入；认证材料/凭据不属于UserProfile；零成果保持空态，不创建 WorkEntity/Authorship。
+  不创建第二个 UserProfile、不创建 Scholar/Claim；待审版本不覆盖公开版（B-01 待确认）；受保护写入与拒绝均留审计。
+endlegend
+@enduml

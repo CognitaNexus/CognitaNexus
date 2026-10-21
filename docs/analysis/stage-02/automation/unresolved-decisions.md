@@ -16,3 +16,4 @@
 | D-10 | UC-18/19 | 来源 API/文件格式与重试上限 | 只写任务状态、检查点、恢复 | 接口设计（后续阶段） | 待确认 |
 | D-11 | 全局 | 公共分析类命名统一（SearchCtl/SearchCoordinator、Work/WorkEntity、AccountUI/RegistrationUI、RegCtl/RegistrationCoordinator） | 登记别名，R5 统一 | 全局类图 | 待 R5 |
 | D-12 | 全局 | User—Authorization—Scholar 关系与 UI/Coordinator 命名 | 不直接改全局图 | 全局一致性 | 待 R5 |
+| D-13 | UC-22/17 | 审计证据类命名（AuditEvidence / Evidence / ReviewEvidence） | 本 UC 用 AuditEvidence；R5 统一 | 全局命名 | 待 R5 |

@@ -8,7 +8,7 @@
 | UC-04 | ISSUES/MAJOR | 1 | R2 PASS/MINOR | AUTO_REVIEW_PASS | `reviews/UC-04-review-existing.md`; `UC-04-review-R2.md` |
 | UC-02 | ISSUES/MINOR | 1 | R2 PASS/NONE | AUTO_REVIEW_PASS | `reviews/UC-02-review-R1.md`; `UC-02-review-R2.md` |
 | UC-03 | PASS/MINOR | 0 | — | AUTO_REVIEW_PASS | `reviews/UC-03-review-R1.md` |
-| UC-22 | 未开始 | — | — | PENDING | — |
+| UC-22 | ISSUES/MAJOR | 2 | R3 PASS/MINOR | AUTO_REVIEW_PASS | `reviews/UC-22-review-R1.md`; `R2`; `R3` |
 | UC-05 | 未开始 | — | — | PENDING | — |
 | UC-06 | 未开始 | — | — | PENDING | — |
 | UC-07 | 未开始 | — | — | PENDING | — |

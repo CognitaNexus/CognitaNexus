@@ -1,0 +1,36 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 100
+skinparam ranksep 100
+hide circle
+hide empty members
+title DGM-VOPC-05 UC-22 编辑本人普通个人主页参与类类图（VOPC）
+package "UC-22 参与类" {
+  boundary "ProfileUI" as UI
+  control "ProfileCoordinator" as Ctl
+  together {
+    entity "User" as User
+    entity "UserProfile" as Profile
+  }
+  entity "AuditEvidence" as Audit
+}
+UI --> Ctl : M2 请求保存；M6/M9/M13/M16/M21 返回结果
+Ctl -down-> User : M3 校验请求者身份与账号状态（回复隐式）
+Ctl -down-> Profile : M4 核验归属；M15 保存普通字段；M18 公开投影；M19 待审版本
+User "1" -right- "1" Profile : 唯一拥有
+Ctl -down-> Audit : M8/M11/M20 记录受控审计
+legend right
+  只包含 UC-22 顺序图中的 5 个参与对象；注册用户是参与者，不画成系统类。
+  边上的编号对应 04 逐消息表：M2 请求；M6/M9/M13/M16/M21 返回拒绝/越权/转交/失败/成功；
+  M3 身份与账号状态；M4 归属核验；M15 保存普通字段；M18 公开投影；M19 待审版本（B-01 待确认）；
+  M8/M11/M20 受控审计。
+  User–UserProfile 的 1:1 来自 FR04/AC-FR04-03/SRS §12；编辑期是不变量：不新建第二个主页。
+  控制/边界到实体的关联按消息方向表达协作；不定义持久多重性；审计指向被写对象是 AuditEvidence 的业务属性，不另画关联。
+  Scholar/ScholarAuth/Claim/Authorship/WorkEntity/第二个 UserProfile/PublicProfileUI/AuditCoordinator/Session 不参与本 UC。
+endlegend
+@enduml
