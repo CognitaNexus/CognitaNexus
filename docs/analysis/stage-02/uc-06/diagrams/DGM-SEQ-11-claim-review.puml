@@ -1,0 +1,117 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 13
+skinparam dpi 150
+skinparam sequenceMessageAlign left
+title DGM-SEQ-11 UC-06 审核 Scholar 认领（分析序列）
+actor "有权审核的管理员" as Reviewer
+boundary "ClaimReviewUI" as UI
+control "ClaimReviewCoordinator" as Ctl
+entity "User" as User
+entity "ClaimApplication" as Claim
+entity "ReviewEvidence" as Evidence
+entity "Scholar" as Scholar
+entity "ScholarAuthorization" as Auth
+entity "AuditEvidence" as Audit
+
+Reviewer -> UI : M1 打开待审核/待补充申请，请求审核上下文（E1）
+UI -> Ctl : M2 请求审核上下文（申请引用＋已认证请求上下文）
+Ctl -> User : M3 校验审核者身份、账号状态与审核权限（E2）
+Ctl -> Ctl : M4 判定是否具备审核权限且账号可用
+alt 未登录、账号停用或无审核权限（A1）
+  Ctl --> UI : M5 拒绝，无任何写入
+  UI --> Reviewer : M6 显示拒绝（与"状态已变化"区分）
+else 审核者可审核
+  Ctl -> Claim : M7 读取申请状态、申请人/目标/证据引用、版本与最近理由（E3）
+  Ctl -> Ctl : M8 判定申请是否仍为待审核且版本未变；待补充须先走A4放行
+  alt 申请已决定或版本已变化（A2）
+    Ctl --> UI : M9 拒绝本次决定并返回当前状态，不覆盖已有决定
+    UI --> Reviewer : M10 显示"状态已变化"与当前状态
+  else 申请状态有效
+    Ctl -> Evidence : M11 读取该申请的私有材料（仅有权审核者可见）（E4）
+    Ctl --> UI : M12 返回申请摘要与证据材料
+    UI --> Reviewer : M13 显示申请信息与私有证据
+    Ctl -> Scholar : M14 确认目标仍为已收录 Scholar（不新建、不改写档案）（E5）
+    Ctl -> Auth : M15 读取目标当前有效授权（只读，不改动）
+    Auth --> Ctl : M16 现有授权事实（授权主体/有效性）
+    Ctl -> Ctl : M17 判定是否存在未决冲突（已有他人有效授权/身份冲突未决）
+    Reviewer -> UI : M18 选择决定（批准/驳回/要求补证/记录争议）并填写理由（E6）
+    UI -> Ctl : M19 提交决定与理由
+    Ctl -> Ctl : M20 复核守卫：审核权限仍有效、申请状态未变、理由完整、批准时无未决冲突（E7）
+    alt 理由缺失或不完整（A8）
+      Ctl --> UI : M21 拒绝该决定并要求填写理由；状态不变
+      UI --> Reviewer : M22 显示"理由必填"
+    else 决定有效（E8–E11）
+      alt 记录争议或批准时存在未决冲突（A5）
+        Ctl -> Claim : M23 记录争议：状态=争议，理由=冲突事实；不批准、不创建授权
+        Ctl -> Audit : M24 记录争议决定（操作者/对象/时间/前后值/理由）（E10）
+        Ctl --> UI : M25 已记录争议；原授权不变；争议待人工结论
+        UI --> Reviewer : M26 显示争议已登记、原授权保留
+      else 无冲突（E8）
+        Ctl -> Auth : M27 创建对象级管理授权（被授权=申请人；目标=该 Scholar/门户；仅此范围）
+        alt 授权写入失败（A6）
+          Ctl -> Claim : M28 保持原状态并记录失败原因；不写"通过"
+          Ctl -> Audit : M29 记录授权失败与前后值（状态不变）
+          Ctl --> UI : M30 授权失败：保持原状态，不虚报通过
+          UI --> Reviewer : M31 显示失败与重试
+        else 授权成功
+          Ctl -> Claim : M32 状态=通过，记录决定理由与时间（E9）
+          Ctl -> Audit : M33 记录批准与授权（操作者/对象/时间/前后值/理由）（E10）
+          Ctl --> UI : M34 批准生效：授权仅对目标门户；未建第二主页；未确认任何 Authorship（E11）
+          UI --> Reviewer : M35 显示批准结果与授权范围
+        end
+      end
+    else 驳回（A7）
+      Ctl -> Claim : M36 状态=驳回，记录理由（E9）
+      Ctl -> Audit : M37 记录驳回（前后值/理由/时间/操作者）（E10）
+      Ctl --> UI : M38 已驳回；不撤销、不改动原授权（E11）
+      UI --> Reviewer : M39 显示驳回结果
+    else 要求补证（A3）
+      Ctl -> Claim : M40 状态=待补充，记录缺失项/需补材料与理由（E9）
+      Ctl -> Audit : M41 记录补证决定（E10）
+      Ctl --> UI : M42 已要求补证；等待本人重提（重提属 UC-05）（E11）
+      UI --> Reviewer : M43 显示待补充与需补材料
+    end
+  end
+end
+group 待补充申请的补证复核（A4；本人重提属 UC-05）
+  Reviewer -> UI : M44 提交补证复核结论（本人已重提补证）
+  UI -> Ctl : M45 请求复核补证齐备性
+  Ctl -> Evidence : M46 读取本人重提交的材料版本
+  Ctl -> Ctl : M47 先校验仍为待补充且版本未变，再判定补证是否齐备；否则转A2
+  alt 补证齐备（A4a）
+    Ctl -> Claim : M48 状态=待审核，记录复核理由
+    Ctl -> Audit : M49 记录复核与放行
+    Ctl --> UI : M50 已放行回待审核
+    UI --> Reviewer : M51 显示已放行回待审核
+  else 仍缺项（A4b）
+    Ctl -> Claim : M52 保持待补充，更新缺失项与理由（无状态迁移）
+    Ctl -> Audit : M53 记录复核未通过
+    Ctl --> UI : M54 仍待补充
+    UI --> Reviewer : M55 显示仍缺项
+  end
+end
+group 决定查询（E12）
+  Reviewer -> UI : M56 查询该申请的决定与审计依据
+  UI -> Ctl : M57 请求决定查询（申请引用）
+  Ctl -> User : M58 校验审核者身份与审核权限
+  Ctl -> Claim : M59 读取当前状态与决定理由
+  Ctl -> Audit : M60 读取该决定的审计记录
+  Ctl --> UI : M61 返回决定、理由与审计摘要；无权限则拒绝
+  UI --> Reviewer : M62 显示决定与审计依据
+end
+note over Ctl
+  A9 审计留痕失败：决定不得报告为已生效（INV-10；BR-IMP-10；分析推导）。
+end note
+legend right
+  只分析 UC-06 审核决定；申请人提交/查询属 UC-05，学者档案维护属 UC-07，成果归属属 UC-08/UC-10。
+  批准只在无未决冲突时：新增授权仅对目标 Scholar/门户生效（E8）；不新建 Scholar、不建第二个 UserProfile、不确认任何 Authorship。
+  竞争/冲突记录为"争议"（M23）：保留原授权，不撤销、不转移；转授权与申诉程序待评审（SPEC ID-12）。
+  授权失败保持原状态、不虚报通过（A6）；无权限/已决定/理由缺失均无写入（A1/A2/A8）。
+  决定留痕含操作者/对象/时间/前后值/理由（M24/M29/M33/M37/M41/M49/M53）；证据仅本人与有权审核者可见。
+  申请人只读结果由 UC-05 查询路径承担；本序列只把决定记录为可读投影（M32/M36/M40）。
+  审核角色层级、SLA、申诉程序未定义，不在此虚构。
+endlegend
+@enduml

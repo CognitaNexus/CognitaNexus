@@ -111,9 +111,10 @@
       "dir": "docs/analysis/stage-02/uc-06/",
       "seq": "DGM-SEQ-11",
       "vopc": "DGM-VOPC-07",
-      "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "PENDING"
+      "reviewRounds": 1,
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-06-review-R2.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "NONE"
     },
     "UC-07": {
       "title": "维护已授权 Scholar 档案",
@@ -299,6 +300,12 @@
       "head": "4209cf00f26d0b9912e2821ef906bf87c00e3c54",
       "at": "2026-10-21",
       "note": "UC-05 complete after two fixes; R3 PASS WITH NOTES/MINOR"
+    },
+    {
+      "id": "CP-006",
+      "head": "b57f1019fc696945321a6c75be51f9828c29a994",
+      "at": "2026-10-21",
+      "note": "UC-06 complete after one fix; R2 PASS/NONE"
     }
   ]
 }

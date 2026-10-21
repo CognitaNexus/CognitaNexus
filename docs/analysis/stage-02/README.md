@@ -64,6 +64,8 @@ S02采用教材第5章 §5.4–§5.5 的用例分析与分析类方法，并结�
 | UC-22 VOPC | `stage-02/uc-22/diagrams/DGM-VOPC-05-profile-edit.puml` | `stage-02/uc-22/diagrams/generated/` |
 | UC-05 专项认领序列 | `stage-02/uc-05/diagrams/DGM-SEQ-10-claim.puml` | `stage-02/uc-05/diagrams/generated/` |
 | UC-05 VOPC | `stage-02/uc-05/diagrams/DGM-VOPC-06-claim.puml` | `stage-02/uc-05/diagrams/generated/` |
+| UC-06 专项认领审核序列 | `stage-02/uc-06/diagrams/DGM-SEQ-11-claim-review.puml` | `stage-02/uc-06/diagrams/generated/` |
+| UC-06 VOPC | `stage-02/uc-06/diagrams/DGM-VOPC-07-claim-review.puml` | `stage-02/uc-06/diagrams/generated/` |
 
 复用并核对：认领活动图、认领申请状态图、采集任务状态图、Authorship关系状态图。
 

@@ -1,0 +1,46 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 70
+skinparam ranksep 80
+hide circle
+hide empty members
+left to right direction
+title DGM-VOPC-07 UC-06 审核 Scholar 认领参与类类图（VOPC）
+package "UC-06 参与类" {
+  boundary "ClaimReviewUI" as UI
+  control "ClaimReviewCoordinator" as Ctl
+  entity "ClaimApplication" as Claim
+  entity "ReviewEvidence" as Evidence
+  entity "Scholar" as Scholar
+  entity "ScholarAuthorization" as Auth
+  entity "User" as User
+  entity "AuditEvidence" as Audit
+}
+UI --> Ctl : M2/M45/M57 请求审核上下文\nM6/M10/M12/M25/M30/M34/M38/M42/M50/M54/M61 返回
+Ctl --> Claim : M7/M59 读取；M23/M32/M36/M40/M48/M52 记录
+Ctl --> Evidence : M11/M46 读取私有材料
+Ctl --> Scholar : M14 确认目标档案
+Ctl ..> Auth : M15 只读现有授权（不改动）
+Ctl --> Auth : M27 创建批准授权（仅无冲突）
+Ctl --> User : M3/M58 校验审核者身份与权限
+Ctl --> Audit : M24/M29/M33/M37/M41/M49/M53 写入；M60 读取
+Claim "0..*" --> "1" User : 申请人/被授权主体
+Claim "0..*" --> "1" Scholar : 认领目标
+Claim --> Evidence : 私有材料（多重性未定）
+Auth --> Scholar : 目标档案（多重性未定）
+Auth "0..*" --> "1" User : 被授权主体
+legend right
+  只包含 UC-06 顺序图中的 8 个参与对象；"有权审核的管理员"是参与者，不画成系统类。
+  批准只在无未决冲突时创建 Auth（M27）：范围仅目标 Scholar/门户（AC-IMPL-FR05-02）；争议保留原授权、不转移（AC-IMPL-FR05-03）。
+  ClaimApplication→User/Scholar 的 0..*:1 沿用 UC-05 依据（FR05；AC-IMPL-FR05-03）；Auth→User 0..*:1 由"一次批准产生一条授权、主体为该申请人"支持。
+  ClaimApplication→ReviewEvidence 与 Auth→Scholar 的多重性未定：证据最低集合（D-06）与同一 Scholar 是否可有并列管理者（SPEC ID-12）均未冻结。
+  审计指向被写对象（申请/目标/授权）是 AuditEvidence 的业务属性，不另画关联；审计查询界面属 UC-17（FR14）。
+  UserProfile、Authorship、WorkEntity、ScholarMerge、ConflictQueue/通知/Session 不参与本 UC（无消息）。
+  控制/边界到实体的关联按消息方向表达协作，不定义持久多重性。
+endlegend
+@enduml

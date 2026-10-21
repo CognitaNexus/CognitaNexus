@@ -15,6 +15,9 @@
 | UserProfile | Entity | UC-04 | UC-03/22 | 唯一公开普通主页 | stableId/publicUrl、公开普通资料、零成果空态 | 属于 User | 1:1 | 不强制对应 Scholar | 保留 |
 | ProfileUI | Boundary | UC-22 | — | 本人普通主页编辑输入/拒绝/失败/结果 | 无持久业务属性 | → ProfileCoordinator | 不定义持久多重性 | 全局同名 | 保留 |
 | ProfileCoordinator | Control | UC-22 | UC-07 | 身份/归属/字段范围守卫；普通字段保存；公开投影 | 单次编辑请求状态 | → User/UserProfile/AuditEvidence | 不定义持久多重性 | 全局 `ProfileCtl` | 统一命名 |
+| ClaimReviewUI | Boundary | UC-06 | — | 审核决定、证据展示、状态已变/权限拒绝/结果查询 | 无持久业务属性 | → ClaimReviewCoordinator | 不定义持久多重性 | 全局 `ClaimUI` | 保留/统一 |
+| ClaimReviewCoordinator | Control | UC-06 | — | 权限/状态/版本守卫、证据复核、批准/驳回/补证/争议、授权写入、审计 | 单次审核决定状态 | → ClaimApplication/ReviewEvidence/Scholar/User/Auth/AuditEvidence | 不定义持久多重性 | 全局 `ClaimCtl` | 统一命名 |
+| ScholarAuthorization | Entity | UC-06 | UC-07/10 | 目标 Scholar 对象级管理授权 | 被授权 User/目标 Scholar/授权范围/有效性 | →User 0..*:1；→Scholar 未定 | 0..*:1（User） | 全局 `Auth` | 统一命名 |
 | ClaimUI | Boundary | UC-05 | UC-06 | 认领提交/查询、缺失项、状态与失败 | 无持久业务属性 | → ClaimCoordinator | 不定义持久多重性 | 全局同名 | 保留 |
 | ClaimCoordinator | Control | UC-05 | UC-06 | 证据校验、目标/账号守卫、申请创建、竞争事实读取、本人查询 | 单次申请/查询状态 | → User/Scholar/ClaimApplication/ReviewEvidence/ScholarAuthorization(只读) | 不定义持久多重性 | 全局 `ClaimCtl` | 统一命名 |
 | ClaimApplication | Entity | UC-05 | UC-06 | 认领申请、状态、理由/缺失项、竞争事实 | applicationRef/applicantRef/targetScholarRef/evidenceRefs/status/statusReason/competitionFact/submittedAt | →User 0..*:1；→Scholar 0..*:1；→ReviewEvidence 未定 | 0..*:1（User/Scholar） | 全局 `Claim` | 统一为 ClaimApplication |
