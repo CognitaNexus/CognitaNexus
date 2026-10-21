@@ -1,0 +1,48 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 13
+skinparam dpi 150
+skinparam sequenceMessageAlign left
+title DGM-SEQ-05 UC-04 注册并自动建立唯一公开主页（分析序列）
+actor "访客" as Visitor
+boundary "RegistrationUI" as UI
+control "RegistrationCoordinator" as Coordinator
+entity "User" as User
+entity "UserProfile" as Profile
+
+Visitor -> UI : M1 提交注册信息
+UI -> Coordinator : M2 请求注册
+Coordinator -> Coordinator : M3 校验注册信息与账号资格
+alt 信息不满足注册规则
+  Coordinator --> UI : M4 拒绝注册并说明原因
+  UI --> Visitor : M5 显示校验失败
+else 信息有效
+  Coordinator -> Coordinator : M6 检查重复请求/既有主页 (A-01)
+  alt 同一请求重复/重试
+    Coordinator --> UI : M7 不创建第二个主页；返回已有结果（形式待定）
+    UI --> Visitor : M8 显示已有账号/主页结果
+  else 新注册请求
+    Coordinator -> User : M9 创建User
+    Coordinator -> Profile : M10 创建唯一UserProfile
+    Coordinator -> Profile : M11 绑定稳定公开地址
+    alt 创建或地址分配失败
+      Coordinator -> Coordinator : M12 使本次业务创建整体不生效
+      Coordinator --> UI : M13 注册失败；无账号/无主页
+      UI --> Visitor : M14 显示失败与重试入口
+    else 成功
+      Coordinator -> Profile : M15 设置公开可见性与零成果空态
+      Coordinator --> UI : M16 返回注册成功与公开主页地址
+      UI --> Visitor : M17 显示成功与主页地址
+    end
+  end
+end
+legend right
+  UC-04只分析注册与主页生成。
+  登录/退出、UC-22编辑、UC-05/06认领不在本图。
+  M6幂等识别键待Q-02；不指定数据库事务/API。
+  User 1:1 UserProfile；零成果空态不创建WorkEntity/Authorship。
+  Scholar/Auth/Claim不是本UC参与者。
+endlegend
+@enduml

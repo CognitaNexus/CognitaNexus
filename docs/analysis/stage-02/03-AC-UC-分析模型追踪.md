@@ -1,11 +1,13 @@
 # 69 AC → FR/BR/NF → UC → 分析模型双向追踪
 
-**版本：** V1.0（2026-10-20）  
-**基线：** [`69-ac-baseline.json`](../../srs/integration/69-ac-baseline.json)  
-**SRS：** [`CognitaNexus-Shared-SRS-V2.2-69AC.md`](../../srs/CognitaNexus-Shared-SRS-V2.2-69AC.md)  
+**版本：** V1.1（2026-10-21；仅UC-04 R1追踪修订）
+**基线：** [`69-ac-baseline.json`](../../srs/integration/69-ac-baseline.json)
+**SRS：** [`CognitaNexus-Shared-SRS-V2.2-69AC.md`](../../srs/CognitaNexus-Shared-SRS-V2.2-69AC.md)
 **状态：** S02 分析追踪；所有运行状态仍为 `NOT RUN`。
 
 > 本表由69条权威账本生成，逐条保留 ID、父项、BR、UC 与分析模型。模型是分析交付，不是已实现系统；测试状态不因追踪完整而变为 PASS。
+>
+> **2026-10-21 UC-04 R1：** 为UC-04补充`DGM-SEQ-05/VOPC-01`，并把`AC-IMPL-FR03-03/04`纳入UC-04反向追踪；其他UC行未改。
 
 ## 1. 汇总
 
@@ -49,12 +51,12 @@
 | 5 | `AC-IMPL-FR02-02` | FR02 | BR-IMP-01/02 | UC-02、UC-16 | DGM-USECASE-04 / ACT-07 / SEQ-03 | 多来源详情/外链失败 | 计划验收，未执行 |
 | 6 | `AC-IMPL-FR03-01` | FR03 | BR-IMP-01/03/11 | UC-03、UC-22 | DGM-USECASE-07 / CLASS-01 | 零成果主页/同名隔离 | 计划验收，未执行 |
 | 7 | `AC-IMPL-FR03-02` | FR03 | BR-IMP-01/03/11 | UC-03、UC-22 | DGM-USECASE-07 / CLASS-01 | 零成果主页/同名隔离 | 计划验收，未执行 |
-| 8 | `AC-IMPL-FR03-03` | FR03 | BR-IMP-01/03/11 | UC-03、UC-22 | DGM-USECASE-07 / ACT-05 / SEQ-04 | 零成果主页/同名隔离 | 计划验收，未执行 |
-| 9 | `AC-IMPL-FR03-04` | FR03 | BR-IMP-01/03/11 | UC-03、UC-22 | DGM-USECASE-07 / ACT-05 / SEQ-04 | 零成果主页/同名隔离 | 计划验收，未执行 |
-| 10 | `AC-IMPL-FR04-01` | FR04 | BR-IMP-05/10/11 | UC-04 | DGM-USECASE-07 / ACT-05 / SEQ-04 | 注册唯一主页/权限 | 计划验收，未执行 |
-| 11 | `AC-IMPL-FR04-02` | FR04 | BR-IMP-05/10/11 | UC-04 | DGM-USECASE-07 / ACT-05 / SEQ-04 | 注册唯一主页/权限 | 计划验收，未执行 |
-| 12 | `AC-IMPL-FR04-03` | FR04 | BR-IMP-05/10/11 | UC-04 | DGM-USECASE-07 / ACT-05 / SEQ-04 | 注册唯一主页/权限 | 计划验收，未执行 |
-| 13 | `AC-IMPL-FR04-04` | FR04 | BR-IMP-05/10/11 | UC-04 | DGM-USECASE-07 / ACT-05 / SEQ-04 | 注册唯一主页/权限 | 计划验收，未执行 |
+| 8 | `AC-IMPL-FR03-03` | FR03 | BR-IMP-01/03/11 | UC-03、UC-04、UC-22 | DGM-USECASE-07 / ACT-05 / SEQ-04 | 零成果主页/同名隔离 | 计划验收，未执行 |
+| 9 | `AC-IMPL-FR03-04` | FR03 | BR-IMP-01/03/11 | UC-03、UC-04、UC-22 | DGM-USECASE-07 / ACT-05 / SEQ-04 | 零成果主页/同名隔离 | 计划验收，未执行 |
+| 10 | `AC-IMPL-FR04-01` | FR04 | BR-IMP-05/10/11 | UC-04 | DGM-USECASE-07 / ACT-05 / SEQ-04 / SEQ-05 / VOPC-01 | 注册唯一主页/权限 | 计划验收，未执行 |
+| 11 | `AC-IMPL-FR04-02` | FR04 | BR-IMP-05/10/11 | UC-04 | DGM-USECASE-07 / ACT-05 / SEQ-04 / SEQ-05 / VOPC-01 | 注册唯一主页/权限 | 计划验收，未执行 |
+| 12 | `AC-IMPL-FR04-03` | FR04 | BR-IMP-05/10/11 | UC-04 | DGM-USECASE-07 / ACT-05 / SEQ-04 / SEQ-05 / VOPC-01 | 注册唯一主页/权限 | 计划验收，未执行 |
+| 13 | `AC-IMPL-FR04-04` | FR04 | BR-IMP-05/10/11 | UC-04 | DGM-USECASE-07 / ACT-05 / SEQ-04 / SEQ-05 / VOPC-01 | 注册唯一主页/权限 | 计划验收，未执行 |
 | 14 | `AC-IMPL-FR05-01` | FR05 | BR-IMP-03/05/10 | UC-05、UC-06 | DGM-USECASE-05 / ACT-01 / STATE-02 / SEQ-02 | 认领补证/授权/争议 | 计划验收，未执行 |
 | 15 | `AC-IMPL-FR05-02` | FR05 | BR-IMP-03/05/10 | UC-05、UC-06 | DGM-USECASE-05 / ACT-01 / STATE-02 / SEQ-02 | 认领补证/授权/争议 | 计划验收，未执行 |
 | 16 | `AC-IMPL-FR05-03` | FR05 | BR-IMP-03/05/10 | UC-05、UC-06 | DGM-USECASE-05 / ACT-01 / STATE-02 / SEQ-02 | 认领补证/授权/争议 | 计划验收，未执行 |
@@ -119,7 +121,7 @@
 | UC-01 | `AC-IMPL-FR01-01`、`AC-IMPL-FR01-02`、`AC-IMPL-FR01-03`、`AC-IMPL-NF01-01`、`AC-IMPL-NF02-01`、`AC-IMPL-NF02-02` |
 | UC-02 | `AC-IMPL-FR02-01`、`AC-IMPL-FR02-02`、`AC-IMPL-FR16-01`、`AC-IMPL-FR16-02`、`AC-IMPL-NF01-01`、`AC-IMPL-NF02-01`、`AC-IMPL-NF02-02` |
 | UC-03 | `AC-IMPL-FR03-01`、`AC-IMPL-FR03-02`、`AC-IMPL-FR03-03`、`AC-IMPL-FR03-04`、`AC-IMPL-NF01-01`、`AC-IMPL-NF06-01` |
-| UC-04 | `AC-IMPL-FR04-01`、`AC-IMPL-FR04-02`、`AC-IMPL-FR04-03`、`AC-IMPL-FR04-04`、`AC-IMPL-NF03-01` |
+| UC-04 | `AC-IMPL-FR04-01`、`AC-IMPL-FR04-02`、`AC-IMPL-FR04-03`、`AC-IMPL-FR04-04`、`AC-IMPL-FR03-03`、`AC-IMPL-FR03-04`、`AC-IMPL-NF03-01` |
 | UC-05 | `AC-IMPL-FR05-01`、`AC-IMPL-FR05-02`、`AC-IMPL-FR05-03`、`AC-IMPL-FR05-04`、`AC-IMPL-NF03-01`、`AC-IMPL-NF06-01` |
 | UC-06 | `AC-IMPL-FR05-01`、`AC-IMPL-FR05-02`、`AC-IMPL-FR05-03`、`AC-IMPL-FR05-04`、`AC-IMPL-NF03-01`、`AC-IMPL-NF06-01` |
 | UC-07 | `AC-IMPL-FR06-01`、`AC-IMPL-FR06-02`、`AC-IMPL-FR06-03`、`AC-IMPL-FR06-04`、`AC-IMPL-FR06-05`、`AC-IMPL-NF03-01` |

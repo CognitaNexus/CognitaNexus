@@ -1,0 +1,28 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+hide circle
+hide empty members
+title DGM-VOPC-01 UC-04 参与类类图（VOPC）
+package "UC-04 参与类" {
+  boundary "RegistrationUI" as UI
+  control "RegistrationCoordinator" as Coordinator
+  entity "User" as User
+  entity "UserProfile" as Profile
+}
+UI --> Coordinator : M2/M4/M7/M13/M16 提交/显示结果
+Coordinator --> User : M9 创建/校验账号
+Coordinator --> Profile : M10/M11/M15 创建/绑定/发布
+User "1" -- "1" Profile : 唯一拥有
+legend right
+  只包含UC-04顺序图中的4个参与对象。
+  访客不是系统类；Scholar/Auth/Claim/Authorship/Evidence不参与本UC。
+  RegistrationUI是局部边界名，R5再决定是否并入AccountUI。
+  UI/Coordinator到实体的单向关联按消息方向表达使用/创建；不定义持久多重性。
+  User–UserProfile的1:1来自FR04/AC-FR04-03/SRS §12。
+endlegend
+@enduml
