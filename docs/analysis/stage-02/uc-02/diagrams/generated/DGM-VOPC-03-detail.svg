@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" contentScriptType="application/ecmascript" contentStyleType="text/css" height="1212.5px" preserveAspectRatio="none" style="width:1354px;height:1212px;" version="1.1" viewBox="0 0 1354 1212" width="1354.6875px" zoomAndPan="magnify"><defs/><g><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="623.4375" x="364.0625" y="25.3749">DGM-VOPC-03 UC-02 查看成果详情与来源参与类类图（VOPC）</text><!--MD5=[6819dfc597ebd759735eb95d2785155c]
+cluster UC-02 参与类--><polygon fill="#FFFFFF" points="282.8125,69.1749,425,69.1749,435.9375,110.2247,1050,110.2247,1050,905.1124,282.8125,905.1124,282.8125,69.1749" style="stroke: #000000; stroke-width: 2.34375;"/><line style="stroke: #000000; stroke-width: 2.34375;" x1="282.8125" x2="435.9375" y1="110.2247" y2="110.2247"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="132.8125" x="289.0625" y="97.6748">UC-02 参与类</text><!--MD5=[c42ed81cef7fdd2e33758127945b9a5b]
+entity UI--><path d="M644.5313,136.3624 L644.5313,173.8624 M644.5313,155.1124 L671.0938,155.1124 " fill="none" style="stroke: #383838; stroke-width: 3.125;"/><ellipse cx="689.8438" cy="155.1124" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="134.375" x="609.375" y="205.4873">WorkDetailUI</text><!--MD5=[793d3c1671d31b6c1e8ec57652c36e20]
+entity Ctl--><ellipse cx="676.5625" cy="364.4874" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><polygon fill="#383838" points="670.3125,345.7374,679.6875,337.9249,676.5625,345.7374,679.6875,353.5499,670.3125,345.7374" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="234.375" x="559.375" y="414.8623">WorkDetailCoordinator</text><!--MD5=[a77f957b2a6e22bdab97b457a46ed7f7]
+entity Work--><ellipse cx="767.1875" cy="573.8624" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="748.4375" x2="785.9375" y1="595.7374" y2="595.7374"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="110.9375" x="711.7188" y="624.2373">WorkEntity</text><!--MD5=[c8da82a3e4fd5c54db14ac48b9861466]
+entity Source--><ellipse cx="467.1875" cy="786.3624" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="448.4375" x2="485.9375" y1="808.2374" y2="808.2374"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="142.1875" x="396.0938" y="836.7373">SourceRecord</text><!--MD5=[3ef3ce2b26bff40d135f7543d7b2cb7b]
+entity Version--><ellipse cx="681.25" cy="786.3624" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="662.5" x2="700" y1="808.2374" y2="808.2374"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="128.125" x="617.1875" y="836.7373">WorkVersion</text><!--MD5=[16f3694fe3e7ab3d4ffc1c849a81fcd6]
+entity Authorship--><ellipse cx="881.25" cy="786.3624" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="862.5" x2="900" y1="808.2374" y2="808.2374"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="115.625" x="823.4375" y="836.7373">Authorship</text><!--MD5=[17fea0aa4954acf1c0acc7d7b643deef]
+link UI to Ctl--><path d="M676.5625,211.5811 C676.5625,245.7061 676.5625,295.1905 676.5625,331.4405 " fill="none" id="UI-&gt;Ctl" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="676.5625,339.4092,682.8125,325.3467,676.5625,331.5967,670.3125,325.3467,676.5625,339.4092" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="154.6875" x="678.125" y="285.1748">M2/M5/M7/M20</text><!--MD5=[2969afc65a0ef887f7bc34b1ca90670b]
+link Ctl to Work--><path d="M693.8281,420.9561 C708.875,455.2217 730.75,504.9874 746.6875,541.2686 " fill="none" id="Ctl-&gt;Work" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="750,548.7842,750.0668,533.3955,746.8581,541.6314,738.6223,538.4226,750,548.7842" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="117.1875" x="728.125" y="494.5498">M3/M9/M11</text><!--MD5=[ea224bb8f55fd4af7cdffe364a00e66f]
+link Work to Source--><path d="M711.5938,610.1592 C649.4688,631.8467 555.7656,665.6749 542.1875,676.9874 C515.2188,699.4717 495.3125,734.2686 482.8125,761.2061 " fill="none" id="Work-Source" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="87.5" x="543.75" y="703.9248">来源证据</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="12.5" x="686.3385" y="605.325">1</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="35.9375" x="446.333" y="742.2871">0..*</text><!--MD5=[07f73dd455a0a09cd832f63f707011f5]
+link Work to Version--><path d="M711.4375,621.0499 C691.1406,635.1124 670.4844,653.9092 659.375,676.9874 C646.7188,703.2686 653.3125,735.8467 662.4531,760.9405 " fill="none" id="Work-Version" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="131.25" x="660.9375" y="703.9248">明示版本证据</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="12.5" x="686.7312" y="655.7148">1</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="35.9375" x="618.4731" y="742.6684">0..*</text><!--MD5=[e53e927b088a8ef296614197f49c389f]
+link Work to Authorship--><path d="M788.6406,630.4249 C809.0313,667.8624 839.5312,723.8467 859.8906,761.2217 " fill="none" id="Work-Authorship" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="87.5" x="831.25" y="703.9248">参与关系</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="12.5" x="779.4663" y="668.1728">1</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="35.9375" x="814.8585" y="742.3063">0..*</text><!--MD5=[e22aba1b812e0a819c348e6c85031b6a]
+link Ctl to Source--><path d="M644.8281,420.7842 C618.8594,453.7842 582.0625,502.878 554.6875,548.8624 C522.4375,603.0499 514.0625,617.2842 493.75,676.9874 C485.375,701.5967 479.0625,729.8936 474.6875,753.1905 " fill="none" id="Ctl-&gt;Source" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="473.2812,760.878,481.9623,748.1714,474.6886,753.1933,469.6668,745.9196,473.2812,760.878" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="42.1875" x="556.25" y="599.2373">M13</text><!--MD5=[99dcabe06779763b0d41bf6d0ee505be]
+link Ctl to Version--><path d="M661.7969,420.8467 C650.0313,454.2999 634.5,503.9874 628.125,548.8624 C617.9688,620.3936 613,641.878 632.8125,711.3624 C636.9688,725.9249 643.7969,740.7686 651.0469,754.0499 " fill="none" id="Ctl-&gt;Version" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="655.0938,761.253,653.6683,745.9303,651.2731,754.4384,642.765,752.0433,655.0938,761.253" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="42.1875" x="629.6875" y="599.2373">M15</text><!--MD5=[48b54c5886db1a8b086e31079a77314d]
+link Ctl to Authorship--><path d="M794.1719,417.503 C820.3906,429.9561 846.1563,446.3311 865.625,467.6124 C941.9844,551.1124 971.1875,602.878 939.0625,711.3624 C934.6406,726.2686 926.8594,741.0342 918.4063,754.1124 " fill="none" id="Ctl-&gt;Authorship" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="913.6563,761.2061,926.6766,753.0032,918.0053,754.716,916.2924,746.0447,913.6563,761.2061" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="42.1875" x="953.125" y="599.2373">M17</text><rect fill="#DDDDDD" height="237.349" rx="7.8125" ry="7.8125" style="stroke: #000000; stroke-width: 1.5625;" width="1325" x="12.5" y="958.2374"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="753.125" x="21.875" y="991.4248">只包含UC-02顺序图中的6个参与对象；访客、原站是参与者，不画成系统类。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="1306.25" x="21.875" y="1023.0996">边上编号对应04逐消息表：M2请求/M5·M7·M20返回；M27是UI对访客的外链失败提示，不画在UI-Ctl边；M3·M9·M11读取成果；</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="717.1875" x="21.875" y="1054.7745">M13读取可公开来源；M15读取明示版本证据；M17读取参与角色与状态。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="598.4375" x="21.875" y="1086.4493">控制/边界到实体的关联按读取消息方向；不定义持久多重性。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="709.375" x="21.875" y="1118.1242">成果到来源/版本/参与关系的多重性来自FR02/FR16/BR-IMP-02与§7.2。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="753.125" x="21.875" y="1149.7991">WorkEntity是一条去重成果；多来源/多版本不增加成果数；缺失字段标未知，</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="343.75" x="21.875" y="1181.4739">发生时间/采集时间/更新时间分开。</text><!--MD5=[292e7cbba453443104d838dbc7277e67]
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 50
+skinparam ranksep 60
+hide circle
+hide empty members
+title DGM-VOPC-03 UC-02 查看成果详情与来源参与类类图（VOPC）
+package "UC-02 参与类" {
+  boundary "WorkDetailUI" as UI
+  control "WorkDetailCoordinator" as Ctl
+  entity "WorkEntity" as Work
+  together {
+    entity "SourceRecord" as Source
+    entity "WorkVersion" as Version
+    entity "Authorship" as Authorship
+  }
+  UI -down-> Ctl : M2/M5/M7/M20
+  Ctl -down-> Work : M3/M9/M11
+  Work "1" -down- "0..*" Source : 来源证据
+  Work "1" -down- "0..*" Version : 明示版本证据
+  Work "1" -down- "0..*" Authorship : 参与关系
+  Ctl - -> Source : M13
+  Ctl - -> Version : M15
+  Ctl - -> Authorship : M17
+}
+legend right
+  只包含UC-02顺序图中的6个参与对象；访客、原站是参与者，不画成系统类。
+  边上编号对应04逐消息表：M2请求/M5·M7·M20返回；M27是UI对访客的外链失败提示，不画在UI-Ctl边；M3·M9·M11读取成果；
+  M13读取可公开来源；M15读取明示版本证据；M17读取参与角色与状态。
+  控制/边界到实体的关联按读取消息方向；不定义持久多重性。
+  成果到来源/版本/参与关系的多重性来自FR02/FR16/BR-IMP-02与§7.2。
+  WorkEntity是一条去重成果；多来源/多版本不增加成果数；缺失字段标未知，
+  发生时间/采集时间/更新时间分开。
+endlegend
+@enduml
+
+PlantUML version 1.2020.02(Sun Mar 01 18:22:07 CST 2020)
+(GPL source distribution)
+Java Runtime: Java(TM) SE Runtime Environment
+JVM: Java HotSpot(TM) 64-Bit Server VM
+Java Version: 22.0.2+9-70
+Operating System: Linux
+Default Encoding: UTF-8
+Language: en
+Country: US
+--></g></svg>

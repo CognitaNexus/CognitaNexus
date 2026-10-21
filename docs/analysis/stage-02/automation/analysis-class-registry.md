@@ -13,3 +13,8 @@
 | RegistrationCoordinator | Control | UC-04 | — | 注册校验、User+UserProfile 创建、稳定地址、幂等/回滚 | 注册请求状态（单次） | → User、→ UserProfile | 不定义持久多重性 | 全局 `RegCtl` | 统一命名 |
 | User | Entity | UC-04 | UC-05/06/22 | 账号、会话、对象授权主体 | stableId、accountState | 1:1 UserProfile；提交 Claim | 1:1（UserProfile） | 不等于 Scholar | 保留 |
 | UserProfile | Entity | UC-04 | UC-03/22 | 唯一公开普通主页 | stableId/publicUrl、公开普通资料、零成果空态 | 属于 User | 1:1 | 不强制对应 Scholar | 保留 |
+| WorkDetailUI | Boundary | UC-02 | — | 详情请求、详情/不可访问/失败/外链失败/处理中展示 | 无持久业务属性 | → WorkDetailCoordinator | 不定义持久多重性 | 全局 `PublicUI`/`SearchUI` 邻近 | R5 评估统一公共详情边界 |
+| WorkDetailCoordinator | Control | UC-02 | — | 读取一条成果、类型字段、来源、版本证据、参与关系；公开/许可过滤；空/失败分离 | 单次详情请求状态 | → WorkEntity/SourceRecord/WorkVersion/Authorship | 不定义持久多重性 | 与 `SearchCtl` 职责边界待定 | R5 决定独立或扩展 |
+| SourceRecord | Entity | UC-02 | UC-09/16/18/19 | 来源记录、许可、原值、到达时间、原站地址 | sourceId/sourceDomain/rightsScope/arrivalAt/sourceRecordKey/rawValues/dataOrigin/originalUrl | 被 WorkEntity 聚合 1:0..* | 1:0..* | 全局 `Source` | 以 `SourceRecord` 为正式名 |
+| WorkVersion | Entity | UC-02 | UC-09/16/19 | 有明示证据的版本关系 | versionKind/versionEvidence/linkedSourceId/publicOk | 属于 WorkEntity 1:0..* | 1:0..* | 全局 `Version` | 统一命名 |
+| Authorship | Entity | UC-02 | UC-07/08/10/14/15/16 | 学者—成果参与关系、角色/顺序/状态/证据 | participantDisplay/role/order/relationState/evidencePublic | 关联 WorkEntity 0..*:1；后续关联 Scholar | 0..*:1 | 角色顺序归属与 §7.1 有差异 | R5 确认 |

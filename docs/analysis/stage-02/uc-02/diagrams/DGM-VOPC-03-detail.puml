@@ -1,0 +1,40 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 50
+skinparam ranksep 60
+hide circle
+hide empty members
+title DGM-VOPC-03 UC-02 查看成果详情与来源参与类类图（VOPC）
+package "UC-02 参与类" {
+  boundary "WorkDetailUI" as UI
+  control "WorkDetailCoordinator" as Ctl
+  entity "WorkEntity" as Work
+  together {
+    entity "SourceRecord" as Source
+    entity "WorkVersion" as Version
+    entity "Authorship" as Authorship
+  }
+  UI -down-> Ctl : M2/M5/M7/M20
+  Ctl -down-> Work : M3/M9/M11
+  Work "1" -down- "0..*" Source : 来源证据
+  Work "1" -down- "0..*" Version : 明示版本证据
+  Work "1" -down- "0..*" Authorship : 参与关系
+  Ctl --> Source : M13
+  Ctl --> Version : M15
+  Ctl --> Authorship : M17
+}
+legend right
+  只包含UC-02顺序图中的6个参与对象；访客、原站是参与者，不画成系统类。
+  边上编号对应04逐消息表：M2请求/M5·M7·M20返回；M27是UI对访客的外链失败提示，不画在UI–Ctl边；M3·M9·M11读取成果；
+  M13读取可公开来源；M15读取明示版本证据；M17读取参与角色与状态。
+  控制/边界到实体的关联按读取消息方向；不定义持久多重性。
+  成果到来源/版本/参与关系的多重性来自FR02/FR16/BR-IMP-02与§7.2。
+  WorkEntity是一条去重成果；多来源/多版本不增加成果数；缺失字段标未知，
+  发生时间/采集时间/更新时间分开。
+endlegend
+@enduml
