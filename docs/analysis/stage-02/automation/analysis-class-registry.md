@@ -15,6 +15,10 @@
 | UserProfile | Entity | UC-04 | UC-03/22 | 唯一公开普通主页 | stableId/publicUrl、公开普通资料、零成果空态 | 属于 User | 1:1 | 不强制对应 Scholar | 保留 |
 | ProfileUI | Boundary | UC-22 | — | 本人普通主页编辑输入/拒绝/失败/结果 | 无持久业务属性 | → ProfileCoordinator | 不定义持久多重性 | 全局同名 | 保留 |
 | ProfileCoordinator | Control | UC-22 | UC-07 | 身份/归属/字段范围守卫；普通字段保存；公开投影 | 单次编辑请求状态 | → User/UserProfile/AuditEvidence | 不定义持久多重性 | 全局 `ProfileCtl` | 统一命名 |
+| ClaimUI | Boundary | UC-05 | UC-06 | 认领提交/查询、缺失项、状态与失败 | 无持久业务属性 | → ClaimCoordinator | 不定义持久多重性 | 全局同名 | 保留 |
+| ClaimCoordinator | Control | UC-05 | UC-06 | 证据校验、目标/账号守卫、申请创建、竞争事实读取、本人查询 | 单次申请/查询状态 | → User/Scholar/ClaimApplication/ReviewEvidence/ScholarAuthorization(只读) | 不定义持久多重性 | 全局 `ClaimCtl` | 统一命名 |
+| ClaimApplication | Entity | UC-05 | UC-06 | 认领申请、状态、理由/缺失项、竞争事实 | applicationRef/applicantRef/targetScholarRef/evidenceRefs/status/statusReason/competitionFact/submittedAt | →User 0..*:1；→Scholar 0..*:1；→ReviewEvidence 未定 | 0..*:1（User/Scholar） | 全局 `Claim` | 统一为 ClaimApplication |
+| ReviewEvidence | Entity | UC-05 | UC-06/17 | 申请证据、可见范围、审核材料 | evidence items/materialRef/visibilityScope | 被 ClaimApplication 引用 | 未定 | 全局 `Evidence`/`AuditEvidence` | R5 统一（D-13） |
 | AuditEvidence | Entity | UC-22 | UC-17 | 受保护写入/拒绝/越权留痕 | actorIdentity/targetProfileRef/reasonOrOutcome/beforeAfterValues/occurredAt | 被 ProfileCoordinator 创建 | 未定 | 全局 `Evidence`/`ReviewEvidence` | R5 统一（D-13） |
 | PublicProfileUI | Boundary | UC-03 | UC-22 | 公开主页/Scholar档案展示、空态、不可访问 | 无持久业务属性 | → PublicProfileCoordinator | 不定义持久多重性 | 全局 `PublicUI` 邻近 | R5 统一公共门户边界 |
 | PublicProfileCoordinator | Control | UC-03 | UC-22 | 按稳定地址读取 UserProfile 或 Scholar；对象类型/状态区分；公开过滤 | 单次主页请求状态 | → UserProfile/Scholar/Authorship/WorkEntity | 不定义持久多重性 | 无全局同名 | R5 评估 ProfileCtl 边界 |

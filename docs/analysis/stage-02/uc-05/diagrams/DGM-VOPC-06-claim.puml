@@ -1,0 +1,40 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 80
+skinparam ranksep 90
+skinparam linetype ortho
+hide circle
+hide empty members
+title DGM-VOPC-06 UC-05 提交和查询 Scholar 认领参与类类图（VOPC）
+package "UC-05 参与类" {
+  boundary "ClaimUI" as UI
+  control "ClaimCoordinator" as Ctl
+  entity "ClaimApplication" as Claim
+  entity "User" as User
+  entity "Scholar" as Scholar
+  entity "ReviewEvidence" as Evidence
+  entity "ScholarAuthorization" as Auth
+}
+UI --> Ctl : M2 请求提交；M6/M8/M11/M15/M21/M23 返回\nM26 请求查询；M29/M31/M33/M35 返回
+Ctl --> Claim : M13/M19 创建申请；M28 读取申请
+Ctl ..> Auth : M17/M18 只读读取有效授权
+Claim "0..*" --> "1" User : 申请人
+Claim "0..*" --> "1" Scholar : 认领目标（竞争时同一 Scholar 有多个申请）
+Claim --> Evidence : 提交的证据材料（多重性未定）
+Auth --> Scholar : 目标档案（多重性未定）
+legend right
+  只包含 UC-05 顺序图中的 7 个参与对象；登录申请人是参与者，不画成系统类。
+  ClaimApplication→User 与 ClaimApplication→Scholar 的 0..*:1 有正式依据（FR05；AC-IMPL-FR05-03）。
+  ClaimApplication→ReviewEvidence 多重性未定：最低证据集合与补证材料版本未冻结（D-06）。
+  ScholarAuthorization 仅被只读（虚线）：本 UC 无创建/修改/转移授权消息；授权由 UC-06 批准后产生。
+  UserProfile 不参与本 UC（无消息）：认领不创建第二个 UserProfile（AC-IMPL-FR05-04）。
+  Scholar/Authorship/WorkEntity 不被创建；不自动确认成果归属。
+  控制/边界到实体的关联按消息方向表达协作，不定义持久多重性。
+  授权与 Scholar 的有效授权数量/转移条件待评审（SPEC ID-12）。
+endlegend
+@enduml

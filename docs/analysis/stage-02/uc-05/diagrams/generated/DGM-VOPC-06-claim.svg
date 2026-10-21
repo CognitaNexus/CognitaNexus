@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" contentScriptType="application/ecmascript" contentStyleType="text/css" height="1375px" preserveAspectRatio="none" style="width:1725px;height:1375px;" version="1.1" viewBox="0 0 1725 1375" width="1725px" zoomAndPan="magnify"><defs/><g><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="665.625" x="528.125" y="25.3749">DGM-VOPC-06 UC-05 提交和查询 Scholar 认领参与类类图（VOPC）</text><!--MD5=[484acd566991c7ba89aaff87b9e27d07]
+cluster UC-05 参与类--><polygon fill="#FFFFFF" points="34.375,69.1749,176.5625,69.1749,187.5,110.2247,1668.75,110.2247,1668.75,1036.3624,34.375,1036.3624,34.375,69.1749" style="stroke: #000000; stroke-width: 2.34375;"/><line style="stroke: #000000; stroke-width: 2.34375;" x1="34.375" x2="187.5" y1="110.2247" y2="110.2247"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="132.8125" x="40.625" y="97.6748">UC-05 参与类</text><!--MD5=[c42ed81cef7fdd2e33758127945b9a5b]
+entity UI--><path d="M422.6563,136.3624 L422.6563,173.8624 M422.6563,155.1124 L449.2188,155.1124 " fill="none" style="stroke: #383838; stroke-width: 3.125;"/><ellipse cx="467.9688" cy="155.1124" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="81.25" x="414.0625" y="205.4873">ClaimUI</text><!--MD5=[793d3c1671d31b6c1e8ec57652c36e20]
+entity Ctl--><ellipse cx="454.6875" cy="442.6124" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><polygon fill="#383838" points="448.4375,423.8624,457.8125,416.0499,454.6875,423.8624,457.8125,431.6749,448.4375,423.8624" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="181.25" x="364.0625" y="492.9873">ClaimCoordinator</text><!--MD5=[35b07627036f410cd6a91e882d4dd43e]
+entity Claim--><ellipse cx="996.875" cy="698.8624" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="978.125" x2="1015.625" y1="720.7374" y2="720.7374"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="178.125" x="907.8125" y="749.2373">ClaimApplication</text><!--MD5=[fee662a292a0353a69bd162820bae93b]
+entity User--><ellipse cx="1115.625" cy="955.1124" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="1096.875" x2="1134.375" y1="976.9874" y2="976.9874"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="46.875" x="1092.1875" y="1005.4873">User</text><!--MD5=[06d11922b586176628a6544b6850c447]
+entity Scholar--><ellipse cx="371.875" cy="955.1124" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="353.125" x2="390.625" y1="976.9874" y2="976.9874"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="76.5625" x="333.5938" y="1005.4873">Scholar</text><!--MD5=[347c3204b65e9de92cefb145745d1d7a]
+entity Evidence--><ellipse cx="1350" cy="955.1124" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="1331.25" x2="1368.75" y1="976.9874" y2="976.9874"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="167.1875" x="1266.4063" y="1005.4873">ReviewEvidence</text><!--MD5=[39222abbbfd087a4fdab60e627dc976f]
+entity Auth--><ellipse cx="318.75" cy="698.8624" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="300" x2="337.5" y1="720.7374" y2="720.7374"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="217.1875" x="210.1563" y="749.2373">ScholarAuthorization</text><!--MD5=[17fea0aa4954acf1c0acc7d7b643deef]
+link UI to Ctl--><path d="M454.6875,211.9249 C454.6875,211.9249 454.6875,409.7686 454.6875,409.7686 " fill="none" id="UI-&gt;Ctl" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="454.6875,417.5811,460.9375,403.5186,454.6875,409.7686,448.4375,403.5186,454.6875,417.5811" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="459.375" x="456.25" y="308.6123">M2 请求提交；M6/M8/M11/M15/M21/M23 返回</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="396.875" x="487.5" y="340.2871">M26 请求查询；M29/M31/M33/M35 返回</text><!--MD5=[5ef983f4146927329edb3a633dd335eb]
+link Ctl to Claim--><path d="M486.3281,499.4092 C486.3281,571.8467 486.3281,714.4874 486.3281,714.4874 C486.3281,714.4874 899.5469,714.4874 899.5469,714.4874 " fill="none" id="Ctl-&gt;Claim" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="907.3594,714.4874,893.2969,708.2374,899.5469,714.4874,893.2969,720.7374,907.3594,714.4874" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="340.625" x="931.25" y="596.1123">M13/M19 创建申请；M28 读取申请</text><!--MD5=[82f5fdc8a1aa387cd9274e1429555346]
+link Ctl to Auth--><path d="M395.7031,499.4092 C395.7031,499.4092 395.7031,666.0342 395.7031,666.0342 " fill="none" id="Ctl-&gt;Auth" style="stroke: #383838; stroke-width: 1.5625; stroke-dasharray: 7.0,7.0;"/><polygon fill="#383838" points="395.7031,673.8467,401.9531,659.7842,395.7031,666.0342,389.4531,659.7842,395.7031,673.8467" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="271.875" x="389.0625" y="596.1123">M17/M18 只读读取有效授权</text><!--MD5=[81141f40da1608e1240cfb563f45b3f8]
+link Claim to User--><path d="M1086.2656,728.5499 C1103.1406,728.5499 1115.625,728.5499 1115.625,728.5499 C1115.625,728.5499 1115.625,921.8467 1115.625,921.8467 " fill="none" id="Claim-&gt;User" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="1115.625,929.6592,1121.875,915.5967,1115.625,921.8467,1109.375,915.5967,1115.625,929.6592" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="65.625" x="1134.375" y="852.3623">申请人</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="35.9375" x="1098.6791" y="722.4941">0..*</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="12.5" x="1101.7578" y="911.3803">1</text><!--MD5=[faf22f916c191740162328cd49121d35]
+link Claim to Scholar--><path d="M996.875,755.6592 C996.875,828.0967 996.875,970.7374 996.875,970.7374 C996.875,970.7374 418.3125,970.7374 418.3125,970.7374 " fill="none" id="Claim-&gt;Scholar" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="410.5,970.7374,424.5625,976.9874,418.3125,970.7374,424.5625,964.4874,410.5,970.7374" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="435.9375" x="562.5" y="852.3623">认领目标（竞争时同一 Scholar 有多个申请）</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="35.9375" x="957.0068" y="793.4584">0..*</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="12.5" x="422.5602" y="960.663">1</text><!--MD5=[088cc095c0133880992809f90730f624]
+link Claim to Evidence--><path d="M1085.9844,701.9874 C1190.5938,701.9874 1350,701.9874 1350,701.9874 C1350,701.9874 1350,922.1124 1350,922.1124 " fill="none" id="Claim-&gt;Evidence" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="1350,929.9249,1356.25,915.8624,1350,922.1124,1343.75,915.8624,1350,929.9249" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="306.25" x="1335.9375" y="852.3623">提交的证据材料（多重性未定）</text><!--MD5=[e71f5bee8bb52bf6db6eb660a36fee7d]
+link Auth to Scholar--><path d="M371.875,755.6592 C371.875,755.6592 371.875,922.2842 371.875,922.2842 " fill="none" id="Auth-&gt;Scholar" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="371.875,930.0967,378.125,916.0342,371.875,922.2842,365.625,916.0342,371.875,930.0967" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="240.625" x="185.9375" y="852.3623">目标档案（多重性未定）</text><rect fill="#DDDDDD" height="269.0239" rx="7.8125" ry="7.8125" style="stroke: #000000; stroke-width: 1.5625;" width="1090.625" x="617.1875" y="1089.4874"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="771.875" x="626.5625" y="1122.6748">只包含 UC-05 顺序图中的 7 个参与对象；登录申请人是参与者，不画成系统类。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="1071.875" x="626.5625" y="1154.3496">ClaimApplication→User 与 ClaimApplication→Scholar 的 0..*:1 有正式依据（FR05；AC-IMPL-FR05-03）。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="967.1875" x="626.5625" y="1186.0245">ClaimApplication→ReviewEvidence 多重性未定：最低证据集合与补证材料版本未冻结（D-06）。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="1026.5625" x="626.5625" y="1217.6993">ScholarAuthorization 仅被只读（虚线）：本 UC 无创建/修改/转移授权消息；授权由 UC-06 批准后产生。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="909.375" x="626.5625" y="1249.3742">UserProfile 不参与本 UC（无消息）：认领不创建第二个 UserProfile（AC-IMPL-FR05-04）。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="651.5625" x="626.5625" y="1281.0491">Scholar/Authorship/WorkEntity 不被创建；不自动确认成果归属。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="642.1875" x="626.5625" y="1312.7239">控制/边界到实体的关联按消息方向表达协作，不定义持久多重性。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="643.75" x="626.5625" y="1344.3988">授权与 Scholar 的有效授权数量/转移条件待评审（SPEC ID-12）。</text><!--MD5=[c8de97c2dd69e4575c74d129dbe48376]
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 80
+skinparam ranksep 90
+skinparam linetype ortho
+hide circle
+hide empty members
+title DGM-VOPC-06 UC-05 提交和查询 Scholar 认领参与类类图（VOPC）
+package "UC-05 参与类" {
+  boundary "ClaimUI" as UI
+  control "ClaimCoordinator" as Ctl
+  entity "ClaimApplication" as Claim
+  entity "User" as User
+  entity "Scholar" as Scholar
+  entity "ReviewEvidence" as Evidence
+  entity "ScholarAuthorization" as Auth
+}
+UI - -> Ctl : M2 请求提交；M6/M8/M11/M15/M21/M23 返回\nM26 请求查询；M29/M31/M33/M35 返回
+Ctl - -> Claim : M13/M19 创建申请；M28 读取申请
+Ctl ..> Auth : M17/M18 只读读取有效授权
+Claim "0..*" - -> "1" User : 申请人
+Claim "0..*" - -> "1" Scholar : 认领目标（竞争时同一 Scholar 有多个申请）
+Claim - -> Evidence : 提交的证据材料（多重性未定）
+Auth - -> Scholar : 目标档案（多重性未定）
+legend right
+  只包含 UC-05 顺序图中的 7 个参与对象；登录申请人是参与者，不画成系统类。
+  ClaimApplication→User 与 ClaimApplication→Scholar 的 0..*:1 有正式依据（FR05；AC-IMPL-FR05-03）。
+  ClaimApplication→ReviewEvidence 多重性未定：最低证据集合与补证材料版本未冻结（D-06）。
+  ScholarAuthorization 仅被只读（虚线）：本 UC 无创建/修改/转移授权消息；授权由 UC-06 批准后产生。
+  UserProfile 不参与本 UC（无消息）：认领不创建第二个 UserProfile（AC-IMPL-FR05-04）。
+  Scholar/Authorship/WorkEntity 不被创建；不自动确认成果归属。
+  控制/边界到实体的关联按消息方向表达协作，不定义持久多重性。
+  授权与 Scholar 的有效授权数量/转移条件待评审（SPEC ID-12）。
+endlegend
+@enduml
+
+PlantUML version 1.2020.02(Sun Mar 01 18:22:07 CST 2020)
+(GPL source distribution)
+Java Runtime: Java(TM) SE Runtime Environment
+JVM: Java HotSpot(TM) 64-Bit Server VM
+Java Version: 22.0.2+9-70
+Operating System: Linux
+Default Encoding: UTF-8
+Language: en
+Country: US
+--></g></svg>

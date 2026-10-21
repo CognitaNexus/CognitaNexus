@@ -100,9 +100,10 @@
       "dir": "docs/analysis/stage-02/uc-05/",
       "seq": "DGM-SEQ-10",
       "vopc": "DGM-VOPC-06",
-      "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "PENDING"
+      "reviewRounds": 2,
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-05-review-R3.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "MINOR"
     },
     "UC-06": {
       "title": "审核 Scholar 认领",
@@ -292,6 +293,12 @@
       "head": "0375d18cfee331df62bd8be8e8a1a0c8ffd77fca",
       "at": "2026-10-21",
       "note": "UC-22 complete after two fix rounds; R3 PASS/MINOR"
+    },
+    {
+      "id": "CP-005",
+      "head": "4209cf00f26d0b9912e2821ef906bf87c00e3c54",
+      "at": "2026-10-21",
+      "note": "UC-05 complete after two fixes; R3 PASS WITH NOTES/MINOR"
     }
   ]
 }

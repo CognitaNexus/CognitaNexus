@@ -1,0 +1,85 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 13
+skinparam dpi 150
+skinparam sequenceMessageAlign left
+title DGM-SEQ-10 UC-05 提交和查询 Scholar 认领（分析序列）
+actor "登录申请人（注册用户）" as Applicant
+boundary "ClaimUI" as UI
+control "ClaimCoordinator" as Ctl
+entity "User" as User
+entity "Scholar" as Scholar
+entity "ScholarAuthorization" as Auth
+entity "ClaimApplication" as Claim
+entity "ReviewEvidence" as Evidence
+
+Applicant -> UI : M1 选择平台已有 Scholar 档案并提交可核验证据
+UI -> Ctl : M2 请求提交认领申请（含已认证请求上下文）
+Ctl -> User : M3 校验请求者身份与账号状态
+Ctl -> Scholar : M4 确认目标是平台已收录 Scholar 档案（不新建、不改档）
+Ctl -> Ctl : M5 判定身份/账号状态/目标对象类型
+alt 未登录或账号停用（A2）
+  Ctl --> UI : M6 拒绝提交，无任何写入
+  UI --> Applicant : M7 显示拒绝与原因（与提交失败区分）
+else 目标不是平台已收录 Scholar 档案（A3）
+  Ctl --> UI : M8 拒绝；不新建 Scholar、不以 UserProfile 代替
+  UI --> Applicant : M9 显示目标不可认领与原因
+else 身份与目标有效
+  Ctl -> Ctl : M10 校验必要证据是否齐备（最低集合待确认）
+  alt 缺必要证据（A1：不进入审核）
+    alt A1a 直接拒绝，不创建申请
+      Ctl --> UI : M11 拒绝提交并说明缺失项
+      UI --> Applicant : M12 显示缺失项与补证说明
+    else A1b 标记待补充并说明缺失
+      Ctl -> Claim : M13 创建申请，状态=待补充，记录缺失项与理由
+      Ctl -> Evidence : M14 保存本次已提交材料（私有可见）
+      Ctl --> UI : M15 返回申请标识、待补充状态与缺失原因
+      UI --> Applicant : M16 显示待补充与需补材料
+    end
+  else 证据齐备
+    Ctl -> Auth : M17 读取目标 Scholar 当前有效授权（只读，识别竞争；不修改）
+    Auth --> Ctl : M18 现有授权事实（授权主体/有效性）
+    Ctl -> Claim : M19 创建申请，状态=待审核（记录竞争事实；不置通过/驳回/争议）
+    Ctl -> Evidence : M20 登记私有证据并关联申请（仅本人与有权审核者可见）
+    alt 申请或证据保存失败（A4）
+      Ctl --> UI : M21 提交失败；不虚报已提交、不留可审核半成品
+      UI --> Applicant : M22 显示失败与重试（区别于待补充/待审核）
+    else 提交成功
+      Ctl --> UI : M23 申请标识、状态=待审核、可查询入口；原授权未变更
+      UI --> Applicant : M24 显示已提交待审核与可查询入口
+    end
+  end
+end
+group 查询本人认领申请（E9–E11）
+  Applicant -> UI : M25 查询本人认领申请的状态与决定
+  UI -> Ctl : M26 请求查询本人申请
+  Ctl -> User : M27 校验请求者身份与账号状态
+  Ctl -> Claim : M28 读取申请并核验申请人归属
+  alt 指向他人申请或他人证据（A6）
+    Ctl --> UI : M29 拒绝读取，不返回他人申请或证据原文
+    UI --> Applicant : M30 显示无权读取
+  else 本人申请
+    alt 查询执行失败（A7）
+      Ctl --> UI : M31 返回查询失败，不伪装为“无申请”
+      UI --> Applicant : M32 显示失败与重试
+    else 查询成功
+      alt 本人无匹配申请（A8）
+        Ctl --> UI : M33 返回“无该认领申请”
+        UI --> Applicant : M34 显示无申请
+      else 有可读申请
+        Ctl --> UI : M35 状态（待审核/待补充/通过/驳回/争议）+ 理由/缺失项；不回显他人证据
+        UI --> Applicant : M36 显示本人可读状态与理由
+      end
+    end
+  end
+end
+legend right
+  只分析 UC-05 提交与查询；审核决定、授权生效、争议处理属 UC-06，已授权档案维护属 UC-07。
+  认领是 User→Scholar 的申请：不创建 Scholar、不创建第二个 UserProfile、不创建 Authorship。
+  M17/M18 只读现有授权：竞争认领（A5）不转移、不撤销原授权；本序列无授权创建/修改消息。
+  提交侧只产生待审核/待补充（A1b 待确认）；通过/驳回/争议由 UC-06 产生，候选查询值仅只读。
+  证据仅本人与有权审核者可见（NF06）；最低证据集合、缺证处置策略、通知/SLA 待确认。
+endlegend
+@enduml
