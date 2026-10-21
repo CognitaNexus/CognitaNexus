@@ -1,0 +1,204 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 13
+skinparam dpi 150
+skinparam sequenceMessageAlign left
+title DGM-SEQ-18 UC-19 管理来源更新（分析序列）
+actor "管理员" as Admin
+actor "获准数据来源" as SourceExt
+actor "未授权请求者" as Requester
+boundary "AdminConsole" as UI
+boundary "SourceAdapter" as Adapter
+control "CollectionCoordinator" as Ctl
+control "GovernanceCoordinator" as Gov
+entity "User" as User
+entity "SourceDefinition" as Def
+entity "CollectionTask" as Task
+entity "SourceRecord" as Rec
+entity "IncrementalChangeSet" as Chg
+entity "WorkEntity" as Work
+entity "WorkVersion" as Ver
+entity "GovernanceException" as Exc
+entity "AuditEvidence" as Audit
+
+group 入口与权限校验（E1–E2）
+  Admin -> UI : M1 打开来源更新入口（增量同步）（E1）
+  UI -> Ctl : M2 请求更新入口与上次更新概览（已认证上下文）
+  Ctl -> User : M3 校验账号状态（E2）
+  Ctl -> User : M4 校验“数据来源/采集”具体管理权限（E2）
+  Ctl -> Ctl : M5 权限守卫：无该具体权限不放行（E2；A11）
+  Ctl --> UI : M6 返回可访问的已核验来源域与更新入口（E2）
+  UI --> Admin : M7 显示已核验来源域与更新入口（E2）
+end
+
+group 来源域、基线与更新前置（E3–E4；A1）
+  Admin -> UI : M8 选择已核验来源域与更新范围，请求来源更新（E3）
+  UI -> Ctl : M9 提交来源更新请求（E3）
+  Ctl -> Def : M10 只读读取来源已获准状态、来源域与许可/允许范围（E3）
+  Def --> Ctl : M11 返回来源有效性、来源域与允许范围（E3）
+  Ctl -> Task : M12 只读读取上次安全检查点、上次检查时间与任务状态（E4）
+  Task --> Ctl : M13 返回检查点、上次检查时间与任务状态（E4）
+  Ctl -> Ctl : M14 更新前置守卫：来源已获准∧来源域已核验∧范围可定位∧基线可确定∧权限有效（E3–E4；A1）
+  alt 有可用基线
+    Ctl --> UI : M15 确认基线可用与更新范围（E4）
+  else 无上次基线或版本游标（A1）
+    Ctl --> UI : M16 披露“无法与上次比较”并要求指定回溯范围（A1）
+    Admin -> UI : M17 指定回溯范围（A1）
+    UI -> Ctl : M18 提交回溯范围（A1）
+    Ctl -> Ctl : M19 以回溯范围为基线并标注局限，不把“无法比较”当“未变”（A1）
+  end
+end
+
+group 建立变更集与读取本轮输入（E5；A4）
+  Ctl -> Chg : M20 建立本轮变更集：来源域、更新范围、基线引用、检查开始时间（E5）
+  Chg --> Ctl : M21 返回变更集引用与检查时间（E5）
+  Ctl -> Adapter : M22 按来源定义与基线请求本轮记录、变更报告与删除/撤稿报告（E5）
+  Adapter -> SourceExt : M23 请求本轮记录与来源侧变更/删除报告（E5）
+  SourceExt --> Adapter : M24 返回记录/变更报告/删除或撤稿报告，或失败反馈（E5；A4）
+  Adapter --> Ctl : M25 返回本轮输入与来源证据，读取失败时返回失败反馈（E5；A4）
+end
+
+group 逐条定位、分类与处置（E6–E14；A2/A3/A5–A10）
+  loop 每条本轮输入（E6–E14）
+    Ctl -> Rec : M26 按来源ID＋来源内记录键定位来源记录，读取上次观察版本与既有原值（E6）
+    Rec --> Ctl : M27 返回逻辑出处、上次观察版本、原值与既有到达事件（E6）
+    Ctl -> Ctl : M28 身份与出处守卫：来源身份与记录键可确认；不得凭标题相似判同版本（E6；A8）
+    alt 来源身份与记录键可确认
+      Ctl -> Ctl : M29 分类：本次观察版本对比上次版本→新增/未变/变更/失效；无版本信息不判“未变”（E7；A3）
+    else 身份或记录键不可确认（A8）
+      Ctl -> Exc : M30 建立异常项：来源身份或记录键不可确认，待处理（A8）
+      Exc --> Ctl : M31 返回异常项引用（A8）
+    end
+    note over Ctl : A8 异常项不进入下方四分类；下方分类仅针对身份/记录键可确认的输入。
+    alt 新增（E8）
+      Ctl -> Rec : M32 登记新的到达事件与原值（来源证据、到达时间、观察版本）（E8）
+      Rec --> Ctl : M33 返回逻辑出处与首次到达标记（E8）
+      Ctl -> Gov : M34 交治理处置（清洗/去重/身份归属），不自行合并或判定（E8）
+      Gov --> Ctl : M35 返回处置结果（已登记结果/待核验）或需异常移交（E8）
+    else 未变（E9）
+      Ctl -> Rec : M36 只更新检查时间与本次观察版本，不新增到达事件与业务变更（E9）
+      Rec --> Ctl : M37 返回未变确认与检查时间（E9）
+    else 变更（E10–E13；A5/A6/A10）
+      Ctl -> Rec : M38 保存变更前后差异：追加新的到达事件与原值，保留先前原值（E10）
+      Rec --> Ctl : M39 返回变更证据引用与新旧原值（E10）
+      Ctl -> Work : M40 只读读取当前生效值、已人工审核字段与公开生效状态（E10；A5）
+      Work --> Ctl : M41 返回生效值、已人工审核字段与公开状态（E10；A5）
+      Ctl -> Ver : M42 只读读取既有版本关系与来源明示版本证据（E13；A10）
+      Ver --> Ctl : M43 返回既有版本关系与明示证据（E13；A10）
+      alt 与已人工审核字段冲突（A5）
+        Ctl -> Ctl : M44 冲突守卫：已人工审核值优先，来源新值不得覆盖（A5）
+        Ctl -> Exc : M45 建立治理待办：待核验字段冲突（字段/人工审核值/来源新值/双方证据/待处理）（A5）
+        Exc --> Ctl : M46 返回待办引用与待处理状态（A5）
+        Ctl -> Chg : M47 记录该条为“冲突待核验”，生效值保持人工审核值（A5）
+        Ctl -> Audit : M48 记录冲突待办与“未覆盖人工审核值”（操作者/对象/时间/前后值/理由）（A5）
+      else 无冲突（E12；A6）
+        Ctl -> Work : M49 生效前重检：已人工审核值自本次读取后未变化（A6）
+        Work --> Ctl : M50 返回重检结果（A6）
+        alt 重检一致
+          Ctl -> Gov : M51 交治理按字段规则生效，不覆盖已人工审核值（E12）
+          Gov --> Ctl : M52 返回生效结果（已按规则生效/需人工确认，处理项由治理保留）（E12）
+          Ctl -> Chg : M53 记录生效时间、生效范围与该条分类（仅“已按规则生效”记录生效时间）（E12）
+          Ctl -> Audit : M54 记录生效（操作者/对象/时间/前后值/理由；不改变公开资格）（E12）
+        else 更新期间人工值变化（A6）
+          Ctl -> Exc : M55 建立并发冲突治理待办并放弃本次覆盖（A6）
+          Exc --> Ctl : M56 返回待办引用（A6）
+          Ctl -> Chg : M57 记录该条为“并发冲突待处理”（A6）
+          Ctl -> Audit : M58 记录放弃覆盖（操作者/对象/时间/前后值/理由）（A6）
+        end
+      end
+      alt 来源明示版本证据成立（E13）
+        Ctl -> Chg : M59 记录明示版本证据并把版本关系交治理（E13）
+        Ctl -> Gov : M60 交治理按版本规则处理；无明示证据不得建立版本关系（E13；A10）
+        Gov --> Ctl : M61 返回版本处理结果（E13；A10）
+      else 无明示版本证据（A10）
+        Ctl -> Ctl : M62 版本守卫：保持独立并标待核验，不建立版本关系（A10）
+      end
+    else 失效报告（E14；A2）
+      Ctl -> Rec : M63 记录失效事件（撤稿与删除报告分别记录），保留原值与既有到达事件（E14；A2）
+      Rec --> Ctl : M64 返回失效事件引用（E14）
+      Ctl -> Work : M65 只读确认既有成果与出处仍存在且不被删除（E14；A9）
+      Work --> Ctl : M66 返回成果与出处存在事实（E14）
+      Ctl -> Exc : M67 建立待核验待办（失效原因/对象引用/待处理），不下架不删除（E14；A12）
+      Exc --> Ctl : M68 返回待办引用（E14）
+      Ctl -> Audit : M69 记录失效事件与“未删除既有记录”（操作者/对象/时间/前后值/理由）（E14）
+    end
+  end
+end
+
+group 安全检查点、幂等与完成（E15–E16；A7）
+  Ctl -> Chg : M70 保存逐条分类（新增/未变/变更/冲突/失效/异常，含来源报告更新时间）与互斥计数、检查时间（E15）
+  Chg --> Ctl : M71 返回变更集计数与检查时间（E15）
+  Ctl -> Chg : M72 幂等核对：同一逻辑出处同一观察版本不重复建立变更、不新增第二条逻辑出处（A7）
+  Chg --> Ctl : M73 返回幂等核对结果（A7）
+  Ctl -> Task : M74 保存安全检查点并追加任务历史（E15）
+  Task --> Ctl : M75 返回检查点与任务历史引用（E15）
+  Ctl -> Chg : M76 读取本轮分类结果、待办引用与未完成项（E16）
+  Chg --> Ctl : M77 返回分类结果、待办引用与未完成项（E16）
+  Ctl -> Ctl : M78 完成守卫：每条输入已分类且记录到结果或可追踪待办；无未记录项（E16）
+  Task --> Ctl : M79 完成生效：运行中→成功（E16）
+  Ctl -> Audit : M80 记录完成结论与分类计数（含冲突/失效/异常；不写“人工治理完成/已发布”）（E16）
+  Ctl --> UI : M81 返回成功＋单列的未变/变更/冲突/失效/异常数量（E16）
+  UI --> Admin : M82 显示成功结论、单列计数与“不等于治理完成、不等于已发布”（E16）
+end
+
+group 失败与恢复（A4）
+  Task --> Ctl : M83 运行中→失败：保存失败点、已分类结果与恢复范围（A4）
+  Ctl -> Chg : M84 保存失败状态与未完成项，保留已分类结果与既有原记录（A4）
+  Ctl -> Audit : M85 记录失败事实与失败点（不含凭据与秘密）（A4）
+  Ctl --> UI : M86 返回失败、失败点与恢复入口（A4）
+  UI --> Admin : M87 显示失败、“已收录数据与老记录仍可查询”与恢复入口（A4）
+end
+
+group 更新汇总与轨迹（E17；A13）
+  Admin -> UI : M88 查看更新汇总与轨迹（E17）
+  UI -> Ctl : M89 转交汇总查询（E17）
+  Ctl -> Chg : M90 只读读取检查时间、来源更新时间、生效时间、分类与前后差异（E17；A13）
+  Chg --> Ctl : M91 返回汇总、三类时间与前后差异（E17；A13）
+  Ctl -> Exc : M92 只读读取字段冲突与失效待办状态（E17；A13）
+  Exc --> Ctl : M93 返回待办状态与待处理数量（E17）
+  Ctl -> Audit : M94 只读读取相关受控写入留痕（E17；A13）
+  Audit --> Ctl : M95 返回留痕（操作者/时间/前后值/理由）（E17）
+  Ctl --> UI : M96 返回更新汇总、轨迹与待办（只读，不推进状态）（E17；A13）
+  UI --> Admin : M97 显示检查/生效时间分离、前后差异、待办与失败点（E17）
+end
+
+group 越界请求拒绝（A9/A10/A12）
+  Admin -> UI : M98 请求按删除报告删除既有成果，或将失效记录直接下架（A9/A12）
+  UI -> Ctl : M99 转交越界请求（A9/A12）
+  Ctl --> UI : M100 拒绝：不物理删除，不因一次失效事件下架或覆盖公开值（A9/A12）
+  UI --> Admin : M101 显示拒绝原因与“失效只登记事件并转待核验”（A9/A12）
+  Admin -> UI : M102 请求在无版本证据时建立版本关系（A10）
+  UI -> Ctl : M103 转交请求（A10）
+  Ctl --> UI : M104 拒绝：无明示版本证据不建立版本关系（A10）
+  UI --> Admin : M105 显示拒绝与“保持独立并待核验”（A10）
+end
+
+group 未授权访问拒绝（A11；A14）
+  Requester -> UI : M106 提交来源更新或变更处置操作（A11）
+  UI -> Ctl : M107 转交请求（已认证上下文）
+  Ctl -> User : M108 校验账号状态与“数据来源/采集”具体管理权限（A11）
+  Ctl --> UI : M109 拒绝：无业务变更，不返回来源记录与变更明细（A11）
+  UI --> Requester : M110 显示拒绝，与失败/无变更可区分（A11）
+  Ctl -> Audit : M111 记录受控拒绝与越权尝试（不含凭据）（A11）
+end
+
+legend right
+  对象边界：SourceDefinition（配置，只读）≠ SourceRecord（到达证据：原值/观察版本/到达时间）
+  ≠ CollectionTask（一次执行的状态、快照、安全检查点与任务历史）≠ IncrementalChangeSet（本轮比较结果：分类、基线、检查/来源更新/生效三类时间、计数、待办引用）
+  ≠ GovernanceException（待治理待办）≠ WorkVersion（成果发布形态，只在明示证据时存在）。
+  分类：按来源ID＋来源内记录键＋上次观察版本，区分新增/未变/变更/失效；无版本信息不判“未变”（M29）。
+  时间：检查时间 ≠ 来源报告更新时间 ≠ 生效时间；采集/检查时间不冒充发生时间（M90/M91）。
+  未变：只更新检查时间与观察版本，不造业务变更、不新增到达事件（M36/M37）。
+  变更：追加到达事件并保留先前原值；与已人工审核字段冲突时保留审核值，生成待核验字段冲突治理待办（M44–M48）。
+  并发：交治理生效前重检，人工值变化则放弃覆盖并转并发冲突待办（M51–M58）。
+  失效：撤稿/删除/外链失效是不同事件，均不物理删除历史，只登记事件并转待核验（M63–M69；A2/A9/A12）。
+  失败：任务失败但保留失败点、已分类结果与恢复范围；已收录数据仍可查询（M83–M87）。
+  版本：只在来源明示证据时记录版本证据并交治理；无证据保持独立待核验（M59–M62；A10）。
+  边界：来源配置与任务创建属 UC-18；清洗/去重/身份归属判定属 UC-09/10；发布与公开可见性属治理与读侧。
+  不建：Scheduler/TaskQueue/JobRunner/RetryPolicy/Checkpoint 独立类/IncrementalWindow 类（检查点与变更集为任务与变更集的属性）。
+  同步方式：批次复跑＋安全检查点，不强制实时流式同步（不建 StreamingSubscriber/ChangeFeed/Webhook）。
+  待确认：检查点间隔与批次大小（D-10）、无版本信息时的退化比较规则、回溯范围口径、冲突处置责任与时限（B-01～B-05）。
+endlegend
+@enduml

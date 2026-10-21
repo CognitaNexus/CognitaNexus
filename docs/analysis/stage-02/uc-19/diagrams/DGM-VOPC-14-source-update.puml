@@ -1,0 +1,60 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 13
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 40
+skinparam ranksep 65
+hide circle
+hide empty members
+top to bottom direction
+title DGM-VOPC-14 UC-19 管理来源更新（参与类类图）
+boundary "AdminConsole" as UI
+boundary "SourceAdapter" as Adapter
+control "CollectionCoordinator" as Ctl
+control "GovernanceCoordinator" as Gov
+entity "User" as User
+entity "AuditEvidence" as Audit
+entity "SourceDefinition" as Def
+entity "CollectionTask" as Task
+entity "SourceRecord" as Rec
+entity "IncrementalChangeSet" as Chg
+entity "GovernanceException" as Exc
+entity "WorkEntity" as Work
+entity "WorkVersion" as Ver
+UI --> Ctl : 请求（M2/M9/M89/M107）\n返回（M6/M15/M16/M81/M86/M96/M100/M104/M109）
+Ctl --> Adapter : M22 请求本轮记录/变更报告；M25 返回输入或失败反馈
+Ctl --> Gov : M34/M51/M60 移交处置/生效/版本；M35/M52/M61 回执
+Ctl --> User : M3/M4/M108 校验账号与采集权限
+Ctl --> Def : M10/M11 只读读取已获准来源域
+Ctl --> Task : M12/M13 读检查点与上次检查\nM74/M75 检查点与历史；M79/M83 状态
+Ctl --> Rec : M26/M27/M38 读原值与观察版本\nM32 追加到达事件；M36 检查时间；M63 失效事件
+Ctl --> Chg : M20/M47/M53/M57/M59/M70/M84 建立与记录\nM72/M76/M90 幂等核对与只读读取
+Ctl --> Work : M40/M41、M49/M50、M65/M66 只读确认生效值与审核值
+Ctl --> Ver : M42/M43 只读读取明示版本证据
+Ctl --> Exc : M30/M45/M55/M67 建立待办\nM92/M93 只读读取状态
+Ctl --> Audit : M48/M54/M58/M69/M80/M85/M111 追加留痕\nM94/M95 只读读取
+User <-- Audit : 操作者 0..*:0..1
+Def --> Rec : 来源身份/许可/范围 1:0..*
+Def --> Chg : 该来源的更新检查 1:0..*
+Task --> Chg : 复跑/分批复检的变更集 1:0..*
+Chg --> Exc : 本轮产生的待治理待办 1:0..*
+Rec --> Exc : 待办可指向来源记录 0..1:0..*
+Work --> Ver : 明示版本关系 1:0..*
+legend bottom
+  只包含 UC-19 顺序图中的 13 个参与对象；“管理员”“获准数据来源”“未授权请求者”是参与者，不画成系统类。
+  编号对应 04 逐消息表。SourceDefinition（配置，只读）≠ SourceRecord（到达证据：原值/观察版本）
+  ≠ CollectionTask（执行状态、安全检查点与任务历史）≠ IncrementalChangeSet（本轮比较结果：分类、基线、三类时间、计数、待办引用）
+  ≠ GovernanceException（待治理待办）≠ WorkVersion（成果发布形态，只在明示证据时存在）。
+  WorkEntity 与 WorkVersion 在 UC-19 只读：不覆盖已人工审核字段、不创建/合并/拆分成果、不改公开可见性、不发布。
+  GovernanceCoordinator 属主 UC-09/10：本 UC 只移交「新增记录/变更生效/版本证据」并取回结果，不建模清洗、去重与身份归属规则。
+  SourceAdapter 只与获准来源交换记录、变更/删除报告与失败反馈，不决定公开、归属或去重。
+  状态：任务沿用 §6.2／DGM-STATE-01 六状态；变更集不新增业务流程状态机，只用分类与完成/失败事实。
+  不画 Scheduler/TaskQueue/JobRunner/RetryPolicy/Checkpoint/IncrementalWindow 独立类：检查点与变更集为属性；
+  同步方式：批次复跑＋安全检查点，不强制实时流式同步（无实时订阅/流式推送类）；
+  检查点间隔与批次大小未冻结（D-10；B-01/B-02），不写数值。
+  控制/边界到实体的关联按消息方向表达协作，不定义持久多重性；业务多重性只给 7 条业务事实关联。
+endlegend
+@enduml
