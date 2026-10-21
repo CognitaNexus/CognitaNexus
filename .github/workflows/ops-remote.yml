@@ -71,12 +71,19 @@ jobs:
           ssh -F ~/.ssh/config -o ConnectTimeout=15 -o BatchMode=yes cn-target 'echo "::notice::已连上 $(hostname)"'
 
       - name: 执行远端脚本
+        # 要跑哪些脚本由 ops/remote/manifest.txt 决定，一行一个、按序执行。
+        # 这样改「这轮做什么」只动清单，不动工作流本身。
         run: |
-          set -o pipefail
-          ssh -F ~/.ssh/config -o BatchMode=yes cn-target 'bash -s' \
-            < ops/remote/sshd-extra-port.sh 2>&1 | tee /tmp/ops-remote.log
-          status=${PIPESTATUS[0]}
-          # 日志要登录才看得到，把最后几行做成注解（未登录也能通过 API 读）
-          body=$(tail -6 /tmp/ops-remote.log | tr '\n' '|' | cut -c1-800)
+          : > /tmp/ops-remote.log
+          status=0
+          while IFS= read -r s; do
+            case "$s" in ''|\#*) continue ;; esac
+            echo "===== 执行 $s =====" >> /tmp/ops-remote.log
+            ssh -F ~/.ssh/config -o BatchMode=yes cn-target 'bash -s -- 8443' \
+              < "ops/remote/$s" >> /tmp/ops-remote.log 2>&1 || { status=$?; break; }
+          done < ops/remote/manifest.txt
+          tail -40 /tmp/ops-remote.log
+          # 日志要登录才看得到，把结果做成注解（未登录也能通过 API 读）
+          body=$(tail -18 /tmp/ops-remote.log | tr '\n' '|' | tr -s ' ' | cut -c1-1800)
           echo "::notice title=远端执行结果::${body}"
           exit "$status"
