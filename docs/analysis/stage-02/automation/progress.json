@@ -199,9 +199,10 @@
       "dir": "docs/analysis/stage-02/uc-14/",
       "seq": "DGM-SEQ-22",
       "vopc": "DGM-VOPC-18",
-      "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "PENDING"
+      "reviewRounds": 2,
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-14-review-R3.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "NONE"
     },
     "UC-15": {
       "title": "筛选网络及论文最短路径",
@@ -388,6 +389,12 @@
       "head": "2b19a8648bd83ac59a31df57e111972cb913d088",
       "at": "2026-10-21",
       "note": "UC-13 complete; R1 minor fixes then R2 PASS/NONE"
+    },
+    {
+      "id": "CP-018",
+      "head": "bb2701c93c70826e8209c1ebf4eb71823dd21ca7",
+      "at": "2026-10-21",
+      "note": "UC-14 complete after time-predicate fix and residual pass; R3 PASS/NONE"
     }
   ],
   "providerSubstitution": {

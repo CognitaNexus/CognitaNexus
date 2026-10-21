@@ -1,0 +1,50 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 70
+skinparam ranksep 110
+hide circle
+hide empty members
+top to bottom direction
+title DGM-VOPC-18 UC-14 查看四类共同成果合作网络（参与类类图）
+boundary "CollaborationNetworkUI" as UI
+control "CollaborationNetworkCoordinator" as Ctl
+entity "WorkEntity" as Work
+entity "Authorship" as Auth
+entity "Scholar" as Sch
+entity "CollaborationEdge" as Edge
+UI --> Ctl : M2/M24/M32/M38/M44 请求；其余为返回
+Ctl ..> Work : M5/M27 只读
+Ctl ..> Auth : M8 只读
+Ctl ..> Sch : M11/M39 只读
+Ctl ..> Edge : M15/M25/M33 建边与只读
+Edge "0..*" --> "2" Sch : 两端节点（无序对，两学者不同）
+Edge "0..*" --> "1..*" Work : 共同合格成果证据
+Auth "0..*" --> "1" Work : 参与成果
+Auth "0..*" --> "0..1" Sch : 参与者身份（身份未定时为空）
+legend right
+  只包含 UC-14 顺序图中的 6 个参与对象；访客是参与者，不画成系统类。
+  边上的编号对应 04 逐消息表：M2/M24/M32/M38/M44 请求；M21/M29/M35/M41/M47/M50/M52 返回；
+  M5/M27 只读读取成果身份、类型、公开生效状态、数据类别、发生时间与证据成果公开字段（不写成果）；
+  M8 只读读取参与角色、顺序、关系状态与角色证据（不改关系状态、不新增参与关系）；
+  M11/M39 只读读取学者 canonical_id、公开状态与合并指向（不合并身份、不改公开范围）。
+  CollaborationEdge 是派生合作关系：由合格共同成果与两端合格参与关系在本次请求内推导（M14–M16），
+  以学者对 min/max canonical_id 为边键，weight＝该对不同去重成果数，证据按成果 canonical_id 升序保存；
+  本 UC 不把它作为独立事实源持久保存（05 §4；待确认 C-01）。
+  Edge 0..*→2 Scholar：每条边恰有两个不同学者端点（无序对，自环不生成）；一个学者可参与多条边；
+  合并后只保留合并节点的边，不保留重复节点（M13；FR12 明文；BR-530）。
+  Edge 0..*→1..* WorkEntity：每条边至少一项合格共同成果证据（边必须可追溯）；一项成果可为多对学者提供证据
+  （多作者成果）；成果本身不因参与建边而改变（M17/M18；BR-IMP-08）。
+  Authorship 0..*→1 WorkEntity、0..*→0..1 Scholar：参与关系属于一项成果，参与者身份未定时没有确定学者，
+  这种关系不参与建边（M10；待确认 B-06）。
+  同机构、同领域、相似姓名、同一来源或账号信息都不构成边：本图没有 Edge→Institution、Edge→Field 或
+  Edge→UserProfile 的关联（FR12 明文；BR-IMP-03；AC-IMPL-FR12-04）。
+  本图无最短路径、图版本快照、路径结果类：路径与按机构/领域筛选属 UC-15/IN01（M51；BR-IMP-09）。
+  本图无质量评分、影响力指数或个人综合排名类：强度只表示共同成果实体数（BR-522；M22）。
+  控制/边界到实体的关联按消息方向表达协作，不定义持久多重性。
+endlegend
+@enduml

@@ -13,6 +13,9 @@
 | RegistrationCoordinator | Control | UC-04 | — | 注册校验、User+UserProfile 创建、稳定地址、幂等/回滚 | 注册请求状态（单次） | → User、→ UserProfile | 不定义持久多重性 | 全局 `RegCtl` | 统一命名 |
 | User | Entity | UC-04 | UC-05/06/22 | 账号、会话、对象授权主体 | stableId、accountState | 1:1 UserProfile；提交 Claim | 1:1（UserProfile） | 不等于 Scholar | 保留 |
 | UserProfile | Entity | UC-04 | UC-03/22 | 唯一公开普通主页 | stableId/publicUrl、公开普通资料、零成果空态 | 属于 User | 1:1 | 不强制对应 Scholar | 保留 |
+| CollaborationNetworkUI | Boundary | UC-14 | UC-15 | 网络视图、筛选、披露块、空/失败/拒绝 | 无持久业务属性 | → CollaborationNetworkCoordinator | 不定义持久多重性 | 与 `AnalyticsUI` 邻近 | R5 统一 |
+| CollaborationNetworkCoordinator | Control | UC-14 | UC-15 | 四类资格、canonical配对、强度聚合、证据回溯、披露 | 单次网络请求状态 | → WorkEntity/Authorship/Scholar/CollaborationEdge | 不定义持久多重性 | 全局 `GraphCtl` | R5 分界 |
+| CollaborationEdge | Entity | UC-14 | UC-15 | 派生无向边：学者对、强度、共同成果证据 | 端点canonicalId/weight/evidenceRefs | →WorkEntity 0..*:1..* | 0..*:1..* | 全局无 | R5 评估是否持久化 |
 | HotspotUI | Boundary | UC-13 | — | 热点筛选、范围/样本/时间窗、空/稀疏/失败 | 无持久业务属性 | → HotspotCoordinator | 不定义持久多重性 | 与 `AnalyticsUI` 邻近 | R5 统一 |
 | HotspotCoordinator | Control | UC-13 | — | 论文范围、同义词凭证、计数排序、披露 | 单次热点请求状态 | → WorkEntity/TopicTerm | 不定义持久多重性 | 与 `StatisticsCoordinator` 邻近 | R5 统一 |
 | TopicTerm | Entity | UC-13 | — | 已登记规范词与有凭证的同义词映射 | canonicalTerm/synonyms/evidence | 被读取 | 未定 | 全局无 | R5 决定 |
