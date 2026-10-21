@@ -155,9 +155,10 @@
       "dir": "docs/analysis/stage-02/uc-10/",
       "seq": "DGM-SEQ-15",
       "vopc": "DGM-VOPC-11",
-      "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "PENDING"
+      "reviewRounds": 1,
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-10-review-R2.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "NONE"
     },
     "UC-11": {
       "title": "查看成果统计",
@@ -327,6 +328,12 @@
       "head": "a9e1c0099ce1c0931b3d39156ecac0572371546f",
       "at": "2026-10-21",
       "note": "UC-09 complete; R1 PASS/MINOR"
+    },
+    {
+      "id": "CP-010",
+      "head": "17ce8716ee9a0dd9b9d1a7dc01aa25913fc76e27",
+      "at": "2026-10-21",
+      "note": "UC-10 complete after one fix; R2 PASS/NONE"
     }
   ]
 }

@@ -1,0 +1,56 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 70
+skinparam ranksep 110
+hide circle
+hide empty members
+top to bottom direction
+title DGM-VOPC-11 UC-10 核验学者身份与归属（参与类类图）
+boundary "IdentityVerificationUI" as UI
+control "IdentityVerificationCoordinator" as Ctl
+entity "User" as User
+entity "ScholarAuthorization" as Auth
+entity "SourceRecord" as Source
+entity "Scholar" as Scholar
+entity "IdentityCandidate" as IdCand
+entity "AttributionCandidate" as AttrCand
+entity "Authorship" as Rel
+entity "WorkEntity" as Work
+entity "ReviewEvidence" as Material
+entity "AuditEvidence" as Audit
+UI --> Ctl : M2/M33/M47/M52/M76 请求\nM13/M20/M25/M31/M45/M50/M55/M60 返回\nM64/M68/M74/M81/M83/M87/M92/M96/M101 返回
+Ctl --> User : M34 校验账号状态与治理处置权限
+Ctl ..> Auth : M78 只读确认授权与被授权主体（不转移/不撤销）
+Ctl ..> Source : M3 只读读取署名/机构/标识原值（不覆盖）
+Ctl --> Scholar : M5/M8 追加证据与别名；M14 召回候选\nM17 新建；M42 读取；M70 合并；M93 拆分；M98 门户投影
+Ctl --> IdCand : M26 生成；M28 规模限制；M41/M53 读取\nM58 补充证据；M61 争议；M65 保持独立；M72 已合并
+Ctl --> AttrCand : M27 生成；M77 读取；M85 已确认归属；M90 已排除
+Ctl --> Rel : M9/M43 读取；M18 待核验；M22/M84 自动关联\nM62 争议；M71 迁移；M88 已排除；M94 恢复/待核验
+Ctl ..> Work : M44 只读读取成果与公开状态；M97 参与展示更新声明（不改共享字段）
+Ctl --> Material : M48 登记材料与可见范围
+Ctl --> Audit : M6/M12/M19/M24/M30/M37/M40/M49/M57/M59/M63/M67/M73/M80/M82/M86/M91/M95/M100 受控审计
+IdCand "0..*" --> "2..*" Scholar : 候选成员
+AttrCand "0..*" --> "1..*" Scholar : 候选学者
+Rel "0..*" --> "1" Scholar : 归属学者
+Rel "0..*" --> "1" Work : 归属成果
+Work "1" --> "0..*" Source : 出处
+legend right
+  只包含 UC-10 顺序图中的 12 个参与对象；治理管线、管理员与相关学者是参与者，不画成系统类。
+  边上的编号对应 04 逐消息表：M2/M33/M47/M52/M76 请求；M34 账号与治理处置权限；M78 授权只读；M3 来源原值只读；
+  M5/M8/M14/M17/M42/M70/M93/M98 学者档案；M26/M28/M41/M53/M58/M61/M65/M72 身份候选；
+  M27/M77/M85/M90 归属候选；M9/M18/M22/M43/M62/M71/M84/M88/M94 参与关系；M44/M97 成果；M48 材料；其余为受控审计。
+  IdCand 0..*→2..* Scholar：身份候选是“至少两个档案可能同一人”的待核验组合（FR15-S04 A1）。
+  AttrCand 0..*→1..* Scholar：归属候选至少列出 1 个候选学者。候选的署名原值来源（signatureSourceRef）、
+  确认后建立/改派的关系（confirmedRelationRef，0..1）与只读授权引用（authorizationRef）写成属性，不另画实体关联（05 §2.3）。
+  Rel 0..*→1 Scholar 依 BR-353/FR15-S07（一条关系只归一位学者）；Rel 0..*→1 Work、Work 1→0..* Source 沿用 UC-02/UC-08。
+  Auth 的业务关联（0..*→1 User、→Scholar 多重性未定，SPEC ID-12）已在 UC-06/UC-08 定义；本 UC 只读，故不重复画边。
+  控制/边界到实体的关联按消息方向表达协作，不定义持久多重性；材料/审计指向的对象写成属性，不另画实体关联。
+  本图无 UserProfile、ClaimApplication、ScholarChangeRequest、CorrectionRequest、WorkVersion、DedupCandidate、CleanRecord、
+  CollaborationEdge、PendingTodo 消息：不写普通主页、不做认领、不做成果去重、不做本人确认、不建合作边。
+endlegend
+@enduml
