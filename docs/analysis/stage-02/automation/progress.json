@@ -1,0 +1,268 @@
+{
+  "version": "1.0",
+  "createdAt": "2026-10-21T10:09:42+08:00",
+  "repo": "/home/haoyue/Project/CognitaNexus",
+  "branch": "analysis/s01-s02-69ac",
+  "startHead": "1664c65c797747f329022fba9c68e4295c6bc3b8",
+  "model": {
+    "provider": "deepseek",
+    "id": "deepseek/deepseek-flash",
+    "contextWindow": 1000000,
+    "maxOutput": 384000
+  },
+  "baseline": {
+    "srs": "docs/srs/CognitaNexus-Shared-SRS-V2.2-69AC.md",
+    "ledger": "docs/srs/integration/69-ac-baseline.json",
+    "acCount": 69,
+    "s01": "FROZEN"
+  },
+  "batches": {
+    "existing": [
+      "UC-04",
+      "UC-01"
+    ],
+    "1": [
+      "UC-02",
+      "UC-03",
+      "UC-22"
+    ],
+    "2": [
+      "UC-05",
+      "UC-06",
+      "UC-07",
+      "UC-08"
+    ],
+    "3": [
+      "UC-09",
+      "UC-10",
+      "UC-17",
+      "UC-18",
+      "UC-19"
+    ],
+    "4": [
+      "UC-11",
+      "UC-12",
+      "UC-13",
+      "UC-14",
+      "UC-15",
+      "UC-16"
+    ]
+  },
+  "current": null,
+  "ucs": {
+    "UC-01": {
+      "title": "公开成果检索",
+      "requirements": "FR01",
+      "dir": "docs/analysis/stage-02/uc-01/",
+      "seq": "DGM-SEQ-06",
+      "vopc": "DGM-VOPC-02",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "EXISTING_REVIEW_PENDING"
+    },
+    "UC-02": {
+      "title": "查看成果详情与来源",
+      "requirements": "FR02/FR16",
+      "dir": "docs/analysis/stage-02/uc-02/",
+      "seq": "DGM-SEQ-07",
+      "vopc": "DGM-VOPC-03",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-03": {
+      "title": "查看公开个人主页/学者档案",
+      "requirements": "FR03",
+      "dir": "docs/analysis/stage-02/uc-03/",
+      "seq": "DGM-SEQ-08",
+      "vopc": "DGM-VOPC-04",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-04": {
+      "title": "注册并创建普通个人主页",
+      "requirements": "FR04",
+      "dir": "docs/analysis/stage-02/uc-04/",
+      "seq": "DGM-SEQ-05",
+      "vopc": "DGM-VOPC-01",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "EXISTING_REVIEW_PENDING"
+    },
+    "UC-05": {
+      "title": "提交和查询 Scholar 认领",
+      "requirements": "FR05",
+      "dir": "docs/analysis/stage-02/uc-05/",
+      "seq": "DGM-SEQ-10",
+      "vopc": "DGM-VOPC-06",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-06": {
+      "title": "审核 Scholar 认领",
+      "requirements": "FR05",
+      "dir": "docs/analysis/stage-02/uc-06/",
+      "seq": "DGM-SEQ-11",
+      "vopc": "DGM-VOPC-07",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-07": {
+      "title": "维护已授权 Scholar 档案",
+      "requirements": "FR06",
+      "dir": "docs/analysis/stage-02/uc-07/",
+      "seq": "DGM-SEQ-12",
+      "vopc": "DGM-VOPC-08",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-08": {
+      "title": "确认、补录和纠错成果",
+      "requirements": "FR07/FR15",
+      "dir": "docs/analysis/stage-02/uc-08/",
+      "seq": "DGM-SEQ-13",
+      "vopc": "DGM-VOPC-09",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-09": {
+      "title": "核验和纠正成果数据",
+      "requirements": "FR09",
+      "dir": "docs/analysis/stage-02/uc-09/",
+      "seq": "DGM-SEQ-14",
+      "vopc": "DGM-VOPC-10",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-10": {
+      "title": "核验学者身份与归属",
+      "requirements": "FR15",
+      "dir": "docs/analysis/stage-02/uc-10/",
+      "seq": "DGM-SEQ-15",
+      "vopc": "DGM-VOPC-11",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-11": {
+      "title": "查看成果统计",
+      "requirements": "FR11",
+      "dir": "docs/analysis/stage-02/uc-11/",
+      "seq": "DGM-SEQ-19",
+      "vopc": "DGM-VOPC-15",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-12": {
+      "title": "查看机构排名",
+      "requirements": "FR11",
+      "dir": "docs/analysis/stage-02/uc-12/",
+      "seq": "DGM-SEQ-20",
+      "vopc": "DGM-VOPC-16",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-13": {
+      "title": "查看领域热点",
+      "requirements": "FR13",
+      "dir": "docs/analysis/stage-02/uc-13/",
+      "seq": "DGM-SEQ-21",
+      "vopc": "DGM-VOPC-17",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-14": {
+      "title": "查看四类共同成果合作网络",
+      "requirements": "FR12",
+      "dir": "docs/analysis/stage-02/uc-14/",
+      "seq": "DGM-SEQ-22",
+      "vopc": "DGM-VOPC-18",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-15": {
+      "title": "筛选网络及论文最短路径",
+      "requirements": "IN01",
+      "dir": "docs/analysis/stage-02/uc-15/",
+      "seq": "DGM-SEQ-23",
+      "vopc": "DGM-VOPC-19",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-16": {
+      "title": "核对四类覆盖与来源",
+      "requirements": "FR16/FR02",
+      "dir": "docs/analysis/stage-02/uc-16/",
+      "seq": "DGM-SEQ-24",
+      "vopc": "DGM-VOPC-20",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-17": {
+      "title": "后台待办与审计",
+      "requirements": "FR14",
+      "dir": "docs/analysis/stage-02/uc-17/",
+      "seq": "DGM-SEQ-16",
+      "vopc": "DGM-VOPC-12",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-18": {
+      "title": "管理来源及采集任务",
+      "requirements": "FR08",
+      "dir": "docs/analysis/stage-02/uc-18/",
+      "seq": "DGM-SEQ-17",
+      "vopc": "DGM-VOPC-13",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-19": {
+      "title": "管理来源更新",
+      "requirements": "FR10",
+      "dir": "docs/analysis/stage-02/uc-19/",
+      "seq": "DGM-SEQ-18",
+      "vopc": "DGM-VOPC-14",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    },
+    "UC-22": {
+      "title": "编辑本人普通个人主页",
+      "requirements": "FR06/FR07",
+      "dir": "docs/analysis/stage-02/uc-22/",
+      "seq": "DGM-SEQ-09",
+      "vopc": "DGM-VOPC-05",
+      "reviewRounds": 0,
+      "reviewReport": null,
+      "status": "PENDING"
+    }
+  },
+  "compaction": {
+    "automaticEnabled": null,
+    "note": "Pi default auto-compaction enabled (settings has no override); manual /compact is interactive-only and was not run.",
+    "events": [],
+    "lastCheckpointHead": "1664c65c797747f329022fba9c68e4295c6bc3b8"
+  },
+  "checkpoints": [
+    {
+      "id": "CP-000",
+      "head": "1664c65c797747f329022fba9c68e4295c6bc3b8",
+      "at": "2026-10-21T10:09:42+08:00",
+      "note": "automation initialized before existing-UC review"
+    }
+  ]
+}
