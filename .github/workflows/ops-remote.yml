@@ -1,0 +1,82 @@
+name: ops-remote
+
+# 应急运维通道。只在 ops/remote 分支上触发，不参与 dev 的构建与部署。
+#
+# 为什么需要它：2026-10-21 起，常用网络出口（代理节点）封了 22 端口，
+# 本地 ssh 无法连目标机，但 GitHub runner 的出口可以。于是把「需要在目标机
+# 上敲一次的命令」放进 ops/remote/ 下的脚本，由 runner 通过 ssh 执行。
+#
+# 用法：把要执行的命令写成 ops/remote/<脚本>.sh（必须幂等、有自检输出），
+# 在下面「执行远端脚本」里指向它，然后推送 ops/remote 分支。
+# 结果看 job 日志；关键行同时写成 ::notice:: 注解，未登录也能通过 API 读到。
+
+on:
+  push:
+    branches: [ops/remote]
+  workflow_dispatch:
+
+concurrency:
+  group: ops-remote
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 准备 SSH
+        env:
+          CN_SSH_HOST: ${{ secrets.CN_SSH_HOST }}
+          CN_SSH_USER: ${{ secrets.CN_SSH_USER }}
+          CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
+          CN_SSH_PORT: ${{ secrets.CN_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CN_SSH_HOST:-}" ] || [ -z "${CN_SSH_USER:-}" ] || [ -z "${CN_SSH_KEY:-}" ]; then
+            echo "::error::Secrets 缺失：需要 CN_SSH_HOST / CN_SSH_USER / CN_SSH_KEY"
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          # 私钥在 Secret 里可能是原样多行、字面量 \n、或缺首尾标识，
+          # 与 deploy.yml 同样的三种存法依次试，命中即用。
+          printf '%s\n' "$CN_SSH_KEY" > /tmp/key-raw
+          tr -d '\r' < /tmp/key-raw > /tmp/key-crlf
+          sed 's/\\n/\n/g' /tmp/key-crlf > /tmp/key-nl
+          if ! grep -q 'BEGIN .*PRIVATE KEY' /tmp/key-nl; then
+            {
+              echo '-----BEGIN OPENSSH PRIVATE KEY-----'
+              cat /tmp/key-nl
+              echo '-----END OPENSSH PRIVATE KEY-----'
+            } > /tmp/key-wrap
+          fi
+          ok=""
+          for cand in /tmp/key-crlf /tmp/key-nl /tmp/key-wrap; do
+            [ -s "$cand" ] || continue
+            chmod 600 "$cand"
+            if ssh-keygen -y -f "$cand" > /dev/null 2>/tmp/key.err; then
+              cp "$cand" ~/.ssh/cn_deploy
+              ok="$cand"
+              break
+            fi
+          done
+          if [ -z "$ok" ]; then
+            printf '::error::CN_SSH_KEY 解析失败：%s\n' "$(tr '\n' ' ' < /tmp/key.err | cut -c1-180)"
+            exit 1
+          fi
+          chmod 600 ~/.ssh/cn_deploy
+          printf 'Host cn-target\n  HostName %s\n  User %s\n  Port %s\n  IdentityFile ~/.ssh/cn_deploy\n  IdentitiesOnly yes\n  StrictHostKeyChecking accept-new\n' \
+            "$CN_SSH_HOST" "$CN_SSH_USER" "${CN_SSH_PORT:-22}" > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+          ssh -F ~/.ssh/config -o ConnectTimeout=15 -o BatchMode=yes cn-target 'echo "::notice::已连上 $(hostname)"'
+
+      - name: 执行远端脚本
+        run: |
+          set -o pipefail
+          ssh -F ~/.ssh/config -o BatchMode=yes cn-target 'bash -s' \
+            < ops/remote/sshd-extra-port.sh 2>&1 | tee /tmp/ops-remote.log
+          status=${PIPESTATUS[0]}
+          # 日志要登录才看得到，把最后几行做成注解（未登录也能通过 API 读）
+          body=$(tail -6 /tmp/ops-remote.log | tr '\n' '|' | cut -c1-800)
+          echo "::notice title=远端执行结果::${body}"
+          exit "$status"
