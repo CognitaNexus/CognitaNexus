@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" contentScriptType="application/ecmascript" contentStyleType="text/css" height="1125px" preserveAspectRatio="none" style="width:1235px;height:1125px;" version="1.1" viewBox="0 0 1235 1125" width="1235.9375px" zoomAndPan="magnify"><defs/><g><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="696.875" x="267.9688" y="25.3749">DGM-VOPC-04 UC-03 查看公开个人主页/学者档案参与类类图（VOPC）</text><!--MD5=[c720a7417103048546cfe61e2a286571]
+cluster UC-03 参与类--><polygon fill="#FFFFFF" points="34.375,69.1749,176.5625,69.1749,187.5,110.2247,1179.6875,110.2247,1179.6875,786.3624,34.375,786.3624,34.375,69.1749" style="stroke: #000000; stroke-width: 2.34375;"/><line style="stroke: #000000; stroke-width: 2.34375;" x1="34.375" x2="187.5" y1="110.2247" y2="110.2247"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="132.8125" x="40.625" y="97.6748">UC-03 参与类</text><!--MD5=[c42ed81cef7fdd2e33758127945b9a5b]
+entity UI--><path d="M569.5313,136.3624 L569.5313,173.8624 M569.5313,155.1124 L596.0938,155.1124 " fill="none" style="stroke: #383838; stroke-width: 3.125;"/><ellipse cx="614.8438" cy="155.1124" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="154.6875" x="524.2188" y="205.4873">PublicProfileUI</text><!--MD5=[793d3c1671d31b6c1e8ec57652c36e20]
+entity Ctl--><ellipse cx="601.5625" cy="411.3624" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><polygon fill="#383838" points="595.3125,392.6124,604.6875,384.7999,601.5625,392.6124,604.6875,400.4249,595.3125,392.6124" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="254.6875" x="474.2188" y="461.7373">PublicProfileCoordinator</text><!--MD5=[562d2b6036646f89ab39d2707e55f641]
+entity Profile--><ellipse cx="154.6875" cy="667.6124" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="135.9375" x2="173.4375" y1="689.4874" y2="689.4874"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="114.0625" x="97.6563" y="717.9873">UserProfile</text><!--MD5=[06d11922b586176628a6544b6850c447]
+entity Scholar--><ellipse cx="390.625" cy="667.6124" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="371.875" x2="409.375" y1="689.4874" y2="689.4874"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="76.5625" x="352.3438" y="717.9873">Scholar</text><!--MD5=[16f3694fe3e7ab3d4ffc1c849a81fcd6]
+entity Authorship--><ellipse cx="717.1875" cy="667.6124" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="698.4375" x2="735.9375" y1="689.4874" y2="689.4874"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="115.625" x="659.375" y="717.9873">Authorship</text><!--MD5=[a77f957b2a6e22bdab97b457a46ed7f7]
+entity Work--><ellipse cx="1060.9375" cy="667.6124" fill="#F8F8F8" rx="18.75" ry="18.75" style="stroke: #383838; stroke-width: 3.125;"/><line style="stroke: #383838; stroke-width: 3.125;" x1="1042.1875" x2="1079.6875" y1="689.4874" y2="689.4874"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="110.9375" x="1005.4688" y="717.9873">WorkEntity</text><!--MD5=[17fea0aa4954acf1c0acc7d7b643deef]
+link UI to Ctl--><path d="M601.5625,211.8467 C601.5625,256.7999 601.5625,330.1436 601.5625,378.0967 " fill="none" id="UI-&gt;Ctl" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="601.5625,386.1592,607.8125,372.0967,601.5625,378.3467,595.3125,372.0967,601.5625,386.1592" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="304.6875" x="603.125" y="308.6123">M2/M5/M7/M13/M15/M24/M26</text><!--MD5=[ae470a1e5ecfc7b89af0858574bebbf8]
+link Ctl to Profile--><path d="M507.9219,467.7217 C463.8906,487.1905 411.1719,512.0811 365.625,537.9249 C312.2031,568.2374 254.8125,607.8624 213.3906,637.8311 " fill="none" id="Ctl-&gt;Profile" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="206.8906,642.5499,221.9456,639.3618,213.2176,637.9667,214.6126,629.2387,206.8906,642.5499" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="79.6875" x="367.1875" y="564.8623">M9/M11</text><!--MD5=[100c9eff1b74760571c8cda606d28e9d]
+link Ctl to Scholar--><path d="M568.6094,468.0967 C530.6719,513.6124 468.5156,588.2217 428.5938,636.1124 " fill="none" id="Ctl-&gt;Scholar" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="423.3594,642.4092,437.1609,635.6022,428.3586,636.4057,427.5552,627.6034,423.3594,642.4092" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="42.1875" x="509.375" y="564.8623">M17</text><!--MD5=[48b54c5886db1a8b086e31079a77314d]
+link Ctl to Authorship--><path d="M619.625,468.0967 C640.25,513.2374 673.9375,587.003 695.8438,634.9405 " fill="none" id="Ctl-&gt;Authorship" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="699.25,642.4092,699.1025,627.0211,696.0087,635.3008,687.729,632.2071,699.25,642.4092" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="42.1875" x="667.1875" y="564.8623">M19</text><!--MD5=[2969afc65a0ef887f7bc34b1ca90670b]
+link Ctl to Work--><path d="M672.8281,467.8155 C762.0625,516.9874 913.4688,600.4092 998.3906,647.2061 " fill="none" id="Ctl-&gt;Work" style="stroke: #383838; stroke-width: 1.5625;"/><polygon fill="#383838" points="1005.3906,651.0655,996.1023,638.7958,998.5518,647.2885,990.0592,649.738,1005.3906,651.0655" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="42.1875" x="859.375" y="564.8623">M21</text><!--MD5=[ec8f4f562edc903113c47126767ddedd]
+link Scholar to Authorship--><path d="M429.375,683.2374 C486.3125,683.2374 592.9844,683.2374 659.25,683.2374 " fill="none" id="Scholar-Authorship" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="87.5" x="500.3906" y="671.1123">身份参与</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="12.5" x="441.4688" y="673.163">1</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="35.9375" x="610.7405" y="674.7744">0..*</text><!--MD5=[cb0e43b9e14bbae9606bceee857af3b8]
+link Authorship to Work--><path d="M775.5,683.2374 C839.6719,683.2374 942.0625,683.2374 1005.1875,683.2374 " fill="none" id="Authorship-Work" style="stroke: #383838; stroke-width: 1.5625;"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="87.5" x="846.4844" y="671.1123">参与成果</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="35.9375" x="787.6573" y="674.872">0..*</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="12.5" x="980.4813" y="674.2861">1</text><rect fill="#DDDDDD" height="269.0239" rx="7.8125" ry="7.8125" style="stroke: #000000; stroke-width: 1.5625;" width="1007.8125" x="210.9375" y="839.4874"/><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="687.5" x="220.3125" y="872.6748">只包含UC-03顺序图中的6个参与对象；访客是参与者，不画成系统类。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="825" x="220.3125" y="904.3496">边上的编号对应04逐消息表：M2请求；M5/M7/M13/M15/M24/M26返回视图或状态；</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="676.5625" x="220.3125" y="936.0245">M9/M11读取公开资料与零成果；M17读取公开身份与认领/核验状态；</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="587.5" x="220.3125" y="967.6993">M19读取公开参与关系与状态；M21读取成果公开展示字段。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="598.4375" x="220.3125" y="999.3742">控制/边界到实体的关联按读取消息方向；不定义持久多重性。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="878.125" x="220.3125" y="1031.0491">Scholar 1—0..* Authorship、Authorship 0..*—1 WorkEntity 来自SRS §12/FR15/§7.2。</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="945.3125" x="220.3125" y="1062.7239">不画UserProfile—Scholar合并边：同名不合并、不强制关联（FR03-04/BR-IMP-03/SRS §12）；</text><text fill="#000000" font-family="Noto Sans CJK SC" font-size="21.875" lengthAdjust="spacingAndGlyphs" textLength="989.0625" x="220.3125" y="1094.3988">Scholar—WorkEntity不直连，必须经Authorship；User/Claim/Auth/Evidence/Source不参与本UC。</text><!--MD5=[abf852b668ee629bec1d583be7e204f8]
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 90
+skinparam ranksep 90
+hide circle
+hide empty members
+title DGM-VOPC-04 UC-03 查看公开个人主页/学者档案参与类类图（VOPC）
+package "UC-03 参与类" {
+  boundary "PublicProfileUI" as UI
+  control "PublicProfileCoordinator" as Ctl
+  together {
+    entity "UserProfile" as Profile
+    entity "Scholar" as Scholar
+  }
+  together {
+    entity "Authorship" as Authorship
+    entity "WorkEntity" as Work
+  }
+  UI -down-> Ctl : M2/M5/M7/M13/M15/M24/M26
+  Ctl -right-> Profile : M9/M11
+  Ctl -down-> Scholar : M17
+  Ctl - -> Authorship : M19
+  Ctl - -> Work : M21
+  Scholar "1" -right- "0..*" Authorship : 身份参与
+  Authorship "0..*" -right- "1" Work : 参与成果
+}
+legend right
+  只包含UC-03顺序图中的6个参与对象；访客是参与者，不画成系统类。
+  边上的编号对应04逐消息表：M2请求；M5/M7/M13/M15/M24/M26返回视图或状态；
+  M9/M11读取公开资料与零成果；M17读取公开身份与认领/核验状态；
+  M19读取公开参与关系与状态；M21读取成果公开展示字段。
+  控制/边界到实体的关联按读取消息方向；不定义持久多重性。
+  Scholar 1—0..* Authorship、Authorship 0..*—1 WorkEntity 来自SRS §12/FR15/§7.2。
+  不画UserProfile—Scholar合并边：同名不合并、不强制关联（FR03-04/BR-IMP-03/SRS §12）；
+  Scholar—WorkEntity不直连，必须经Authorship；User/Claim/Auth/Evidence/Source不参与本UC。
+endlegend
+@enduml
+
+PlantUML version 1.2020.02(Sun Mar 01 18:22:07 CST 2020)
+(GPL source distribution)
+Java Runtime: Java(TM) SE Runtime Environment
+JVM: Java HotSpot(TM) 64-Bit Server VM
+Java Version: 22.0.2+9-70
+Operating System: Linux
+Default Encoding: UTF-8
+Language: en
+Country: US
+--></g></svg>

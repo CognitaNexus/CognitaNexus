@@ -1,0 +1,63 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 13
+skinparam dpi 150
+skinparam sequenceMessageAlign left
+title DGM-SEQ-08 UC-03 查看公开个人主页/学者档案（分析序列）
+actor "访客" as Visitor
+boundary "PublicProfileUI" as UI
+control "PublicProfileCoordinator" as Ctl
+entity "UserProfile" as Profile
+entity "Scholar" as Scholar
+entity "Authorship" as Authorship
+entity "WorkEntity" as Work
+
+Visitor -> UI : M1 打开稳定主页/学者档案地址（稳定标识）
+UI -> Ctl : M2 请求公开视图（稳定标识）
+Ctl -> Ctl : M3 解析稳定标识并判定对象类型，不按姓名匹配
+Ctl -> Ctl : M4 校验目标对象当前公开且可访问
+alt 读取依赖失败或超时（A3）
+  Ctl --> UI : M5 执行失败（与空态/不可访问区分）
+  UI --> Visitor : M6 显示执行失败，不显示“暂无公开成果”
+else 标识无法定位对象或对象不公开·已失效（A1/A2）
+  Ctl --> UI : M7 不可访问，不返回任何资料字段
+  UI --> Visitor : M8 显示不可访问，与空态/失败区分
+else 目标为一个公开的 UserProfile
+  Ctl -> Profile : M9 读取允许公开的普通资料
+  Profile --> Ctl : M10 公开普通资料（仅允许展示字段）
+  Ctl -> Profile : M11 判断是否存在可公开学术成果
+  Profile --> Ctl : M12 无可公开成果（零成果）/ 有公开成果投影
+  alt 零成果（A4）
+    Ctl --> UI : M13 公开主页视图 + “暂无公开成果”空态
+    UI --> Visitor : M14 正常打开主页并显示空态（非404）
+  else 有可公开成果
+    Ctl --> UI : M15 公开主页视图 + 成果展示列表（不含详情）
+    UI --> Visitor : M16 显示主页与成果列表；详情跳转属UC-02
+  end
+else 目标为一个公开的 Scholar 档案
+  Ctl -> Scholar : M17 读取公开身份信息与认领/核验状态
+  Scholar --> Ctl : M18 公开身份 + 未认领/已认领 + 核验状态
+  Ctl -> Authorship : M19 读取当前公开且生效的参与关系与关系状态
+  Authorship --> Ctl : M20 参与关系（角色/顺序/关系状态）/ 无生效关系
+  Ctl -> Work : M21 读取关系对应成果的公开展示字段（不展开详情）
+  Work --> Ctl : M22 公开展示字段 / 不公开·已失效
+  Ctl -> Ctl : M23 公开/生效/许可过滤；不显示为已确认合作/本人确认；屏蔽私有证明；不按姓名补并
+  alt Scholar 未认领（A6）
+    Ctl --> UI : M24 学者档案视图 + 未认领提示 + 已生效成果
+    UI --> Visitor : M25 显示学者档案、未认领提示与生效成果
+  else 已认领
+    Ctl --> UI : M26 学者档案视图 + 认领/核验状态 + 已生效成果
+    UI --> Visitor : M27 显示学者档案与生效成果
+  end
+end
+legend right
+  只分析UC-03公开主页/学者档案读取；检索、成果详情、本人编辑、认领审核、身份核验不在本图。
+  一个请求只呈现一个对象：按稳定标识解析，不按姓名合并。
+  UserProfile与同名Scholar是两个对象、两个状态，不自动合并、不冒充已认证学者。
+  零成果=正常页面+“暂无公开成果”，不是404；空态/不可访问/执行失败三态分离。
+  只公开当前生效合格关系；待核验/争议/已排除不显示为已确认合作或本人确认。
+  公开字段最小化：无凭据、审核材料、私有证明；只读，无写消息。
+endlegend
+@enduml

@@ -1,0 +1,42 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 90
+skinparam ranksep 90
+hide circle
+hide empty members
+title DGM-VOPC-04 UC-03 查看公开个人主页/学者档案参与类类图（VOPC）
+package "UC-03 参与类" {
+  boundary "PublicProfileUI" as UI
+  control "PublicProfileCoordinator" as Ctl
+  together {
+    entity "UserProfile" as Profile
+    entity "Scholar" as Scholar
+  }
+  together {
+    entity "Authorship" as Authorship
+    entity "WorkEntity" as Work
+  }
+  UI -down-> Ctl : M2/M5/M7/M13/M15/M24/M26
+  Ctl -right-> Profile : M9/M11
+  Ctl -down-> Scholar : M17
+  Ctl --> Authorship : M19
+  Ctl --> Work : M21
+  Scholar "1" -right- "0..*" Authorship : 身份参与
+  Authorship "0..*" -right- "1" Work : 参与成果
+}
+legend right
+  只包含UC-03顺序图中的6个参与对象；访客是参与者，不画成系统类。
+  边上的编号对应04逐消息表：M2请求；M5/M7/M13/M15/M24/M26返回视图或状态；
+  M9/M11读取公开资料与零成果；M17读取公开身份与认领/核验状态；
+  M19读取公开参与关系与状态；M21读取成果公开展示字段。
+  控制/边界到实体的关联按读取消息方向；不定义持久多重性。
+  Scholar 1—0..* Authorship、Authorship 0..*—1 WorkEntity 来自SRS §12/FR15/§7.2。
+  不画UserProfile—Scholar合并边：同名不合并、不强制关联（FR03-04/BR-IMP-03/SRS §12）；
+  Scholar—WorkEntity不直连，必须经Authorship；User/Claim/Auth/Evidence/Source不参与本UC。
+endlegend
+@enduml
