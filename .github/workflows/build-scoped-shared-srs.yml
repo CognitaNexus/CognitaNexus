@@ -1,10 +1,10 @@
-name: Check and build current SRS candidate
+name: Check current 69-AC docs and build historical V1.1 Word
 on:
   pull_request:
-    paths: ['docs/**', 'scripts/docs/**', '.github/workflows/**', 'README.md', 'AGENTS.md']
+    paths: ['docs/**', 'scripts/docs/**', '.github/workflows/**', 'README.md', 'AGENTS.md', 'Makefile']
   push:
     branches: [main]
-    paths: ['docs/**', 'scripts/docs/**', '.github/workflows/**', 'README.md', 'AGENTS.md']
+    paths: ['docs/**', 'scripts/docs/**', '.github/workflows/**', 'README.md', 'AGENTS.md', 'Makefile']
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,10 +21,9 @@ jobs:
           sudo apt-get install -y -qq pandoc libreoffice-writer poppler-utils fonts-noto-cjk graphviz plantuml librsvg2-bin
       - name: Read-only documentation checks
         run: |
-          python3 scripts/docs/verify_scoped_srs.py
-          python3 scripts/docs/check_documentation.py
+          make check-docs
           env -u DISPLAY plantuml -charset UTF-8 -checkonly $(find docs/uml -name '*.puml')
-      - name: Build into temporary directory
+      - name: Build historical V1.1 Word into temporary directory
         run: bash scripts/docs/build_current_word.sh /tmp/current-srs-qa
       - name: Render Word (layout smoke check only)
         run: |

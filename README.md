@@ -2,41 +2,49 @@
 
 以学者为中心的学术成果聚合、共享与管理平台，覆盖论文、专利、科研项目和获奖四类成果。
 
-## 当前阶段
+## 当前阶段与阅读入口
 
-项目处于**需求建模 / SRS 与核心 SPEC 初稿**阶段。当前仓库维护需求、模块规格、图源和评审材料，尚未提供应用代码或运行部署流程。
+仓库目前维护课程需求与分析文档、核心规则规格、UML 图源及评审证据，尚无应用实现或部署入口。S01 已冻结，S02 需求分析材料见文档导航；文档检查通过不代表业务验收通过。
 
-- 需求依据：V1.9 需求基线，正文状态为待小组评审。
-- **当前唯一工程实施候选：双组共同 SRS V1.1 Implementation RC**；已依据 V1.9 进行工程可行性与需求边界收敛，尚待 CognitaNexus 与 OvO 双方签认，未 Frozen。此前六人稿及 514 页双组汇编均保留为历史来源，不再作为现行开发规范。
-- 核心 SPEC V1.0 为 Review Candidate，需联合评审；不代表规则已冻结。
-- FR01、FR02 为 Must；O01、O02 为 Optional，不作为一期基础验收的前置条件。
+**[文档导航](docs/README.md)** 是当前基线、模块分工、分析材料与历史来源的单一入口。
 
-## 阅读入口
-
-**[文档导航：当前规范、追踪、UML、评审与历史](docs/README.md)** 是文档单一入口。
-
-当前阅读顺序：需求 V1.9 → 共同 SRS V1.1 Implementation RC → 核心 SPEC V1.0 + V1.1 工程对齐说明。共同 SRS 为 **Review Candidate / 未经两组正式签认 / 非 Frozen**。历史六人稿及双组 V1.0：**Historical / 仅用于来源追踪，不作为当前开发基线。**
-
-[配置管理规范](docs/configuration-management.md) · [盘点与整理方案](docs/reports/document-management/inventory-and-plan-2026-10-12.md) · [整理验证](docs/reports/document-management/validation-2026-10-12.md)
+阅读顺序：需求 V2.1 → 共同 SRS V2.2（唯一 69 AC 权威基线）→ 核心 SPEC 与对齐说明 → S01 / S02 分析材料。46/59 AC 与旧 V1.1 仅用于历史追溯。各文件的实际版本和状态以正文为准，69 AC 运行验收仍未执行。
 
 ## 项目结构
 
 ```text
 CognitaNexus/
-├── README.md
-├── .gitignore
-├── AGENTS.md
-├── .local/submissions/   # 本地原始交付与待验证导出；不纳入 Git
-└── docs/
-    ├── README.md
-    ├── requirements/       # 需求基线与调研依据
-    ├── srs/                # 编写规范、共同SRS候选、模块 SRS 与评审输入
-    │   ├── modules/
-    │   ├── review/
-    │   └── incoming/       # 历史成员原稿，当前为本地未跟踪材料
-    ├── spec/               # 核心 SPEC 候选稿与追踪
-    ├── uml/                # PlantUML 图源与生成图
-    └── reports/            # 评审材料
+├── README.md                 # 项目入口
+├── AGENTS.md                 # 协作范围与交付约束
+├── Makefile                  # 统一的只读文档检查入口
+├── .github/workflows/        # 自动检查与临时构建
+├── docs/
+│   ├── README.md             # 文档单一导航
+│   ├── configuration-management.md
+│   ├── requirements/         # 需求基线与调研依据
+│   ├── srs/                  # 共同 SRS、模块来源、编号与整合追踪
+│   ├── spec/                 # 核心规则规格与对齐说明
+│   ├── analysis/             # S01 / S02 分析材料
+│   ├── uml/                  # 正式 PlantUML 图源；副本在各模块 generated/
+│   └── reports/              # 正式评审与验证记录
+├── scripts/docs/
+│   ├── README.md             # 工具范围、依赖与副作用
+│   ├── checks/               # 当前只读检查实现
+│   ├── legacy/               # 历史重建与验证实现（可能写回历史文件）
+│   └── …                     # 构建工具及旧命令兼容入口
+└── .local/                   # 本地交付、临时材料；不纳入 Git
 ```
 
-根目录原有 PNG 和待验证 CodeArts ZIP 已归入 `.local/submissions/uml-reference-2026-10-12/`，仅作本机参考；正式 UML 以 `docs/uml/` 下的 `.puml` 为维护源。`docs/srs/incoming/` 中既有成员原稿暂保留原路径，避免破坏现有引用，也不作为默认提交内容。后续分析、设计及实现资产在获准进入对应阶段后再增加。
+需求与历史文档保留稳定路径，通过导航区分效力；不按版本批量搬迁正文。各模块维护其图源，生成图与图源配对存放。已有本地 `docs/srs/incoming/` 原稿不作为受控基线或默认提交内容。
+
+## 常用检查
+
+在仓库根目录运行（依赖 Python 3 和 Make）：
+
+```sh
+make check-docs
+```
+
+此命令依次检查文档链接与生成物结构、SRS 范围、69 AC 基线和分析追踪；任一失败即停止，不重建或覆盖正式交付。无需 Make 时可按[工具说明](scripts/docs/README.md)运行三个 Python 检查。
+
+Word 构建与历史重建不属于默认检查，使用前先核对工具输入版本及副作用。维护遵循 [AGENTS.md](AGENTS.md) 与[配置管理规范](docs/configuration-management.md)。

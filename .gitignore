@@ -70,5 +70,5 @@ temp/
 *~
 
 # Local member handoffs and unverified reference exports
-/.local/submissions/
+/.local/
 /docs/srs/incoming/

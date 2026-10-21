@@ -24,6 +24,10 @@
 
 完整逐文件索引及本机 incoming 原稿见[盘点](reports/document-management/inventory-and-plan-2026-10-12.md)。所有既有目录保持稳定；本地原稿不自动纳入 Git。历史文件正文中的“当前”指其原时间点，不赋予其当前工程效力。未取得课程任务书原文时，不凭模板推断阶段交付已完成。
 
+## 目录维护与工具入口
+
+业务文档按 `requirements / srs / spec / analysis / uml / reports` 分工，沿用稳定路径。工具实现按 `scripts/docs/checks/`（当前只读检查）和 `scripts/docs/legacy/`（历史重建）分组，旧脚本路径保留兼容入口。统一检查运行 `make check-docs`；构建依赖与副作用见[工具说明](../scripts/docs/README.md)，本次目录调整与验证见[结构整理记录](reports/document-management/structure-refactor-2026-10-21.md)。
+
 ## 2026-10-20 S01/S02 课程分析入口
 
 - [课程要求与交付追踪矩阵](analysis/课程要求与交付追踪矩阵.md)
