@@ -1,0 +1,49 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 14
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam nodesep 70
+skinparam ranksep 110
+hide circle
+hide empty members
+top to bottom direction
+title DGM-VOPC-12 UC-17 后台待办与审计（参与类类图）
+boundary "AdminConsole" as UI
+control "AuditCoordinator" as Ctl
+entity "User" as User
+entity "AuditEvidence" as Audit
+entity "CollectionTask" as Task
+entity "DedupCandidate" as Dedup
+entity "IdentityCandidate" as IdCand
+entity "ClaimApplication" as Claim
+entity "ScholarAuthorization" as Auth
+entity "Authorship" as Rel
+entity "ReviewEvidence" as Material
+UI --> Ctl : M2 请求入口与待办视图；M7/M23 返回\nM30 审计查询；M44/M45/M46 返回；M50 转交请求
+Ctl --> User : M3/M4/M31/M51 校验账号状态与具体管理权限
+Ctl --> Audit : M34 只读读取留痕（五要素）；M47 记录查询访问\nM54/M57 记录受控拒绝与越权尝试
+Ctl ..> Task : M9 只读读取任务失败/异常移交/待核验计数（不启动、不重试）
+Ctl ..> Dedup : M11 只读读取异常治理待处理项（不改候选状态）
+Ctl ..> IdCand : M13 只读读取学者核验待处理项（不改候选状态）
+Ctl ..> Claim : M15 只读读取认领审核待处理项（不审核、不驳回）
+Ctl ..> Auth : M17 只读读取有效授权与争议入口事实（不授权、不转移）
+Ctl ..> Rel : M19 只读读取成果变更/归属待处理项（不改关系状态）
+Ctl ..> Material : M38 只读读取材料引用与可见范围（不返回原件）
+Audit "0..*" --> "0..1" User : 操作者
+legend bottom
+  只包含 UC-17 顺序图中的 11 个参与对象；管理员、普通用户/未授权请求者是参与者，不画成系统类。
+  边上的编号对应 04 逐消息表：M2/M7/M23/M30/M44–M46/M50 入口与结果；M3/M4/M31/M51 账号与具体管理权限；
+  M9/M11/M13/M15/M17/M19 六类只读待办来源（任务/治理候选/身份候选/认领申请/授权/参与关系）；
+  M34/M47/M54/M57 审计留痕；M38 证明材料引用与可见范围。
+  待办视图是只读派生投影，不是通用工作流实体：不画 WorkflowEngine/ApprovalChain/TodoItem/Assignee/SlaTimer，
+  也不对六类来源画写入边（本 UC 不执行批准/驳回/合并/拆分/授权/改归属/重试采集）。
+  Audit 0..*→0..1 User：一条留痕有一个操作者身份；系统自动动作无账号（执行者类型=系统，UC-09/10 同源）。
+  留痕对象（认领申请/授权/关系/候选/任务）以 targetRefs 属性表达，不逐类画实体关联：审计必须覆盖被拒绝、
+  未写入与已删除引用的对象（BR-IMP-10；INV-10；与 UC-09/10 同一取舍）。
+  Material 的可见范围、Claim/Auth/Rel 的业务关联已在 UC-05/06/08/10 定义；本 UC 只读，故不重复画边。
+  控制/边界到实体的关联按消息方向表达协作，不定义持久多重性。
+endlegend
+@enduml

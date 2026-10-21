@@ -227,8 +227,9 @@
       "seq": "DGM-SEQ-16",
       "vopc": "DGM-VOPC-12",
       "reviewRounds": 0,
-      "reviewReport": null,
-      "status": "PENDING"
+      "reviewReport": "docs/analysis/stage-02/automation/reviews/UC-17-review-R1.md",
+      "status": "AUTO_REVIEW_PASS",
+      "reviewSeverity": "MINOR"
     },
     "UC-18": {
       "title": "管理来源及采集任务",
@@ -334,6 +335,12 @@
       "head": "17ce8716ee9a0dd9b9d1a7dc01aa25913fc76e27",
       "at": "2026-10-21",
       "note": "UC-10 complete after one fix; R2 PASS/NONE"
+    },
+    {
+      "id": "CP-011",
+      "head": "a2aecdaf6bbf1ea51d9694600071c640ba98a61d",
+      "at": "2026-10-21",
+      "note": "UC-17 complete; R1 PASS/MINOR"
     }
   ]
 }

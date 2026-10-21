@@ -1,0 +1,114 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 13
+skinparam dpi 150
+skinparam sequenceMessageAlign left
+title DGM-SEQ-16 UC-17 后台待办与审计（分析序列）
+actor "管理员" as Admin
+actor "普通用户／未授权请求者" as General
+boundary "AdminConsole" as UI
+control "AuditCoordinator" as Ctl
+entity "User" as User
+entity "CollectionTask" as Task
+entity "DedupCandidate" as Dedup
+entity "IdentityCandidate" as IdCand
+entity "ClaimApplication" as Claim
+entity "ScholarAuthorization" as Auth
+entity "Authorship" as Rel
+entity "AuditEvidence" as Audit
+entity "ReviewEvidence" as Material
+
+group 统一入口与权限校验（E1–E3；A3）
+  Admin -> UI : M1 打开统一后台入口（采集/异常治理/学者核验/认领审核/成果变更/账号·分类·来源维护）（E1）
+  UI -> Ctl : M2 请求后台入口与待办视图（已认证请求上下文）
+  Ctl -> User : M3 校验账号状态（E2）
+  Ctl -> User : M4 校验具体管理权限与可见类别：非通用超级管理员（E2）
+  Ctl -> Ctl : M5 类别权限守卫：缺少该类别具体权限的项不列出、不因“是管理员”放行（A3）
+  Ctl -> Ctl : M6 按权限裁剪可访问类别与范围：不显示不等于授权（E3）
+  Ctl --> UI : M7 返回可访问类别与范围（E3）
+  UI --> Admin : M8 显示后台入口与范围说明（E3）
+end
+
+group 待办只读派生（E4–E10；A10）
+  Ctl -> Task : M9 只读读取采集/增量任务待处理事实（失败/异常移交/待核验计数）（E4）
+  Task --> Ctl : M10 返回任务状态与待核验计数：批次成功不等于治理全部通过（E4）
+  Ctl -> Dedup : M11 只读读取异常治理待处理项（成果候选/字段异常状态与计数）（E5）
+  Dedup --> Ctl : M12 返回异常治理待处理项（E5）
+  Ctl -> IdCand : M13 只读读取学者核验待处理项（身份/归属候选与争议状态、计数）（E6）
+  IdCand --> Ctl : M14 返回学者核验待处理项（E6）
+  Ctl -> Claim : M15 只读读取认领审核待处理项（待审核/待补充/争议、计数）（E7）
+  Claim --> Ctl : M16 返回认领审核待处理项（E7）
+  Ctl -> Auth : M17 只读读取有效授权与竞争认领争议入口事实（E8）
+  Auth --> Ctl : M18 返回授权与争议事实：原授权不转移，处置属 UC-06（E8）
+  Ctl -> Rel : M19 只读读取成果变更/归属待处理项（待核验/争议状态）（E9）
+  Rel --> Ctl : M20 返回关系待处理项（E9）
+  Ctl -> Ctl : M21 汇总待办视图：类别计数＋属主 UC＋只读/导航性质；稳定顺序（E10）
+  Ctl -> Ctl : M22 以属主对象最新状态为准：已被他人处置的项只显示当前状态（A10）
+  Ctl --> UI : M23 返回待办视图与计数：不产生、不推进任何业务状态（E10）
+  UI --> Admin : M24 显示待办视图并标注“只读聚合，处置在对应 UC”（E10）
+end
+
+group 导航交接：不执行处置（E11；A11）
+  Admin -> UI : M25 选择待办项，请求进入处置入口（E11）
+  UI -> UI : M26 导航目标组装：属主 UC＋对象引用＋只读上下文，不携带处置动作（E11）
+  alt 请求仅是导航
+    UI --> Admin : M27 交接到属主 UC 处置入口：本 UC 不执行决定（E11）
+  else 请求含处置动作（批准/驳回/合并/拆分/授权/重试/停用）
+    UI --> Admin : M28 拒绝在后台入口执行处置动作：只提供导航（A11）
+  end
+end
+
+group 审计查询与五要素核对（E12–E18；A4–A9、A12–A14）
+  Admin -> UI : M29 提交审计查询条件（对象/操作者/时间范围/事件类型/结果）（E12）
+  UI -> Ctl : M30 转交审计查询（条件＋已认证上下文）（E12）
+  Ctl -> User : M31 校验审计查询权限与可查范围：具体管理权限（E13）
+  Ctl -> Ctl : M32 范围裁剪：仅返回授权范围内对象/类别并显式声明裁剪（A4）
+  Ctl -> Ctl : M33 保留期限与遮蔽口径未冻结（D-09）：不擅自删除、匿名化或全量返回（A12）
+  Ctl -> Audit : M34 只读读取审计留痕（事件类型/操作者/对象/时间/前后值/理由/结果）（E14）
+  Audit --> Ctl : M35 按时间排序返回留痕集合：保留追加链，不合并为一条（E14）
+  Ctl -> Ctl : M36 五要素完整性核对：操作者/对象/时间/前后值/理由（E15）
+  Ctl -> Ctl : M37 缺任一要素即标“留痕不完整”异常项：不补写、不推断（A6）
+  Ctl -> Material : M38 只读读取证明材料引用与可见范围：不返回原件（E16）
+  Material --> Ctl : M39 返回材料引用与可见范围（E16）
+  Ctl -> Ctl : M40 证明材料原件可见性守卫：普通用户与无材料权限者不可见（A5）
+  Ctl -> Ctl : M41 敏感字段遮蔽：凭据/私人联系方式/非公开科研材料不进查询结果与安全审计（E17）
+  Ctl -> Ctl : M42 遮蔽结果说明：返回中不提供敏感字段明文（A14）
+  Ctl -> Ctl : M43 审计只读守卫：查询结果不得用于修改或删除留痕与业务状态（A9）
+  alt 无匹配
+    Ctl --> UI : M44 返回无匹配（空结果），与执行失败可区分（A7）
+  else 查询执行失败
+    Ctl --> UI : M45 返回查询失败：不返回部分结果冒充完整（A8）
+  else 正常返回
+    Ctl --> UI : M46 返回审计结果（五要素＋材料引用与可见范围＋异常项＋裁剪声明）（E18）
+    Ctl -> Audit : M47 记录受控查询访问留痕：只读查询本身留痕，不写业务状态（E18）
+    UI --> Admin : M48 显示审计结果、异常项、裁剪声明与空/失败区分（E18）
+  end
+end
+
+group 普通用户与停用账号拒绝（A1、A2）
+  General -> UI : M49 普通登录用户直接访问管理操作或提交处置（A2）
+  UI -> Ctl : M50 转交请求（已认证上下文）
+  Ctl -> User : M51 校验账号状态与管理员角色（A1；A2）
+  alt 未认证或账号已停用（A1）
+    Ctl --> UI : M52 拒绝：无任何业务写入（A1）
+    UI --> General : M53 显示停用/未认证拒绝（A1）
+    Ctl -> Audit : M54 记录受控拒绝审计，不含凭据（A1）
+  else 已登录但非管理员（A2）
+    Ctl --> UI : M55 拒绝：无管理权限，不产生业务变更（A2）
+    UI --> General : M56 显示拒绝，与越权/失败/空结果可区分（A2）
+    Ctl -> Audit : M57 记录受控越权尝试（A2）
+  end
+end
+
+legend right
+  只读聚合：待办视图由属主对象状态派生（CollectionTask/DedupCandidate/IdentityCandidate/ClaimApplication/
+  ScholarAuthorization/Authorship），本 UC 不建立通用工作流实体、不推进任何业务状态。
+  不执行决定：批准/驳回/合并/拆分/授权/改归属/启动或重试采集/停用来源均在属主 UC（M25–M28）。
+  权限：入口可见性不构成授权（FR14；NF03；SRS §8）；类别权限与审计查询权限按具体管理权限校验（M4/M5/M31）。
+  审计：五要素＝操作者/对象/时间/前后值/理由；缺要素标“留痕不完整”，不补写（M36/M37）。
+  隐私：证明材料原件不进入查询结果；普通用户无入口且不可见原件（M38–M40；FR14-02；NF06）。
+  待确认：保留期限/遮蔽范围（D-09）、管理权限划分粒度、审计查询访问是否必须留痕。
+endlegend
+@enduml

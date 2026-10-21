@@ -13,6 +13,8 @@
 | RegistrationCoordinator | Control | UC-04 | — | 注册校验、User+UserProfile 创建、稳定地址、幂等/回滚 | 注册请求状态（单次） | → User、→ UserProfile | 不定义持久多重性 | 全局 `RegCtl` | 统一命名 |
 | User | Entity | UC-04 | UC-05/06/22 | 账号、会话、对象授权主体 | stableId、accountState | 1:1 UserProfile；提交 Claim | 1:1（UserProfile） | 不等于 Scholar | 保留 |
 | UserProfile | Entity | UC-04 | UC-03/22 | 唯一公开普通主页 | stableId/publicUrl、公开普通资料、零成果空态 | 属于 User | 1:1 | 不强制对应 Scholar | 保留 |
+| AdminConsole | Boundary | UC-17 | UC-18/19 | 统一管理入口、待办、导航、审计查询 | 无持久业务属性 | → AuditCoordinator | 不定义持久多重性 | 全局 `AdminUI`/`AdminConsole` | 统一命名 |
+| AuditCoordinator | Control | UC-17 | UC-18/19 | 权限守卫、待办投影、导航、审计五要素/脱敏 | 单次管理请求状态 | → AuditEvidence/ReviewEvidence/ClaimApplication/ Auth/Authorship/CollectionTask/DedupCandidate/IdentityCandidate | 不定义持久多重性 | 全局 `AuditCtl` | 统一命名 |
 | IdentityVerificationUI | Boundary | UC-10 | — | 身份/归属核验、候选、决定、结果查询 | 无持久业务属性 | → IdentityVerificationCoordinator | 不定义持久多重性 | 全局 `AdminUI`/`GovernCtl` 邻近 | R5 统一 |
 | IdentityVerificationCoordinator | Control | UC-10 | — | 同名候选、稳定证据、归属判定、排除/拆分、传播、审计 | 单次核验状态 | → Scholar/IdentityCandidate/AttributionCandidate/ Authorship/WorkEntity/SourceRecord/ReviewEvidence/AuditEvidence | 不定义持久多重性 | 全局 `GovernCtl` | 统一命名 |
 | IdentityCandidate | Entity | UC-10 | — | 至少两个 Scholar 可能同一人的待核验组合 | 成员/证据/差异/状态 | →Scholar 0..*:2..* | 0..*:2..* | 全局无 | R5 决定 |
