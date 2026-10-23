@@ -13,10 +13,13 @@
 #   copytruncate 先复制再原地截断，fd 不变，代价是截断瞬间可能丢几行，对运行日志可以接受。
 #
 # 用法：bash install-logging.sh [--vacuum-now]
+#      CN_LOGGING_USER=buaa bash install-logging.sh   # 由 install-server.sh 代传，
+# 因为「sudo bash install-server.sh buaa」时 SUDO_USER 是代装人，不是部署目标用户，
+# 直接用 SUDO_USER 会把 logrotate 规则指到 /home/ubuntu/cn/logs，日志永远不会被轮转。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CN_USER="${SUDO_USER:-$(whoami)}"
+CN_USER="${CN_LOGGING_USER:-${SUDO_USER:-$(whoami)}}"
 CN_HOME="$(getent passwd "$CN_USER" | cut -d: -f6)/cn"
 LOG_DIR="$CN_HOME/logs"
 

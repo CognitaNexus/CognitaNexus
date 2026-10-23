@@ -194,7 +194,7 @@ public class NetworkService {
             properties.graphMaxEdges(),
             properties.graphMaxNodes());
     fromLoader.addSeed(from);
-    Map<String, Integer> fromSource = breadthFirst(fromLoader, from, MAX_PATH_DEPTH, startedAt);
+    Map<String, Integer> fromSource = breadthFirst(fromLoader, from, MAX_PATH_DEPTH, startedAt, to);
     if (!fromSource.containsKey(to)) {
       data.put("reachable", false);
       data.put("hops", null);
@@ -224,7 +224,7 @@ public class NetworkService {
     toLoader.addSeed(to);
     // 目标侧只需覆盖「最短路径上除端点以外的节点」：它们距目标最多 distance-1 跳。
     Map<String, Integer> toTarget =
-        breadthFirst(toLoader, to, Math.max(distance - 1, 0), startedAt);
+        breadthFirst(toLoader, to, Math.max(distance - 1, 0), startedAt, null);
 
     List<String> path = new ArrayList<>();
     String current = from;
@@ -277,9 +277,15 @@ public class NetworkService {
    *
    * <p>只展开前 {@code maxDepth} 层，超过时间预算抛 {@code GRAPH_TIMEOUT}，不返回部分结果——
    * 「算了一半的距离」会让调用方把截断当成真实拓扑。
+   *
+   * <p><b>目标一旦在当前层出现就停</b>（{@code target} 非空时）。这不是优化而是正确性的前提：
+   * 深度上限是 6，而一张中心学者的 1 跳子图就有 399 个节点、近 5000 条边，展开到 6 层等于把
+   * 整张协作图走一遍——在 1000 毫秒预算下必然超时，于是「找 1 跳的直接合作者」这种最轻的请求
+   * 也会返回 GRAPH_TIMEOUT。更深的层不可能给出更短距离，提前停不改变结果：路径重建只用
+   * 距离 ≤ 最短距离的节点。{@code target} 为空表示不早停（目标侧的展开本来就有更小的深度上限）。
    */
   private Map<String, Integer> breadthFirst(
-      ScopedGraphLoader loader, String source, int maxDepth, long startedAt) {
+      ScopedGraphLoader loader, String source, int maxDepth, long startedAt, String target) {
     Map<String, Integer> distance = new HashMap<>();
     distance.put(source, 0);
     List<String> frontier = List.of(source);
@@ -294,6 +300,9 @@ public class NetworkService {
         distance.putIfAbsent(id, depth);
       }
       frontier = discovered;
+      if (target != null && distance.containsKey(target)) {
+        break;
+      }
     }
     return distance;
   }

@@ -168,12 +168,19 @@ def main():
     # ---- 2. 来源原值保留 ----
     # 成果实体上没有 doi 字段：DOI 在标识注册表里。所以「来源值没被改写」要拿
     # 原始记录的 payload 与注册表的规范化值对比，而不是跟一个并不存在的列比。
+    #
+    # 只抽**单源成果**：一个成果可以有多条来源记录，而注册表里每成果只有一条 DOI。
+    # 不限定时，补充材料那几条（.../s001、.../s003、.../s004）会和主记录的正刊 DOI 配成一对，
+    # 差异来自 JOIN 把不相干的两行拼在一起，不是来源值被改写——实测 4/5 就是这么来的。
     raw = psql(
         "core_db", "core",
         "SELECT r.payload->>'doi' || '|' || i.normalized_value FROM raw_source_record r "
         "JOIN core_achievement_source s ON s.source_record_id = r.id "
         "JOIN core_identifier_registry i ON i.entity_id = s.achievement_id "
-        "WHERE i.identifier_kind = 'DOI' AND coalesce(r.payload->>'doi','') <> '' LIMIT 5;",
+        "WHERE i.identifier_kind = 'DOI' AND coalesce(r.payload->>'doi','') <> '' "
+        "  AND (SELECT count(*) FROM core_achievement_source s2 "
+        "       WHERE s2.achievement_id = s.achievement_id) = 1 "
+        "LIMIT 5;",
     )
     kept = 0
     for row in raw:

@@ -1,6 +1,7 @@
 package com.cognitanexus.ingestion.collect.api;
 
 import com.cognitanexus.ingestion.collect.adapter.SourceAdapterRegistry;
+import com.cognitanexus.ingestion.collect.application.AbstractHydrationService;
 import com.cognitanexus.ingestion.collect.application.CitationHydrationService;
 import com.cognitanexus.ingestion.collect.application.CollectExecutionService;
 import com.cognitanexus.ingestion.collect.application.CollectJobService;
@@ -52,6 +53,7 @@ public class AdminIngestionController {
   private final CollectRepositories.JobRepository jobRepository;
   private final ImportService imports;
   private final CitationHydrationService citationHydration;
+  private final AbstractHydrationService abstractHydration;
 
   public AdminIngestionController(
       SourceRunConfigService sources,
@@ -61,7 +63,8 @@ public class AdminIngestionController {
       CollectProperties properties,
       CollectRepositories.JobRepository jobRepository,
       ImportService imports,
-      CitationHydrationService citationHydration) {
+      CitationHydrationService citationHydration,
+      AbstractHydrationService abstractHydration) {
     this.sources = sources;
     this.jobs = jobs;
     this.execution = execution;
@@ -70,6 +73,7 @@ public class AdminIngestionController {
     this.jobRepository = jobRepository;
     this.imports = imports;
     this.citationHydration = citationHydration;
+    this.abstractHydration = abstractHydration;
   }
 
   /**
@@ -100,6 +104,22 @@ public class AdminIngestionController {
       @RequestBody List<String> dois, @RequestParam(defaultValue = "AUTO") String provider) {
     return ApiResponse.ok(
         citationHydration.hydrateDois(dois, providerOf(provider)), TraceIdHolder.current());
+  }
+
+  /**
+   * 摘要补水。
+   *
+   * <p>依据：FR02／FR16。按 core 的待补清单，向外网来源批量取摘要并投给 core 回写。
+   *
+   * <p>为什么除定时任务之外还要留这个入口：定时任务每轮 400 篇、每 30 分钟一轮，一旦某轮出问题，
+   * 只能等下一个周期才知道有没有好；而第一条真正验证「取回的摘要能不能进公开检索」的路径，需要
+   * 一个能指定极小批量（比如 3 篇）的入口。回执里看三个数：{@code worksWithAbstract}（真取到
+   * 多少）、{@code filled}（真写进库多少）、{@code remaining}（还剩多少）。
+   */
+  @PostMapping("/abstracts/hydrate")
+  public ApiResponse<AbstractHydrationService.HydrationReport> hydrateAbstracts(
+      @RequestParam(defaultValue = "20") int limit) {
+    return ApiResponse.ok(abstractHydration.hydrate(limit), TraceIdHolder.current());
   }
 
   /**

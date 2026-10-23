@@ -360,6 +360,10 @@ public class GovernanceRepositoryAdapter
   @Override
   public ContributionMove moveContributions(String mergedId, String survivorId) {
     int inserted = mapper.insertMovedContributions(mergedId, survivorId);
+    // 机构归属必须先搬、再清理，最后才删贡献行：core_contribution_org 对贡献是 ON DELETE
+    // RESTRICT，顺序反了会违反外键、整个合并事务回滚（本地 80% 的成果都会触发）。
+    mapper.moveContributionOrgs(mergedId, survivorId);
+    mapper.deleteContributionOrgsOf(mergedId);
     int removed = mapper.deleteContributionsOf(mergedId);
     return new ContributionMove(inserted, removed);
   }
@@ -368,6 +372,8 @@ public class GovernanceRepositoryAdapter
   public ContributionMove moveScholarContributions(
       String mergedScholarId, String survivorScholarId) {
     int inserted = mapper.insertMovedScholarContributions(mergedScholarId, survivorScholarId);
+    mapper.moveContributionOrgsOfScholar(mergedScholarId, survivorScholarId);
+    mapper.deleteContributionOrgsOfScholar(mergedScholarId);
     int removed = mapper.deleteContributionsOfScholar(mergedScholarId);
     return new ContributionMove(inserted, removed);
   }
