@@ -10,14 +10,27 @@
 set -euo pipefail
 
 # 兼容任意登录用户名：云镜像有时是 ubuntu，有时是 root 建的普通用户。
-CN_USER="${SUDO_USER:-$(whoami)}"
+# 第一个位置参数可显式指定「部署给哪个账号」，用于「有 sudo 的账号代人安装」这种情形：
+# 此时 SUDO_USER 是执行者，而真正长期维护该实例的账号是另一个（例如 buaa）。
+#   sudo bash install-server.sh buaa
+CN_USER="${1:-${SUDO_USER:-$(whoami)}}"
+getent passwd "$CN_USER" >/dev/null || { echo "用户 ${CN_USER} 不存在" >&2; exit 1; }
 CN_HOME="$(getent passwd "$CN_USER" | cut -d: -f6)/cn"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 die() { printf '\n\033[1;31m[失败] %s\033[0m\n' "$*" >&2; exit 1; }
 
-[ "$(id -u)" -eq 0 ] && die "请用普通用户 + sudo 运行，不要直接用 root"
+# 两种运行方式都支持：
+#   bash install-server.sh              自己装给自己（脚本内部逐条调 sudo）
+#   sudo bash install-server.sh buaa    有 sudo 的账号替另一个账号装
+# 第二种必须用 root：执行者与 CN_USER 不是同一个用户时，读 600 的 cn-env.sh
+# 会 Permission denied。2026-10-22 实际踩到，表现为
+# 「line 179: /home/buaa/cn/conf/cn-env.sh: Permission denied」后中断。
+# 产物属主在后面的 chown 里统一交给 CN_USER，进程仍由 systemd 以 User=$CN_USER 拉起。
+if [ "$(id -u)" -eq 0 ] && [ -z "${SUDO_USER:-}" ]; then
+  echo "提示：以 root 直接运行，产物属主将交给 ${CN_USER}" >&2
+fi
 
 echo "登录用户：$CN_USER    安装目录：$CN_HOME"
 
@@ -32,20 +45,26 @@ log "安装系统依赖"
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -qq
 
-# JDK：jar 是 Spring Boot 3.2 构建的，17 及以上都能跑。
-# 镜像里可能已经装了 21，这时不要再用 apt 装 17——多版本共存会让 /usr/bin/java 指向谁变得不确定。
-NEED_JDK=1
-if command -v java >/dev/null 2>&1; then
-  JV="$(java -version 2>&1 | head -1 | grep -oE '"[0-9]+' | tr -d '"' || echo 0)"
-  if [ "${JV:-0}" -ge 17 ]; then
-    echo "已安装 JDK ${JV}，跳过 JDK 安装"
-    NEED_JDK=0
-  fi
+# JDK：必须与 pom.xml 的 maven.compiler.release 一致，当前是 21。
+# 装 17 会在启动时直接 UnsupportedClassVersionError（class file version 65.0（=21），
+# 而 17 的运行时只认到 61.0），三个服务全部起不来且日志里只有这一行 StackTrace。
+# 2026-10-22 实际踩到：脚本原先按「>=17 即可」判断，装成 17，服务全灭。
+# 因此这里不再看 /usr/bin/java 指向谁（多版本共存时它可能仍指 17），
+# 而是直接按目录找 21 的可执行文件，并把绝对路径写进 systemd 单元。
+JAVA_MAJOR=21
+JAVA_BIN="$(ls -d /usr/lib/jvm/java-${JAVA_MAJOR}-openjdk-*/bin/java 2>/dev/null | head -1)"
+if [ -z "$JAVA_BIN" ]; then
+  echo "未找到 Java ${JAVA_MAJOR}，安装 openjdk-${JAVA_MAJOR}-jre-headless"
+  sudo apt-get install -y -qq "openjdk-${JAVA_MAJOR}-jre-headless" >/dev/null
+  JAVA_BIN="$(ls -d /usr/lib/jvm/java-${JAVA_MAJOR}-openjdk-*/bin/java 2>/dev/null | head -1)"
+  [ -n "$JAVA_BIN" ] || die "安装后仍未找到 Java ${JAVA_MAJOR}，请检查 apt 源是否提供 openjdk-${JAVA_MAJOR}-jre-headless"
+else
+  echo "已安装 Java ${JAVA_MAJOR}，跳过安装"
 fi
-if [ "$NEED_JDK" -eq 1 ]; then
-  sudo apt-get install -y -qq openjdk-17-jre-headless >/dev/null
-fi
-java -version 2>&1 | head -1
+echo "使用 $JAVA_BIN"
+"$JAVA_BIN" -version 2>&1 | head -1
+# 不要再用裸 java -version 判断版本：PATH 里的 java 多版本共存时可能仍指向旧版，
+# 那正是 2026-10-22 那次误判的来源。以 $JAVA_BIN 与 systemd 的 ExecStart 为准。
 
 # redis 与 nginx 缺什么装什么；已装的 apt 会直接跳过。
 sudo apt-get install -y -qq redis-server nginx curl >/dev/null
@@ -73,10 +92,13 @@ PG_BIN="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1)"
 echo "使用 $PG_BIN"
 
 log "创建运行目录"
-install -d -m 755 "$CN_HOME"/{app,sql,conf,logs,storage}
-install -d -m 755 "$CN_HOME"/storage/claim-evidence "$CN_HOME"/storage/scholar-avatar
-cp -f "$SCRIPT_DIR"/app/*.jar "$CN_HOME/app/"
-cp -f "$SCRIPT_DIR"/sql/*.dump "$CN_HOME/sql/"
+# 一律带 sudo 且用 -o/-g 直接定属主：安装者可能不是 CN_USER（有 sudo 的账号替别人装），
+# 这种情形下不带 sudo 的 install -d 写不进对方 750 的家目录，会在这里就 Permission denied。
+sudo install -d -m 755 -o "$CN_USER" -g "$CN_USER" "$CN_HOME"/{app,sql,conf,logs,storage}
+sudo install -d -m 755 -o "$CN_USER" -g "$CN_USER" "$CN_HOME"/storage/claim-evidence "$CN_HOME"/storage/scholar-avatar
+sudo cp -f "$SCRIPT_DIR"/app/*.jar "$CN_HOME/app/"
+sudo cp -f "$SCRIPT_DIR"/sql/*.dump "$CN_HOME/sql/"
+sudo chown -R "$CN_USER:$CN_USER" "$CN_HOME"/app "$CN_HOME"/sql "$CN_HOME"/storage
 
 log "部署前端产物到 /var/www/cn"
 # 不能放家目录：/home/ubuntu 是 750，nginx worker（www-data）无法 stat()，
@@ -107,7 +129,7 @@ else
   CN_INGESTION_SERVICE_TOKEN="$(gen)";     CN_QUERY_SERVICE_TOKEN="$(gen)"
   CN_BOOTSTRAP_ADMIN_PASSWORD="$(gen)"
 
-  cat > "$CN_HOME/conf/cn-env.sh" <<EOF
+  sudo tee "$CN_HOME/conf/cn-env.sh" >/dev/null <<EOF
 # 由 install-server.sh 于 $(date '+%Y-%m-%d %H:%M:%S') 生成。含全部生产口令，权限 600。
 # systemd 的 EnvironmentFile 只接受裸 KEY=VALUE，不能写 export；值含空格或括号时必须加引号。
 
@@ -166,7 +188,7 @@ CN_COLLECT_USER_AGENT="CognitaNexus/0.2 (mailto:cn-admin@example.edu.cn)"
 # 这个文件只在首次安装时生成（见上面的 if），重装不会覆盖已有值。
 CN_OPENALEX_API_KEY=
 EOF
-  chmod 600 "$CN_HOME/conf/cn-env.sh"
+  sudo chmod 600 "$CN_HOME/conf/cn-env.sh"
 fi
 # shellcheck disable=SC1091
 . "$CN_HOME/conf/cn-env.sh"
@@ -182,6 +204,11 @@ for v in CN_CORE_DB_OWNER_PASSWORD CN_CORE_DB_PASSWORD \
          CN_BOOTSTRAP_ADMIN_PASSWORD; do
   [ -n "${!v:-}" ] || die "cn-env.sh 缺少 $v，请删除该文件后重跑本脚本以重新生成"
 done
+
+# 运行账号必须能写 logs 与 storage、能读 conf（systemd 以 User=$CN_USER 起进程）。
+# 前面的 install -d、cp 与 cat > cn-env.sh 都是在 root 下做的，属主是 root，
+# 不交还属主的话服务一起来就 Permission denied，日志里看不出根因。
+chown -R "$CN_USER:$CN_USER" "$CN_HOME"
 
 log "配置 Redis 双实例"
 # 6379 用系统自带实例，只加口令；6380 另起一份配置，作为缓存独立进程。
@@ -286,7 +313,8 @@ for u in "$SCRIPT_DIR"/systemd/cn-*.service "$SCRIPT_DIR"/systemd/cn-*.timer; do
   [ -e "$u" ] || continue
   sed -e "s|User=ubuntu|User=$CN_USER|" \
       -e "s|Group=ubuntu|Group=$CN_USER|" \
-      -e "s|/home/ubuntu/cn|$CN_HOME|g" "$u" \
+      -e "s|/home/ubuntu/cn|$CN_HOME|g" \
+      -e "s|/usr/bin/java|$JAVA_BIN|g" "$u" \
     | sudo tee "/etc/systemd/system/$(basename "$u")" >/dev/null
 done
 sudo systemctl daemon-reload
@@ -295,7 +323,8 @@ sudo systemctl enable cn-core cn-query cn-ingestion >/dev/null
 # 日志上限：首次安装就设好，否则要等第一次磁盘告警才想起来。
 # CI 每次部署也会再调一次（脚本幂等），保证规则与仓库一致。
 if [ -f "$SCRIPT_DIR/install-logging.sh" ]; then
-  bash "$SCRIPT_DIR/install-logging.sh" || echo "警告：日志上限配置失败，不影响本次安装，可稍后单独重跑"
+  CN_LOGGING_USER="$CN_USER" bash "$SCRIPT_DIR/install-logging.sh" \
+    || echo "警告：日志上限配置失败，不影响本次安装，可稍后单独重跑"
 fi
 
 log "配置 nginx"

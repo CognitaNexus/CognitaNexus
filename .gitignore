@@ -75,6 +75,8 @@ test-output/
 allure-results/
 # 前端逐页断言的截图（可随时重建，只留脚本）
 tests/ui/.shots/
+# 全站审计的运行产物（报告 JSON 与 markdown，每次跑都会重写，不入库）
+tests/ui/.audit/
 
 # ===== 本地助手工作数据（不入库）=====
 .workbuddy/

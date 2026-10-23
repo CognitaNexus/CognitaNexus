@@ -397,6 +397,14 @@ public interface CollectMapper {
    * <p>{@code retry_count + 1} 与状态变更在同一条 UPDATE 里：分开写会在两次写入之间留下
    * 「已重新排队但次数没加」的窗口，统计与审计就对不上。
    */
+  /**
+   * 把失败任务放回队列。
+   *
+   * <p><b>必须同时把 consecutive_failures 归零</b>：熔断的判据是「连续失败次数达到阈值」，
+   * 只在状态上改成 PENDING 而不清计数，下一次抓取再失败就立刻越过阈值又被熔断——运维点了
+   * 「重试」，看到任务一闪就回到 FAILED，等于重试按钮不起作用。人工重试的语义本就是
+   * 「上游问题已处理，从头开始算连续失败」。
+   */
   @Update(
       """
       UPDATE ing_collect_job
@@ -406,6 +414,7 @@ public interface CollectMapper {
           lease_owner = NULL,
           lease_until = NULL,
           finished_at = NULL,
+          consecutive_failures = 0,
           retry_count = retry_count + 1,
           updated_at = now()
       WHERE id = #{jobId} AND status = 'FAILED'

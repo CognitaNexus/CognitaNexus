@@ -363,49 +363,49 @@ def main():
             print("SKIP：该来源独占成果的参与学者都已被认领，跳过撤权通知验证")
         else:
             scholar_b = scholar2_rows[0]
-        code, payload = applicant.post(
-            "/api/v1/account/claims",
-            {"scholarId": scholar_b, "statement": "通知自检：认领该学者以验证撤权通知送达。"},
-        )
-        claim2 = data_of(payload).get("id")
-        check("第二个认领提交成功", code == 200 and bool(claim2), (code, claim2))
-        code, _ = admin.post(
-            "/api/v1/admin/core/claims/%s/decision" % claim2,
-            {"decision": "APPROVE", "reason": "通知自检：为撤权通知验证建立授权"},
-        )
-        check("第二个认领批准成功", code == 200, code)
-        applicant.post("/api/v1/notifications/read", {"ids": []})  # 空操作，不清理未读（下一段按 kind 过滤）
-
-        code, payload = admin.put(
-            "/api/v1/admin/core/sources/%s/display-license" % source_id,
-            {"status": "REVOKED", "reason": "通知自检：验证撤权通知链路，随后立即恢复"},
-        )
-        check("撤权执行成功", code == 200 and data_of(payload).get("complete") is True, (code, payload))
-        code, items = notifications_of(applicant, unread_only=True)
-        revoked = [row for row in items if row.get("kind") == "SOURCE_LICENSE_REVOKED"]
-        check("撤权通知已送达", len(revoked) == 1, len(revoked))
-        if revoked:
-            check("撤权通知写明来源", source_code in revoked[0].get("body", ""), revoked[0].get("body", "")[:80])
-
-        code, payload = admin.put(
-            "/api/v1/admin/core/sources/%s/display-license" % source_id,
-            {"status": "GRANTED", "reason": "通知自检：恢复许可，还原测试现场"},
-        )
-        check("恢复执行成功", code == 200 and data_of(payload).get("complete") is True, (code, payload))
-        code, items = notifications_of(applicant, unread_only=True)
-        restored = [row for row in items if row.get("kind") == "SOURCE_LICENSE_RESTORED"]
-        check("恢复通知已送达", len(restored) == 1, len(restored))
-        # 现场还原：撤销为验证而建的门户授权，避免影响其他自检的「未认领学者」选择
-        auth_rows = psql(
-            "core_db", "core",
-            "SELECT id FROM iam_portal_authority WHERE scholar_id='%s' AND status='ACTIVE';" % scholar_b,
-        )
-        if auth_rows:
-            psql(
-                "core_db", "core",
-                "UPDATE iam_portal_authority SET status='REVOKED', revoked_at=now(), "
-                "revoke_reason='通知自检完成，还原现场' WHERE id='%s';" % auth_rows[0],
+            code, payload = applicant.post(
+                "/api/v1/account/claims",
+                {"scholarId": scholar_b, "statement": "通知自检：认领该学者以验证撤权通知送达。"},
             )
+            claim2 = data_of(payload).get("id")
+            check("第二个认领提交成功", code == 200 and bool(claim2), (code, claim2))
+            code, _ = admin.post(
+                "/api/v1/admin/core/claims/%s/decision" % claim2,
+                {"decision": "APPROVE", "reason": "通知自检：为撤权通知验证建立授权"},
+            )
+            check("第二个认领批准成功", code == 200, code)
+            applicant.post("/api/v1/notifications/read", {"ids": []})  # 空操作，不清理未读（下一段按 kind 过滤）
+
+            code, payload = admin.put(
+                "/api/v1/admin/core/sources/%s/display-license" % source_id,
+                {"status": "REVOKED", "reason": "通知自检：验证撤权通知链路，随后立即恢复"},
+            )
+            check("撤权执行成功", code == 200 and data_of(payload).get("complete") is True, (code, payload))
+            code, items = notifications_of(applicant, unread_only=True)
+            revoked = [row for row in items if row.get("kind") == "SOURCE_LICENSE_REVOKED"]
+            check("撤权通知已送达", len(revoked) == 1, len(revoked))
+            if revoked:
+                check("撤权通知写明来源", source_code in revoked[0].get("body", ""), revoked[0].get("body", "")[:80])
+
+            code, payload = admin.put(
+                "/api/v1/admin/core/sources/%s/display-license" % source_id,
+                {"status": "GRANTED", "reason": "通知自检：恢复许可，还原测试现场"},
+            )
+            check("恢复执行成功", code == 200 and data_of(payload).get("complete") is True, (code, payload))
+            code, items = notifications_of(applicant, unread_only=True)
+            restored = [row for row in items if row.get("kind") == "SOURCE_LICENSE_RESTORED"]
+            check("恢复通知已送达", len(restored) == 1, len(restored))
+            # 现场还原：撤销为验证而建的门户授权，避免影响其他自检的「未认领学者」选择
+            auth_rows = psql(
+                "core_db", "core",
+                "SELECT id FROM iam_portal_authority WHERE scholar_id='%s' AND status='ACTIVE';" % scholar_b,
+            )
+            if auth_rows:
+                psql(
+                    "core_db", "core",
+                    "UPDATE iam_portal_authority SET status='REVOKED', revoked_at=now(), "
+                    "revoke_reason='通知自检完成，还原现场' WHERE id='%s';" % auth_rows[0],
+                )
 
     print()
     failed = [name for name, ok, _ in RESULTS if not ok]

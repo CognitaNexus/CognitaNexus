@@ -187,6 +187,61 @@ public class CoreInternalClient {
   }
 
   /**
+   * 待补摘要的成果清单。
+   *
+   * <p>与 {@link #pendingCitations} 同理：补哪些由 core 决定。这里额外只取有 DOI 的——摘要必须
+   * 挂到确定的那一篇上，凭题名猜出来的摘要挂错文章比没有更糟。
+   */
+  public PendingAbstracts pendingAbstracts(int limit) {
+    JsonNode body =
+        exchange(
+            HttpMethod.GET,
+            "/internal/v1/papers/pending-abstracts?limit=" + Math.max(limit, 1),
+            null,
+            null,
+            null);
+    if (body == null) {
+      return new PendingAbstracts(List.of(), 0);
+    }
+    JsonNode data = body.path("data");
+    List<PendingAbstract> items = new ArrayList<>();
+    for (JsonNode item : data.path("items")) {
+      items.add(
+          new PendingAbstract(
+              item.path("achievementId").asText(null),
+              item.path("doi").asText(null),
+              item.path("title").asText(null)));
+    }
+    return new PendingAbstracts(items, data.path("remaining").asLong(0));
+  }
+
+  /**
+   * 投递取回的摘要。
+   *
+   * <p>{@code abstractText} 为 null 的条目表示「来源没有这一篇的摘要」，必须回报：core 据此记下
+   * 尝试时刻，下一轮才不会重复取同一批。
+   */
+  public AbstractReceipt postAbstracts(List<Map<String, Object>> entries) {
+    JsonNode body =
+        exchange(
+            HttpMethod.POST,
+            "/internal/v1/paper-abstracts",
+            null,
+            null,
+            Map.of("provider", "OPENALEX", "entries", entries));
+    if (body == null) {
+      throw new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE, "core 未返回摘要回执，本批结果未知");
+    }
+    JsonNode data = body.path("data");
+    return new AbstractReceipt(
+        data.path("received").asInt(0),
+        data.path("filled").asInt(0),
+        data.path("notFound").asInt(0),
+        data.path("skipped").asInt(0),
+        data.path("tooLong").asInt(0));
+  }
+
+  /**
    * 投递参考文献观测。
    *
    * <p>core 的接收是幂等的（每篇先删旧条目再插），因此超时重投是安全的；这里不做本地重试，
@@ -311,6 +366,15 @@ public class CoreInternalClient {
 
   /** 待补清单与剩余规模。 */
   public record PendingCitations(List<PendingCitation> items, int remaining) {}
+
+  /** 待补摘要的成果。 */
+  public record PendingAbstract(String achievementId, String doi, String title) {}
+
+  /** 待补摘要清单与剩余规模。remaining 用 long：全量待补可能上万，int 够用但没有理由赌。 */
+  public record PendingAbstracts(List<PendingAbstract> items, long remaining) {}
+
+  /** 摘要入库回执。 */
+  public record AbstractReceipt(int received, int filled, int notFound, int skipped, int tooLong) {}
 
   /** 引用观测入库回执。 */
   public record CitationReceipt(

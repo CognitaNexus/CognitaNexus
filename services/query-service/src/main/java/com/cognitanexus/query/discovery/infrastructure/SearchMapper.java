@@ -50,6 +50,79 @@ public interface SearchMapper {
   record ScholarHit(
       String scholarId, String scholarName, long achievementCount, Integer firstYear) {}
 
+  /**
+   * 关键词候选集：五个分支各走各的 trigram 索引，再用 UNION 去重。
+   *
+   * <p>为什么不能写成一个 OR 链：PostgreSQL 的 BitmapOr 要求 OR 的<strong>每一支</strong>都能转成
+   * 索引扫描。作者名那一支是 EXISTS 子查询，转不了，于是整条 OR 退化成 Filter——生成计划里能
+   * 看到它老老实实用了 ix_qry_achievement_eligible 取出全部候选行，再逐行取堆算三次 LIKE。
+   * 实测 18,001 行候选、单次 335 ms，而且 count 与取页两条语句各跑一次，接口总耗时因此翻倍。
+   *
+   * <p>拆成 UNION 之后每一支都走自己的索引，候选集只含真正命中的 ID，主查询再从候选集回表。
+   * 同一份数据实测：计数 438 ms → 9.0 ms，取页 417 ms → 7.8 ms。
+   *
+   * <p>五支各自都带 generation / EFFECTIVE / PUBLIC 条件，是为了让索引选择不受外层影响；
+   * 严格说作者名那一支可以不带（外层 JOIN 回 qry_achievement 时会再判一次），但它带了也不影响
+   * 结果，反而让五支的形状一致、单看一支就能判断它是否泄漏了不该出现的行。
+   *
+   * <p>用 UNION 而不是 UNION ALL：同一篇成果可能同时命中题名与摘要，不去重会让计数偏大。
+   */
+  String KEYWORD_CANDIDATE_ARMS =
+      """
+          SELECT a1.achievement_id FROM qry_achievement a1
+           WHERE a1.generation = #{generation}
+             AND a1.effective_status = 'EFFECTIVE'
+             AND a1.visibility = 'PUBLIC'
+             AND a1.title_norm LIKE '%' || #{criteria.keywordLike} || '%'
+          UNION
+          SELECT a2.achievement_id FROM qry_achievement a2
+           WHERE a2.generation = #{generation}
+             AND a2.effective_status = 'EFFECTIVE'
+             AND a2.visibility = 'PUBLIC'
+             AND lower(coalesce(a2.venue, '')) LIKE '%' || #{criteria.keywordLike} || '%'
+          UNION
+          SELECT a3.achievement_id FROM qry_achievement a3
+           WHERE a3.generation = #{generation}
+             AND a3.effective_status = 'EFFECTIVE'
+             AND a3.visibility = 'PUBLIC'
+             AND lower(coalesce(a3.abstract_text, '')) LIKE '%' || #{criteria.keywordLike} || '%'
+          UNION
+          SELECT a4.achievement_id FROM qry_achievement a4
+           WHERE a4.generation = #{generation}
+             AND a4.effective_status = 'EFFECTIVE'
+             AND a4.visibility = 'PUBLIC'
+             AND lower(coalesce(a4.doi, '')) = #{criteria.keywordNorm}
+          UNION
+          SELECT k.achievement_id FROM qry_contribution k
+           WHERE k.generation = #{generation}
+             AND k.relation_state IN ('AUTO', 'SELF_CONFIRMED')
+             AND lower(coalesce(k.scholar_name, '')) LIKE '%' || #{criteria.keywordLike} || '%'
+          """;
+
+  /**
+   * 关键词顺序过滤：短关键词（取不出 trigram）时唯一可行的写法。
+   *
+   * <p>它与 {@link #KEYWORD_CANDIDATE_ARMS} 的语义必须完全一致，改动其一时另一处必须同步改——
+   * 这条重复是刻意的取舍：两种写法在短词与长词上各快一个数量级，没有任何单一写法能同时覆盖。
+   *
+   * <p>短词为什么不用 UNION：每一支都取不出三元组，只能整表扫描；五支各扫一遍再哈希去重，
+   * 实测单字母关键词 660 ms，比这里的顺序过滤（264 ms）慢一倍多。
+   */
+  String KEYWORD_SEQUENTIAL_FILTER =
+      """
+        AND (a.title_norm LIKE '%' || #{criteria.keywordLike} || '%'
+             OR lower(coalesce(a.venue, '')) LIKE '%' || #{criteria.keywordLike} || '%'
+             OR lower(coalesce(a.abstract_text, '')) LIKE '%' || #{criteria.keywordLike} || '%'
+             OR lower(coalesce(a.doi, '')) = #{criteria.keywordNorm}
+             OR EXISTS (
+               SELECT 1 FROM qry_contribution k
+               WHERE k.generation = a.generation
+                 AND k.achievement_id = a.achievement_id
+                 AND k.relation_state IN ('AUTO', 'SELF_CONFIRMED')
+                 AND lower(coalesce(k.scholar_name, ''))
+                     LIKE '%' || #{criteria.keywordLike} || '%'))
+        """;
+
   /** 领域分面。sourceCount / inferredCount 把来源分类与系统推断分开计数，两者之和即总数。 */
   record TopicFacet(
       String topicId,
@@ -63,12 +136,22 @@ public interface SearchMapper {
    *
    * <p>数据性质用「等于」而不是 IN：默认只查 REAL，演示模式显式传 SIMULATED/MIXED/ALL。
    * 用 IN 会把「默认现实统计」与「演示数据」的边界变得含糊。
+   *
+   * <p>关键词条件按能否取到 trigram 分两条路，见 {@link #KEYWORD_CANDIDATE_ARMS} 与
+   * {@link #KEYWORD_SEQUENTIAL_FILTER} 的说明。两条路的谓词语义相同，只是访问路径不同。
    */
   @Select(
       """
       <script>
       SELECT count(*)
       FROM qry_achievement a
+      <if test="criteria.keywordTrigramUsable">
+        JOIN (
+      """
+          + KEYWORD_CANDIDATE_ARMS
+          + """
+        ) kw ON kw.achievement_id = a.achievement_id
+      </if>
       <if test="criteria.topicId != null">
         JOIN qry_achievement_topic t
           ON t.generation = a.generation AND t.achievement_id = a.achievement_id
@@ -83,18 +166,10 @@ public interface SearchMapper {
         <if test="criteria.type != null">AND a.type = #{criteria.type}</if>
         <if test="criteria.yearFrom != null">AND a.publication_year &gt;= #{criteria.yearFrom}</if>
         <if test="criteria.yearTo != null">AND a.publication_year &lt;= #{criteria.yearTo}</if>
-        <if test="criteria.keywordNorm != null">
-          AND (a.title_norm LIKE '%' || #{criteria.keywordLike} || '%'
-               OR lower(coalesce(a.venue, '')) LIKE '%' || #{criteria.keywordLike} || '%'
-               OR lower(coalesce(a.abstract_text, '')) LIKE '%' || #{criteria.keywordLike} || '%'
-               OR lower(coalesce(a.doi, '')) = #{criteria.keywordNorm}
-               OR EXISTS (
-                 SELECT 1 FROM qry_contribution k
-                 WHERE k.generation = a.generation
-                   AND k.achievement_id = a.achievement_id
-                   AND k.relation_state IN ('AUTO', 'SELF_CONFIRMED')
-                   AND lower(coalesce(k.scholar_name, ''))
-                       LIKE '%' || #{criteria.keywordLike} || '%'))
+        <if test="criteria.keywordNorm != null and not criteria.keywordTrigramUsable">
+      """
+          + KEYWORD_SEQUENTIAL_FILTER
+          + """
         </if>
         <if test="criteria.organization != null">
           AND EXISTS (
@@ -121,6 +196,13 @@ public interface SearchMapper {
              </choose>
              AS relevance
       FROM qry_achievement a
+      <if test="criteria.keywordTrigramUsable">
+        JOIN (
+      """
+          + KEYWORD_CANDIDATE_ARMS
+          + """
+        ) kw ON kw.achievement_id = a.achievement_id
+      </if>
       <if test="criteria.topicId != null">
         JOIN qry_achievement_topic t
           ON t.generation = a.generation AND t.achievement_id = a.achievement_id
@@ -135,18 +217,10 @@ public interface SearchMapper {
         <if test="criteria.type != null">AND a.type = #{criteria.type}</if>
         <if test="criteria.yearFrom != null">AND a.publication_year &gt;= #{criteria.yearFrom}</if>
         <if test="criteria.yearTo != null">AND a.publication_year &lt;= #{criteria.yearTo}</if>
-        <if test="criteria.keywordNorm != null">
-          AND (a.title_norm LIKE '%' || #{criteria.keywordLike} || '%'
-               OR lower(coalesce(a.venue, '')) LIKE '%' || #{criteria.keywordLike} || '%'
-               OR lower(coalesce(a.abstract_text, '')) LIKE '%' || #{criteria.keywordLike} || '%'
-               OR lower(coalesce(a.doi, '')) = #{criteria.keywordNorm}
-               OR EXISTS (
-                 SELECT 1 FROM qry_contribution k
-                 WHERE k.generation = a.generation
-                   AND k.achievement_id = a.achievement_id
-                   AND k.relation_state IN ('AUTO', 'SELF_CONFIRMED')
-                   AND lower(coalesce(k.scholar_name, ''))
-                       LIKE '%' || #{criteria.keywordLike} || '%'))
+        <if test="criteria.keywordNorm != null and not criteria.keywordTrigramUsable">
+      """
+          + KEYWORD_SEQUENTIAL_FILTER
+          + """
         </if>
         <if test="criteria.organization != null">
           AND EXISTS (

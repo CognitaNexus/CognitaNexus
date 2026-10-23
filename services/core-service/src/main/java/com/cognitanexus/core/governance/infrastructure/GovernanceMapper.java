@@ -3,6 +3,7 @@ package com.cognitanexus.core.governance.infrastructure;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -798,11 +799,50 @@ public interface GovernanceMapper {
   int insertMovedContributions(
       @Param("mergedId") String mergedId, @Param("survivorId") String survivorId);
 
-  @org.apache.ibatis.annotations.Delete(
+  @Delete(
       """
       DELETE FROM core_contribution WHERE achievement_id = #{mergedId}
       """)
   int deleteContributionsOf(@Param("mergedId") String mergedId);
+
+  /**
+   * 把被合并成果的贡献所属机构搬到存活成果的对应贡献上。
+   *
+   * <p>为什么必须搬、而不能直接随贡献一起删：{@code core_contribution_org.contribution_id} 是
+   * ON DELETE RESTRICT，删贡献前不处理子表就**违反外键**；而机构归属是「成果发生时」的事实
+   * （BR-IMP-06），合并去重不该把它丢掉。
+   *
+   * <p>关联键取 scholar_id 而不是贡献主键：合并后贡献行是新生成的，
+   * {@link #insertMovedContributions} 保证存活成果下已有该学者的贡献行；两个成果本来就有
+   * 同一学者时它会命中已有那一条，机构正好并过去。两边都记了同一机构则由主键冲突吸收。
+   *
+   * <p>漏掉这一段的后果不是「少一条机构」而是**整个合并事务失败**：本地库 27331 个成果里有
+   * 21755 个（80%）的贡献带机构归属，待合并成果落在这个区间就必然 500。
+   */
+  @Insert(
+      """
+      INSERT INTO core_contribution_org (contribution_id, organization_id)
+      SELECT sc.id, co.organization_id
+      FROM core_contribution_org co
+      JOIN core_contribution mc ON mc.id = co.contribution_id
+      JOIN core_contribution sc
+        ON sc.achievement_id = #{survivorId}
+       AND sc.scholar_id = mc.scholar_id
+      WHERE mc.achievement_id = #{mergedId}
+      ON CONFLICT (contribution_id, organization_id) DO NOTHING
+      """)
+  int moveContributionOrgs(
+      @Param("mergedId") String mergedId, @Param("survivorId") String survivorId);
+
+  /** 删掉被合并成果残留的机构归属。搬移后理论上已空，仍显式清理：留着就会挡住下一步的删除。 */
+  @Delete(
+      """
+      DELETE FROM core_contribution_org
+      WHERE contribution_id IN (
+        SELECT id FROM core_contribution WHERE achievement_id = #{mergedId}
+      )
+      """)
+  int deleteContributionOrgsOf(@Param("mergedId") String mergedId);
 
   /** 参与关系快照，用于台账记录合并前后的关系归属。 */
   @Select(
@@ -860,11 +900,37 @@ public interface GovernanceMapper {
       @Param("mergedScholarId") String mergedScholarId,
       @Param("survivorScholarId") String survivorScholarId);
 
-  @org.apache.ibatis.annotations.Delete(
+  @Delete(
       """
       DELETE FROM core_contribution WHERE scholar_id = #{mergedScholarId}
       """)
   int deleteContributionsOfScholar(@Param("mergedScholarId") String mergedScholarId);
+
+  /** 学者视角的机构搬移：同一个成果下把被合并学者的机构并到存活学者的贡献上。 */
+  @Insert(
+      """
+      INSERT INTO core_contribution_org (contribution_id, organization_id)
+      SELECT sc.id, co.organization_id
+      FROM core_contribution_org co
+      JOIN core_contribution mc ON mc.id = co.contribution_id
+      JOIN core_contribution sc
+        ON sc.achievement_id = mc.achievement_id
+       AND sc.scholar_id = #{survivorScholarId}
+      WHERE mc.scholar_id = #{mergedScholarId}
+      ON CONFLICT (contribution_id, organization_id) DO NOTHING
+      """)
+  int moveContributionOrgsOfScholar(
+      @Param("mergedScholarId") String mergedScholarId,
+      @Param("survivorScholarId") String survivorScholarId);
+
+  @Delete(
+      """
+      DELETE FROM core_contribution_org
+      WHERE contribution_id IN (
+        SELECT id FROM core_contribution WHERE scholar_id = #{mergedScholarId}
+      )
+      """)
+  int deleteContributionOrgsOfScholar(@Param("mergedScholarId") String mergedScholarId);
 
   @Update(
       """

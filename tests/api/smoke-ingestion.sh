@@ -400,6 +400,17 @@ DEAD_JOB_BODY="$(body_of POST "$ING/api/v1/admin/ingestion/jobs" "$AJAR" \
 DEAD_JOB_ID="$(json_get "$DEAD_JOB_BODY" data.job.id)"
 check_true '取得不可达来源的任务 id' "$([ -n "$DEAD_JOB_ID" ] && echo true || echo false)"
 # 恢复：上一轮收尾暂停了这个探针任务，暂停状态下 runOnce 直接跳过，本节就会去测别的东西。
+# 但 resume 对 FAILED 无效——那是熔断终态（连续失败到阈值就停止自动重试），状态机不允许
+# 「恢复」一个已熔断的任务，必须走 retry 放回队列。本节用固定标识复用任务，第一次熔断后
+# 每次都会被 FAILED 挡住，报出来的却是「任务处于 FAILED，本轮跳过」——看起来像退避坏了。
+DEAD_STATE_BEFORE="$(json_get "$(body_of GET "$ING/api/v1/admin/ingestion/jobs/$DEAD_JOB_ID" "$AJAR")" \
+  data.status)"
+if [ "$DEAD_STATE_BEFORE" = 'FAILED' ]; then
+  api_csrf
+  body_of POST "$ING/api/v1/admin/ingestion/jobs/$DEAD_JOB_ID/retry" "$AJAR" \
+    -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $CSRF" \
+    -d '{"reason":"退避自检：把上一轮熔断的探针任务放回队列"}' > /dev/null
+fi
 api_csrf
 body_of POST "$ING/api/v1/admin/ingestion/jobs/$DEAD_JOB_ID/resume" "$AJAR" \
   -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $CSRF" \

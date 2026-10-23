@@ -134,6 +134,47 @@ public interface CatalogRepositories {
      */
     int refreshPaperMetrics(String achievementId, Integer citationCount, String citationSource);
 
+    /**
+     * 还没有摘要的可见论文，按标识顺序分批给出。
+     *
+     * <p>为什么由 core 给清单而不是让采集侧自己挑：可见性、生效状态与合并重定向的权威都在 core，
+     * 采集侧的检索视图看不到受限成果，也判断不出「这一篇试过没有」。
+     *
+     * <p>只给带 DOI 的：没有 DOI 就无法向来源精确定位到这一篇，凭题名猜出来的摘要挂错文章比没有
+     * 摘要更糟。
+     */
+    List<PendingAbstract> listPendingAbstracts(int limit, String search);
+
+    /** 待补摘要总数（同一过滤条件）。用来回答「还剩多少」，不能靠本批条数推断。 */
+    long countPendingAbstracts(String search);
+
+    /**
+     * 回写摘要，返回受影响行数。
+     *
+     * <p>三道闸门全部写在 SQL 的 WHERE 里，而不是由调用方先查后写：
+     *
+     * <ol>
+     *   <li>已有摘要不覆盖。已有值来自更权威的来源或人工核对，补采只填空缺；
+     *   <li>字段被标记为 MANUAL／REVIEWED 时不覆盖（BR-IMP-04、AC-IMPL-FR10-01）；
+     *   <li>成果已被合并时不写——摘要应当补到幸存实体上，写到被合并的旧实体上等于没补。
+     * </ol>
+     *
+     * <p>先读后判会在读与写之间留出窗口，而人工在这个窗口里的提交不会报错，只会被静默覆盖。
+     *
+     * @return 1 表示写入；0 表示已有摘要、被人工保护、已被合并，或已尝试过
+     */
+    int fillPaperAbstract(String achievementId, String abstractText);
+
+    /**
+     * 标记「已向来源取过，但来源没有这一篇的摘要」，返回受影响行数。
+     *
+     * <p>这个标记是补采能收敛的前提：不然每一轮都会重新问一遍永远取不到的那 55%。
+     */
+    int markAbstractChecked(String achievementId);
+
+    /** 待补摘要的成果。title 只用于日志与排障，不参与取数。 */
+    record PendingAbstract(String achievementId, String doi, String title) {}
+
     Optional<AchievementDetails.Patent> findPatent(String achievementId);
 
     Optional<AchievementDetails.ResearchProject> findProject(String achievementId);

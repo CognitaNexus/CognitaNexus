@@ -1,6 +1,7 @@
 package com.cognitanexus.core.catalog.infrastructure;
 
 import com.cognitanexus.core.catalog.application.CatalogRepositories.AchievementRepository;
+import com.cognitanexus.core.catalog.application.CatalogRepositories.AchievementRepository.PendingAbstract;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.AchievementRepository.SourceRef;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.ContributionRepository;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.FieldProvenanceRepository;
@@ -18,6 +19,7 @@ import com.cognitanexus.core.platform.util.TextNormalizer;
 import com.cognitanexus.sharedkernel.AchievementType;
 import com.cognitanexus.sharedkernel.RelationState;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
@@ -105,6 +107,31 @@ public class CatalogCoreRepositories
   public int refreshPaperMetrics(
       String achievementId, Integer citationCount, String citationSource) {
     return achievementMapper.refreshPaperMetrics(achievementId, citationCount, citationSource);
+  }
+
+  @Override
+  public List<PendingAbstract> listPendingAbstracts(int limit, String search) {
+    List<PendingAbstract> rows = new ArrayList<>();
+    for (AchievementMapper.PendingAbstractRow row :
+        achievementMapper.listPendingAbstracts(limit, search)) {
+      rows.add(new PendingAbstract(row.achievementId(), row.doi(), row.title()));
+    }
+    return rows;
+  }
+
+  @Override
+  public long countPendingAbstracts(String search) {
+    return achievementMapper.countPendingAbstracts(search);
+  }
+
+  @Override
+  public int fillPaperAbstract(String achievementId, String abstractText) {
+    return achievementMapper.fillPaperAbstract(achievementId, abstractText);
+  }
+
+  @Override
+  public int markAbstractChecked(String achievementId) {
+    return achievementMapper.markAbstractChecked(achievementId);
   }
 
   @Override

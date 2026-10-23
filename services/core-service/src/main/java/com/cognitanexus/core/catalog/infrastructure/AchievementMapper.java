@@ -211,6 +211,106 @@ public interface AchievementMapper {
       """)
   Optional<PaperRow> findPaper(@Param("achievementId") String achievementId);
 
+  // ---------------------------------------------------------------------------
+  // 摘要补水（FR02／FR16）
+  // ---------------------------------------------------------------------------
+
+  record PendingAbstractRow(String achievementId, String doi, String title) {}
+
+  /**
+   * 待补摘要的可见论文。
+   *
+   * <p>三个条件缺一不可：从未尝试过（abstract_checked_at 判空）、当前没有摘要、有 DOI。
+   * 用 {@code btrim(...) = ''} 而不是只用 IS NULL：既有的导入路径可能写入空串，空串在页面上
+   * 与「没有摘要」完全一样，但会让 IS NULL 判断漏掉它们，于是这些行永远进不了待补清单。
+   */
+  @Select(
+      """
+      <script>
+      SELECT a.id AS achievementId, p.doi AS doi, a.title AS title
+      FROM core_paper p
+      JOIN core_achievement a ON a.id = p.achievement_id
+      WHERE p.abstract_checked_at IS NULL
+        AND (p.abstract_text IS NULL OR btrim(p.abstract_text) = '')
+        AND p.doi_norm IS NOT NULL
+        AND a.visibility = 'PUBLIC'
+        AND a.effective_status = 'EFFECTIVE'
+        AND a.merged_into_id IS NULL
+      <if test="search != null">
+        AND a.title_norm LIKE CONCAT('%', #{search}, '%')
+      </if>
+      ORDER BY a.id
+      LIMIT #{limit}
+      </script>
+      """)
+  List<PendingAbstractRow> listPendingAbstracts(
+      @Param("limit") int limit, @Param("search") String search);
+
+  @Select(
+      """
+      <script>
+      SELECT count(*)
+      FROM core_paper p
+      JOIN core_achievement a ON a.id = p.achievement_id
+      WHERE p.abstract_checked_at IS NULL
+        AND (p.abstract_text IS NULL OR btrim(p.abstract_text) = '')
+        AND p.doi_norm IS NOT NULL
+        AND a.visibility = 'PUBLIC'
+        AND a.effective_status = 'EFFECTIVE'
+        AND a.merged_into_id IS NULL
+      <if test="search != null">
+        AND a.title_norm LIKE CONCAT('%', #{search}, '%')
+      </if>
+      </script>
+      """)
+  long countPendingAbstracts(@Param("search") String search);
+
+  /**
+   * 回写摘要。三道闸门都在这条语句里，见 {@code CatalogRepositories.AchievementRepository}。
+   *
+   * <p>{@code abstract_checked_at} 与文本一起写：取到了也是「尝试过」，两件事必须同时落库，
+   * 否则补完之后这一行仍然是「待补」，下一轮会被反复取出。
+   */
+  @Update(
+      """
+      UPDATE core_paper p
+      SET abstract_text = #{abstractText},
+          abstract_checked_at = now()
+      WHERE p.achievement_id = #{achievementId}
+        AND p.abstract_checked_at IS NULL
+        AND (p.abstract_text IS NULL OR btrim(p.abstract_text) = '')
+        AND EXISTS (
+              SELECT 1 FROM core_achievement a
+              WHERE a.id = p.achievement_id AND a.merged_into_id IS NULL
+            )
+        AND NOT EXISTS (
+              SELECT 1
+              FROM core_field_provenance fp
+              WHERE fp.entity_type = 'ACHIEVEMENT'
+                AND fp.entity_id = p.achievement_id
+                AND fp.field_name = 'abstractText'
+                AND fp.value_level IN ('MANUAL', 'REVIEWED')
+            )
+      """)
+  int fillPaperAbstract(
+      @Param("achievementId") String achievementId, @Param("abstractText") String abstractText);
+
+  /**
+   * 标记尝试过但来源没有摘要。
+   *
+   * <p>只写时刻、不写文本：把「来源没给」写成空串会让页面显示一段空白摘要，而空白与「没有摘要」
+   * 在数据上就不再可区分了。
+   */
+  @Update(
+      """
+      UPDATE core_paper p
+      SET abstract_checked_at = now()
+      WHERE p.achievement_id = #{achievementId}
+        AND p.abstract_checked_at IS NULL
+        AND (p.abstract_text IS NULL OR btrim(p.abstract_text) = '')
+      """)
+  int markAbstractChecked(@Param("achievementId") String achievementId);
+
   @Insert(
       """
       INSERT INTO core_patent

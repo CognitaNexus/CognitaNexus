@@ -239,15 +239,17 @@ def main():
     # 6. 跨服务闭合：详情页单篇引用量的最大值 = 聚合里的单篇最高
     # ------------------------------------------------------------------
     print("== 6 跨服务闭合 ==")
-    contribution_ids = [
+    all_ids = [
         row.get("achievementId") for row in (data.get("contributions") or [])
         if row.get("achievementId")
         and (row.get("qualified") is True
              or row.get("relationState") in ("AUTO", "SELF_CONFIRMED"))
     ]
-    if len(contribution_ids) > 60:
-        # 成果太多时只抽一部分：这条断言要证明的是「聚合与详情同一套值」，不是穷举。
-        contribution_ids = contribution_ids[:60]
+    # 成果太多时只抽一部分：这条断言要证明的是「聚合与详情同一套值」，不是穷举。
+    # 但抽样后**只能比「单篇最高」**：累计引用是全集的合计，拿前 60 条之和去比它，
+    # 差额是「没抽到的那些成果」，得到的必然是假红（实测 50565 vs 64842 就是这么来的）。
+    truncated = len(all_ids) > 60
+    contribution_ids = all_ids[:60] if truncated else all_ids
     detail_counts = []
     for achievement_id in contribution_ids:
         status, detail = get_json("/api/v1/public/achievements/" + achievement_id)
@@ -260,8 +262,11 @@ def main():
     if detail_counts:
         check("聚合的单篇最高 = 详情里的最大值", max(detail_counts) == max_cit,
               (max(detail_counts), max_cit))
-        check("聚合的累计引用 = 详情逐个相加",
-              sum(detail_counts) == total, (sum(detail_counts), total))
+        if truncated:
+            print("  SKIP  成果数超过 60，累计引用比对的是两个不同集合，跳过（单篇最高已闭合）")
+        else:
+            check("聚合的累计引用 = 详情逐个相加",
+                  sum(detail_counts) == total, (sum(detail_counts), total))
     else:
         print("  SKIP  抽到的成果均无引用量，跳过闭合校验")
 

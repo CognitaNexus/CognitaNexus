@@ -309,6 +309,7 @@ public class SearchService {
     return new SearchCriteria(
         query.keywordNorm(),
         SearchQuery.likePatternOf(query.keywordNorm()),
+        SearchCriteria.trigramUsable(query.keywordNorm()),
         query.type(),
         query.yearFrom(),
         query.yearTo(),

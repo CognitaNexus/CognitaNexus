@@ -1,5 +1,6 @@
 package com.cognitanexus.core.catalog.api;
 
+import com.cognitanexus.core.catalog.application.AbstractHydrationService;
 import com.cognitanexus.core.catalog.application.AdminCatalogService;
 import com.cognitanexus.core.catalog.application.CitationNetworkService;
 import com.cognitanexus.core.catalog.application.SourceIntakeCommands.BatchReceipt;
@@ -45,16 +46,19 @@ public class InternalController {
   private final AdminCatalogService adminCatalog;
   private final OutboxStore outbox;
   private final CitationNetworkService citationNetwork;
+  private final AbstractHydrationService abstractHydration;
 
   public InternalController(
       SourceIntakeService sourceIntake,
       AdminCatalogService adminCatalog,
       OutboxStore outbox,
-      CitationNetworkService citationNetwork) {
+      CitationNetworkService citationNetwork,
+      AbstractHydrationService abstractHydration) {
     this.sourceIntake = sourceIntake;
     this.adminCatalog = adminCatalog;
     this.outbox = outbox;
     this.citationNetwork = citationNetwork;
+    this.abstractHydration = abstractHydration;
   }
 
   /**
@@ -91,6 +95,51 @@ public class InternalController {
     return ResponseEntity.ok(
         ApiResponse.ok(
             citationNetwork.pendingWorks(limit, search, topicId), TraceIdHolder.current()));
+  }
+
+  /**
+   * 待补摘要的成果清单。
+   *
+   * <p>与 {@link #pendingCitations} 同构：清单由 core 出，采集侧只负责按 DOI 去外网取。可见性、
+   * 生效状态、合并重定向与「试过没有」的权威都在 core，采集侧无从判断。
+   *
+   * <p>只给带 DOI 的成果：摘要必须挂到确定的那一篇上，凭题名猜出来的摘要挂错文章比没有更糟。
+   */
+  @GetMapping("/papers/pending-abstracts")
+  public ResponseEntity<ApiResponse<AbstractHydrationService.PendingPage>> pendingAbstracts(
+      @RequestParam(defaultValue = "50") int limit, @RequestParam(required = false) String search) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(abstractHydration.pendingAbstracts(limit, search), TraceIdHolder.current()));
+  }
+
+  /**
+   * 接收取回的摘要。
+   *
+   * <p>{@code abstractText} 为空的条目必须回报：它表示「来源查过、没有摘要」，core 据此记下尝试
+   * 时刻。不回的话下一轮还会把它放进待补清单，永远重复同一个请求。
+   */
+  @PostMapping("/paper-abstracts")
+  public ResponseEntity<ApiResponse<AbstractHydrationService.FillReceipt>> receiveAbstracts(
+      @RequestBody AbstractHydrationService.AbstractBatch batch) {
+    AbstractHydrationService.FillReceipt receipt =
+        abstractHydration.recordAbstracts(
+            batch == null ? null : batch.entries(),
+            batch == null || batch.provider() == null ? "UNKNOWN" : batch.provider());
+    return ResponseEntity.ok(ApiResponse.ok(receipt, TraceIdHolder.current()));
+  }
+
+  /**
+   * 按现状重发目录变更事件（只外发、不改数据，可反复调用）。
+   *
+   * <p>用途单一：补采摘要与公开检索投影之间出现顺序问题时，重放比重建整代投影安全得多。
+   */
+  @PostMapping("/papers/republish")
+  public ResponseEntity<ApiResponse<Map<String, Object>>> republishPapers(
+      @RequestBody AbstractHydrationService.RepublishBatch batch) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            abstractHydration.republish(batch == null ? null : batch.achievementIds()),
+            TraceIdHolder.current()));
   }
 
   /**
