@@ -119,7 +119,11 @@ if ! mv "$WEB_ROOT.new" "$WEB_ROOT"; then
 fi
 
 # nginx worker 读不到就等于站点白屏。此时 .old 还在，直接退回，不让流水线绿着出事。
-if command -v runuser >/dev/null 2>&1 && id www-data >/dev/null 2>&1; then
+#
+# 必须先判 id -u：runuser 只能由 root 调用，非 root 执行会直接失败，
+# 而失败在这里会被当成「www-data 读不到」→ 白白回退。这份脚本正常只由 sudo 以 root
+# 执行，但把前提写进条件里，离线演练（以普通账号跑）才不会得出反的结论。
+if [ "$(id -u)" -eq 0 ] && command -v runuser >/dev/null 2>&1 && id www-data >/dev/null 2>&1; then
   if ! runuser -u www-data -- test -r "$WEB_ROOT/index.html"; then
     rm -rf "$WEB_ROOT"
     [ -e "$WEB_ROOT.old" ] && mv "$WEB_ROOT.old" "$WEB_ROOT"

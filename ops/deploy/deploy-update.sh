@@ -9,7 +9,10 @@
 #
 # 用法：bash deploy-update.sh <新产物目录>
 #       bash deploy-update.sh --check <新产物目录>     只预检，不修改任何文件
-#   新产物目录里应有 app/*.jar 与 web/（前端 dist 内容）
+#   新产物目录里应有 app/*.jar、web/（前端 dist 内容）与 build-info.txt（CI 生成）
+#
+# 环境变量：
+#   CN_REQUIRE_WEB=1    前端有变化却没有同步能力时，整体失败而不降级（默认降级）
 #
 # --check 存在的理由：部署最贵的错误是「做了一半才发现做不下去」。预检把三件事
 # （产物齐不齐、前端要不要换、当前身份有没有权限换）全部提前到第一次写盘之前，
@@ -18,7 +21,8 @@
 # ---------------------------------------------------------------------------
 # 为什么这份脚本要能在「没有 sudo」的情况下跑完（2026-10-23 重写）
 #
-# 当前生产机（168.110.3.136，用户 buaa）没有 sudo，密码也不在 CI 手里。
+# 当前生产机（168.110.3.136，用户 buaa）没有 sudo，密码也不在 CI 手里
+# （passwd -S 显示 buaa 的密码是 L，即锁死，不是「没人知道」）。
 # 旧版每一步都写死 sudo（systemctl restart、写 /var/www/cn），于是整条 CD 只能靠
 # 人工登录敲命令——这正是不该发生的事。现在按实际能力分两条路：
 #
@@ -27,9 +31,21 @@
 #               自动拉起；前端交给 root 侧的 /usr/local/sbin/cn-web-sync
 #               （install-web-sync.sh 一次性安装，sudoers 只放行这一条命令）
 #
-# 两条路都先判断再动手：**前端需要更新而当前没有同步能力时，在替换任何文件之前就退出**。
-# 半部署比不部署更难排查——jar 换了、页面还是旧的，流水线却是绿的。
+# ---------------------------------------------------------------------------
+# 前端有变化但同步不了时的策略（2026-10-23 改）
 #
+# 旧版是「整体失败」，理由是半部署更难排查。这个理由在人工部署时成立，在流水线里
+# 不成立：它会让「改一个前端按钮」变成「后端也不能更新」，而且因为没有 sudo 这条
+# 几乎每轮都会触发，结果是流水线长期全红、真正的失败被淹掉。
+#
+# 现在的策略是分开处理，但把状态写到三个地方，不留静默：
+#   后端照常更新（代码正确性不依赖前端）
+#   前端产物留在暂存区，等下一次有能力时自动补
+#   状态写到 ①本脚本输出 ②CI 的 warning 注解与 step summary ③机器上的 deploy-last.log
+#
+# 需要原子性（前端没上线就不算部署成功）的场合，传 CN_REQUIRE_WEB=1 恢复旧行为。
+#
+# ---------------------------------------------------------------------------
 # jar 的替换方式也改了：同目录 mv（rename）原子顶替，不再 cp -f 覆盖。
 # 覆盖写会 truncate 正在被 java 读取的 inode，热更新期间并发读可能拿到半截内容；
 # rename 之后旧进程继续持有旧 inode，下次启动才看到新文件。
@@ -55,16 +71,20 @@ SRC="$(cd "$SRC" && pwd)"
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m[警告] %s\033[0m\n' "$*" >&2; }
 
-# 前端「是否需要同步」的判据：比 index.html 引用的资源文件名集合，而不是整个文件的哈希。
+# 状态目录：记录「上一次真正部署上去的前端源码版本」。
+# 只在前端同步成功且自检通过之后才写，跳过的一轮绝不写——否则下次会误以为已经上线。
+CN_STATE="$CN_HOME/state"
+FRONTEND_TREE_FILE="$CN_STATE/frontend-tree"
+
+# 退化判据：比 index.html 引用的资源文件名集合。
 #
-# 为什么不能用整文件 sha256（第一版就是这么写的，被自己坑了一次）：
-# 同一个 lockfile 在同一台机器上重建，Vite 产出的 js/css 文件名由内容哈希决定，完全稳定；
-# 但 index.html 里注入的 preload 顺序、空白、换行在不同 Node 版本与不同机器上会变。
-# 实测：本地重建的入口集合与线上逐字一致（13 个文件同名），整文件哈希却不同。
-# 拿整文件哈希当判据，等于「每次重新构建都判定前端有变化」，于是永远要求同步能力。
+# 只在拿不到源码版本时用（产物是人工打包的、没带 build-info.txt）。它比整文件 sha256 稳
+# ——Vite 的文件名由内容哈希决定，但 index.html 里 preload 的顺序与空白会随 Node 版本变，
+# 拿整文件哈希当判据等于「每次重建都判前端有变化」。
 #
-# 文件名集合相同就意味着产物等价：任何一个源文件改动都会改变它的内容哈希，
-# 也就必然改变被 index.html 引用的文件名。
+# 但它仍然不可靠：入口 chunk 的名字会随构建平台变。实测同一个 commit，
+# Linux 构建出 index-Dxy1HZYT.js，Windows 构建出 index-CIbzzPOi.js，其余 13 个资源逐字相同。
+# 这就是「每轮都报前端不一致」的根因，正常路径不应该再走到这里。
 web_signature() {
   grep -oE 'assets/[A-Za-z0-9_.-]+\.(js|css)' "$1" 2>/dev/null | sort -u | tr '\n' ' '
 }
@@ -88,41 +108,76 @@ printf '部署身份 %s｜家目录 %s｜sudo=%s｜前端同步=%s\n' \
 
 # ---------------------------------------------------------------------------
 # 0) 前置判断：前端要不要更新、能不能更新。放在任何写操作之前。
+#
+#    判据是「前端源码的 git tree hash」，不是构建产物长什么样。
+#    tree hash 由 git 对源码内容计算，跨平台一致，改一个字节就变；
+#    构建产物的文件名则受构建平台影响（见 web_signature 的注释）。
 # ---------------------------------------------------------------------------
 WEB_STAGE="$SRC/web"
 WEB_NEEDS_SYNC=0
+WEB_PENDING=0
+want_tree=""
+have_tree=""
+
+# build-info.txt 由 CI 在整理产物时写入，人工打包的产物可能没有。
+if [ -f "$SRC/build-info.txt" ]; then
+  want_tree="$(sed -n 's/^frontend-tree=//p' "$SRC/build-info.txt" 2>/dev/null | head -1)"
+fi
+if [ -r "$FRONTEND_TREE_FILE" ]; then
+  have_tree="$(head -1 "$FRONTEND_TREE_FILE" 2>/dev/null || true)"
+fi
+
 if [ -d "$WEB_STAGE" ] && [ -f "$WEB_STAGE/index.html" ]; then
-  want="$(web_signature "$WEB_STAGE/index.html")"
-  have=""
-  if [ -r "$WEB_ROOT/index.html" ]; then
-    have="$(web_signature "$WEB_ROOT/index.html")"
+  if [ -n "$want_tree" ] && [ -n "$have_tree" ]; then
+    if [ "$want_tree" = "$have_tree" ]; then
+      echo "前端源码未变（frontend tree ${want_tree:0:12}），跳过前端同步"
+    else
+      WEB_NEEDS_SYNC=1
+      echo "前端源码有变化（${have_tree:0:12} → ${want_tree:0:12}），需要同步到 $WEB_ROOT"
+    fi
+  else
+    # 缺一侧记录：首次引入本机制，或产物是手工打包的。退化到资源文件名比对，
+    # 并把「为什么退化」写清楚——否则以后有人看到这条日志会以为判据就是这样。
+    w="$(web_signature "$WEB_STAGE/index.html")"
+    h=""
+    if [ -r "$WEB_ROOT/index.html" ]; then
+      h="$(web_signature "$WEB_ROOT/index.html")"
+    fi
+    if [ -n "$w" ] && [ "$w" != "$h" ]; then
+      WEB_NEEDS_SYNC=1
+      echo "前端产物与线上不同（缺源码版本记录，退化按资源文件名比对）"
+    else
+      echo "前端产物与线上一致，跳过前端同步"
+    fi
   fi
-  if [ -n "$want" ] && [ "$want" != "$have" ]; then
-    WEB_NEEDS_SYNC=1
-    echo "前端产物与线上不一致，需要同步到 $WEB_ROOT"
-    if [ "$HAS_WEB_SYNC" -eq 0 ] && [ "${CN_SKIP_WEB:-0}" != "1" ]; then
+
+  if [ "$WEB_NEEDS_SYNC" -eq 1 ] && [ "$HAS_WEB_SYNC" -eq 0 ]; then
+    if [ "${CN_REQUIRE_WEB:-0}" = "1" ]; then
       cat >&2 <<'EOF'
 
-[失败] 前端产物与线上不一致，但当前身份没有同步 /var/www/cn 的能力。
+[失败] 前端源码有变化，但当前身份没有同步 /var/www/cn 的能力（按 CN_REQUIRE_WEB=1 要求严格）。
 
   这一步刻意放在替换 jar 之前：先换 jar 再报错，线上会停在
   「后端是新的、页面还是旧的」的状态，而流水线是红的——没人知道哪一半生效了。
 
-  二选一：
-    a) 让 root 执行一次 ops/deploy/install-web-sync.sh（幂等），之后 CI 自动同步前端；
-    b) 本轮只更新后端：设 CN_SKIP_WEB=1 再跑（线上页面将保持旧版本）。
-
 EOF
       exit 1
-    elif [ "${CN_SKIP_WEB:-0}" = "1" ]; then
-      warn "按 CN_SKIP_WEB=1 跳过前端同步，线上页面保持旧版本"
-      WEB_NEEDS_SYNC=0
     fi
-  else
-    echo "前端产物与线上一致（index.html 引用的资源文件名相同），跳过前端同步"
+    # 默认策略：后端照常上，前端跳过但必须显式可见。
+    # 为什么不再整体失败：改一个前端按钮不该让后端停更；而「静默跳过」是另一头的错。
+    # 折中是「后端继续 + 状态写到三个地方」：本脚本输出、CI 注解、机器上的 pending 记录。
+    WEB_PENDING=1
+    WEB_NEEDS_SYNC=0
+    warn "没有同步 $WEB_ROOT 的能力，本轮只更新后端，线上页面保持旧版本"
+    warn "前端产物已留在 $WEB_STAGE，装上 cn-web-sync 后下一次部署会自动补上"
+    # 机器可读标记：CI 靠这两行判断要不要告警，人看到也知道发生过什么。
+    echo "CN_WEB_PENDING=1"
+    echo "CN_WEB_PENDING_TREE=${want_tree:-unknown}"
   fi
-elif [ "${CN_SKIP_WEB:-0}" != "1" ]; then
-  warn "产物目录里没有 web/index.html，本轮不更新前端"
+elif [ -d "$WEB_STAGE" ]; then
+  warn "产物目录里有 web/ 但没有 index.html，本轮不更新前端"
+else
+  echo "产物目录里没有 web/，本轮只更新后端"
 fi
 
 # ---------------------------------------------------------------------------
@@ -142,7 +197,11 @@ if [ "$CHECK" -eq 1 ]; then
   [ "$miss" -eq 0 ] || { echo "[失败] 产物不完整" >&2; exit 1; }
   printf '可执行能力：%s\n' \
     "$([ "$HAS_SUDO" -eq 1 ] && echo 'systemctl 重启 + 直写 /var/www/cn' || echo 'kill -TERM 重启（无 sudo），前端走 cn-web-sync 或跳过')"
-  printf '前端：%s\n' "$([ "${WEB_NEEDS_SYNC:-0}" -eq 1 ] && echo '需要同步到 /var/www/cn' || echo '无需同步')"
+  if [ "${WEB_PENDING:-0}" -eq 1 ]; then
+    printf '前端：%s\n' '源码有变化，但本轮没有同步能力——将跳过前端、后端照常更新'
+  else
+    printf '前端：%s\n' "$([ "${WEB_NEEDS_SYNC:-0}" -eq 1 ] && echo '需要同步到 /var/www/cn' || echo '无需同步')"
+  fi
   echo "预检通过，未做任何修改"
   exit 0
 fi
@@ -188,6 +247,7 @@ if [ "$WEB_NEEDS_SYNC" -eq 1 ]; then
     # 这条校验是「sudoers 只放行一条命令」仍然安全的前提。
     sudo -n "$WEB_SYNCER" --from "$WEB_STAGE"
   fi
+  WEB_SYNCED=1
   echo "产物已替换"
 fi
 
@@ -256,17 +316,22 @@ done
 printf '经 nginx 的公开检索 %s\n' "$code"
 [ "$code" = "200" ] || fail=1
 
-# 前端是否真的换了：拿线上 index.html 与产物再比一次，别只信「命令没报错」。
-if [ "${WEB_NEEDS_SYNC:-0}" -eq 1 ]; then
-  want="$(web_signature "$WEB_STAGE/index.html")"
-  now=""
-  if [ -r "$WEB_ROOT/index.html" ]; then
-    now="$(web_signature "$WEB_ROOT/index.html")"
-  fi
-  if [ "$want" = "$now" ]; then
+# 前端是否真的换了：直接比字节，别只信「命令没报错」。
+# 这里能用 cmp 而不用资源集合：产物是刚从 stage 拷过去的，同一份文件应当逐字节相同。
+if [ "${WEB_SYNCED:-0}" -eq 1 ]; then
+  if cmp -s "$WEB_STAGE/index.html" "$WEB_ROOT/index.html"; then
     echo "前端已更新：$(grep -oE 'assets/index-[A-Za-z0-9_.-]+\.js' "$WEB_ROOT/index.html" | head -1)"
+    # 只有确认线上真的是这一份，才记录源码版本。
+    # 记录早了（比如同步命令返回 0 就记）会让「实际没生效」变成永久性误判：
+    # 下一轮会认为前端已是最新，于是永远不再尝试。
+    if [ -n "${want_tree:-}" ]; then
+      mkdir -p "$CN_STATE"
+      printf '%s\n' "$want_tree" >"$FRONTEND_TREE_FILE.tmp"
+      mv -f "$FRONTEND_TREE_FILE.tmp" "$FRONTEND_TREE_FILE"
+      echo "已记录前端源码版本 ${want_tree:0:12}（下一轮据此判断是否需要同步）"
+    fi
   else
-    echo "前端未生效：线上 index.html 引用的资源与产物不一致" >&2
+    echo "前端未生效：$WEB_ROOT/index.html 与产物不一致" >&2
     fail=1
   fi
 fi
