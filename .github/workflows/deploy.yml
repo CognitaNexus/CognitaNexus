@@ -198,25 +198,48 @@ jobs:
           } > ~/.ssh/config
           chmod 600 ~/.ssh/config
           # 15 秒内连不上就当场失败，而不是挂到 job 超时
+          # 注意这里只能写远端变量：单引号内的 $ 由远端 shell 展开，
+          # 写 $CN_SSH_USER 会得到空串（那是 runner 的环境变量，远端没有）。
           ssh -F ~/.ssh/config -o ConnectTimeout=15 -o BatchMode=yes cn-target \
-            'echo "已连上 $(hostname)（$CN_SSH_USER@$CN_SSH_HOST）"' 2>&1 | tee /tmp/cn-ssh.log
+            'echo "已连上 $(hostname)"' 2>&1 | tee /tmp/cn-ssh.log
 
       - name: 探测远端部署环境
         # 目标机的能力决定后面能做什么：家目录在哪、有没有 sudo。
         # 探测结果写进 GITHUB_ENV，后面的步骤据此分支——不靠这里写死用户名与路径。
+        #
+        # 两个坑都要避开：
+        #   1. 写进 GITHUB_ENV 的变量在**当前** shell 里并不存在（下一步才生效），
+        #      所以必须先落到本步的局部变量再落盘，否则 set -u 直接以
+        #      「CN_HAS_SUDO: unbound variable」退出——这就是第一次跑挂在这里的原因。
+        #   2. while 循环体里的 `[ -n "$k" ] && echo` 遇到空行会返回 1，
+        #      在 set -e 下同样会退出，所以用 case 而不是条件短路。
         run: |
           set -euo pipefail
           info="$(ssh -F ~/.ssh/config -o BatchMode=yes -o ConnectTimeout=15 cn-target \
             'printf "REMOTE_HOME=%s\nHAS_SUDO=%s\n" "$HOME" "$(sudo -n true 2>/dev/null && echo yes || echo no)"')"
           echo "$info"
+          remote_home=""
+          has_sudo=""
           while IFS='=' read -r k v; do
-            [ -n "$k" ] && echo "CN_$k=$v" >> "$GITHUB_ENV"
+            case "$k" in
+              REMOTE_HOME) remote_home="$v" ;;
+              HAS_SUDO)    has_sudo="$v" ;;
+            esac
           done <<< "$info"
-          echo "CN_STAGE=$CN_REMOTE_HOME/cn-incoming" >> "$GITHUB_ENV"
-          if [ "$CN_HAS_SUDO" = "yes" ]; then
-            echo "::notice::远端有 sudo，前端与运维加固都可自动完成"
+          if [ -z "$remote_home" ]; then
+            echo "::error::取不到远端家目录，远端返回：$info"
+            exit 1
+          fi
+          [ "$has_sudo" = "yes" ] || has_sudo="no"
+          {
+            echo "CN_REMOTE_HOME=$remote_home"
+            echo "CN_HAS_SUDO=$has_sudo"
+            echo "CN_STAGE=$remote_home/cn-incoming"
+          } >> "$GITHUB_ENV"
+          if [ "$has_sudo" = "yes" ]; then
+            echo "::notice title=远端能力::有 sudo，前端与运维加固都可自动完成"
           else
-            echo "::warning title=远端无 sudo::前端需要 root 侧装一次 install-web-sync.sh，否则前端改动会被跳过（deploy-update.sh 会显式失败而不是静默跳过）"
+            echo "::warning title=远端无 sudo::前端需要 root 侧装一次 install-web-sync.sh，否则前端改动会被判失败（deploy-update.sh 会显式报错而不是静默跳过）；数据库备份定时器与 nginx 路由同步也会跳过"
           fi
 
       - name: 上传产物
