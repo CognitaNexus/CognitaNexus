@@ -2,7 +2,7 @@
 
 ## 一句话
 
-仓库侧的改动已经做完，密钥已经在生产机上授权好，**只剩 GitHub 网页上两个 secret 等你改**。
+**后端自动部署已通并真跑两轮全绿；前端自动部署卡在「这台机器没有可用的 root」，不是脚本问题。**
 
 ---
 
@@ -10,38 +10,55 @@
 
 | 项目 | 状态 |
 | --- | --- |
-| 构建与测试（verify + 覆盖率门禁 + 前端 build） | 一直是好的，没动 |
-| 部署目标 | 指向旧机 150.230.223.11（已被 Oracle 回收） |
-| 部署账号 | 写死 ubuntu，新机是 buaa |
-| 暂存目录 | 写死 /home/ubuntu/cn-incoming |
-| 部署密钥 | CI 用的 cn-deploy 公钥**原先不在新机**，现已追加 |
-| 前端能否自动部署 | 不能（/var/www/cn 属主 root，buaa 拿不到 root，见第八节） |
-| 数据库自动备份 | **已可用**（2026-10-23 起走 buaa 的 crontab，见第八节），不需要 root |
+| 构建与测试（verify + 覆盖率门禁 + 前端 build） | 一直好的，没动 |
+| CI / CD 结构 | 已拆成 build 与 deploy 两个 job |
+| 部署目标 | 168.110.3.136（secrets 已改） |
+| 部署账号 | buaa（secrets 已改） |
+| 暂存目录 | 连上之后用远端 `$HOME` 推导，不再写死 |
+| 部署密钥 | cn-deploy 公钥已授权到新机，指纹 SHA256:7wXsS4W0... |
+| 后端自动部署 | **可用**，2026-10-23 真跑两轮全绿（run 39927024752 / 39927835972） |
+| 前端自动部署 | **不能**：/var/www/cn 属主 root，buaa 的 sudo 口令是锁死状态（见第八节）。前端源码没变时不误报；变了会显式告警 |
+| 数据库自动备份 | **可用**：走 buaa 的 crontab，不需要 root（见第八节） |
 
 ---
 
-## 二、你需要做的事
+## 二、如果你接手，需要知道的几件事
 
-### 第 1 步（必做）：改两个 secret
+### 唯一的门槛：前端上线需要一次 root
 
-打开 https://github.com/CognitaNexus/CognitaNexus/settings/secrets/actions
+其余全部自动。装上 `install-web-sync.sh` 之后前端也会自动，命令见第三节第 3 步。
+
+### 两轮真跑的结果
+
+| run | sha | 关键点 |
+| --- | --- | --- |
+| 39927024752 | 77f08db | 全绿；前端走退化路径报了「前端待上线」（当时准确：线上是 Windows 构建） |
+| 39927835972 | 083ad7b | 全绿；「前端源码未变，跳过」，注解里无前端告警 |
+
+两轮后端都真实换了：PID 依次 76997→116466→123180→124670（core），
+8081/8082/8083 全 200，经 nginx 与外网入口的检索都 200。
+
+---
+
+## 三、恢复过程做了什么（已完成，留档）
+
+### 第 1 步：改两个 secret（已完成）
 
 | Secret | 改成 |
 | --- | --- |
 | CN_SSH_HOST | 168.110.3.136 |
 | CN_SSH_USER | buaa |
 
-另外两个**先别动**：
+另外两个**没动**：
 
 - CN_SSH_PORT 保持 22，新机就是 22。
 - CN_SSH_KEY 保持原值。已核验：secret 里那把私钥的指纹是
-  SHA256:7wXsS4W0OzK58kJ+VgRVzmqF/grj/Pq8TLgljOXvVfQ，对应的公钥
-  cn-deploy-github-actions 已经写进新机的 authorized_keys，用这把私钥能登上新机
-  （2026-10-23 实测通过）。
+  SHA256:7wXsS4W0OzK58kJ+VgRVzmqF/grj/Pq8TLgljOXvVfQ，对应的公钥已经写进新机的
+  authorized_keys，用这把私钥能登上新机（2026-10-23 实测）。
 
-### 第 2 步（已完成）
+### 第 2 步：仓库改动合到 dev（已完成）
 
-改动已合到 dev 并推送（2026-10-23）。工作流只在 push dev 时触发。
+工作流只在 push dev 时触发。改动已推送，见第二节的两轮真跑。
 
 ### 第 3 步（建议做，需要 root）：让前端也能自动部署
 
@@ -98,7 +115,7 @@ crontab -l | grep -v pg-backup.sh | crontab -   # 换掉 cron，避免两份都�
 
 ---
 
-## 三、改完怎么验证
+## 四、改完怎么验证
 
 推一次 dev，看运行记录。deploy 这个 job 里会依次出现：
 
@@ -112,7 +129,7 @@ crontab -l | grep -v pg-backup.sh | crontab -   # 换掉 cron，避免两份都�
 
 ---
 
-## 四、出问题怎么回滚
+## 五、出问题怎么回滚
 
 每次部署都会先备份到 `/home/buaa/cn/backup/<时间戳>/`（只留最近 5 次）。
 
@@ -135,7 +152,7 @@ DELETE FROM flyway_schema_history WHERE version = '24';
 
 ---
 
-## 五、这套设计刻意做的取舍
+## 六、这套设计刻意做的取舍
 
 **为什么把 CI 和 CD 拆成两个 job。** 原来一个 job 从头走到尾，机器没了之后整个
 job 报红，「测试跑过」这件事被同一个红叉吞掉——10-22 到 10-23 整整两天没人发现
@@ -178,7 +195,7 @@ Restart=always + SuccessExitStatus=143 + StartLimitIntervalSec=0，kill 之后 s
 
 ---
 
-## 六、已验证 / 未验证
+## 七、已验证 / 未验证
 
 **已验证（2026-10-23 真跑，不是演练）**
 
@@ -201,6 +218,29 @@ Restart=always + SuccessExitStatus=143 + StartLimitIntervalSec=0，kill 之后 s
 - 演练中修掉一个真缺陷：可读性自检里的 `runuser` 没判 `id -u`。runuser 只能由 root 调用，
   非 root 执行必然失败，而失败会被当成「www-data 读不到」→ 白白回退一版。
   这个分支在生产（root）下本来就走对，但条件不完整，离线验证会得出反的结论。
+- 前端判据的三条路径都在生产机上验过（`--check`，不写文件）：
+  - 源码未变 → 「前端源码未变（frontend tree e05e3eefeacf），跳过前端同步」
+  - 源码有变 + 无同步能力 → 警告 + `CN_WEB_PENDING=1`，退出码 0
+  - 同样情况 + `CN_REQUIRE_WEB=1` → 退出码 1，且在替换任何文件之前退出
+
+**已验证（2026-10-23 两轮真跑）**
+
+| run | sha | 结果 |
+| --- | --- | --- |
+| 39927024752 | 77f08db | 全绿。前端走退化路径（服务器上还没有 state 记录）→ 报「前端待上线」warning，这在当时是**准确的**：线上是 Windows 构建，与 CI 的 Linux 构建字节不同 |
+| 39927835972 | 083ad7b | 全绿。日志写「前端源码未变，跳过前端同步」，注解里**没有**前端告警 |
+
+两轮的后端都真实换了：PID 123180→124670（core）、123316→124819（query）、
+123427→124930（ingestion），8081/8082/8083 全 200，经 nginx 与从外网进来的检索都是 200。
+
+**关于 `~/cn/state/frontend-tree` 的初始化。** 第一轮之所以报「前端待上线」，是因为
+服务器上还没有这个记录，脚本退化到「比资源文件名」，而跨平台构建的入口名必然不同。
+那个告警在功能层面是假警报：`frontend` 目录自 10-19（a654316）起没有任何提交，
+`git rev-parse a654316:frontend` 与当时 HEAD 的 frontend tree 同为 e05e3eef，
+线上那 50 个文件就是这份源码构建的。
+
+所以按事实把它初始化成 e05e3eef，并在同级 README.txt 里写清依据。这不是为了让告警消失：
+初始化之后，只有 `frontend/` 真的改了才会再判「有变化」。
 
 **未验证**
 
@@ -209,7 +249,7 @@ Restart=always + SuccessExitStatus=143 + StartLimitIntervalSec=0，kill 之后 s
   已按上一条演练过。原因见第八节：**这台机器现在没有任何可用的 root 通路**。
 - 数据库备份：已于 2026-10-23 用「部署账号 crontab + TCP + 属主口令」落地并真跑一次，
   见第八节。真正的一次**整库恢复演练**还没做（找不到能建沙箱库的账号）。
-- 部署耗时：本次 build 约 6 分钟（Maven 依赖 + 898 个测试），deploy 约 4 分钟
+- 部署耗时：本次 build 约 4 分钟（Maven 依赖 + 898 个测试），deploy 约 4 分钟
   （上传 140MB + 三个 Spring 服务串行冷启动）。
 
 ---
@@ -301,7 +341,7 @@ sudo  bash ~/cn-deploy-scripts/install-extras.sh      # 需要 root，装 web-sy
 
 ---
 
-## 七、跨平台构建的入口 chunk 差异（已处理，不再误报）
+## 九、跨平台构建的入口 chunk 差异（已处理，不再误报）
 
 同一个 commit：CI（Linux）构建出的入口是 `index-Dxy1HZYT.js`，本地（Windows）构建出
 `index-CIbzzPOi.js`，其余 12 个 chunk 完全同名。各页面代码完全相同，只有入口 chunk
