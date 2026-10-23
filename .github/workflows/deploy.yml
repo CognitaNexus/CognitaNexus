@@ -231,15 +231,31 @@ jobs:
             exit 1
           fi
           [ "$has_sudo" = "yes" ] || has_sudo="no"
+          # 前端能不能自动部署，决定这一轮是「严格模式」还是「跳过前端」。
+          # 跳过必须是显式的：deploy-update.sh 默认在前端有变化而无同步能力时直接失败，
+          # 只有 CI 明确传 CN_SKIP_WEB=1 才降级成「只发后端 + 告警」。
+          # 这样人工跑仍然是 fail-fast，而流水线不会因为没装 web-sync 就长期全红。
+          skip_web=0
+          if [ "$has_sudo" != "yes" ]; then
+            if ssh -F ~/.ssh/config -o BatchMode=yes -o ConnectTimeout=15 cn-target \
+                 'sudo -n /usr/local/sbin/cn-web-sync --probe' >/dev/null 2>&1; then
+              echo "远端可执行 cn-web-sync，前端可自动部署"
+            else
+              skip_web=1
+            fi
+          fi
           {
             echo "CN_REMOTE_HOME=$remote_home"
             echo "CN_HAS_SUDO=$has_sudo"
+            echo "CN_SKIP_WEB=$skip_web"
             echo "CN_STAGE=$remote_home/cn-incoming"
           } >> "$GITHUB_ENV"
           if [ "$has_sudo" = "yes" ]; then
             echo "::notice title=远端能力::有 sudo，前端与运维加固都可自动完成"
+          elif [ "$skip_web" -eq 0 ]; then
+            echo "::notice title=远端能力::无 sudo，但已装 cn-web-sync，前端可自动部署"
           else
-            echo "::warning title=远端无 sudo::前端需要 root 侧装一次 install-web-sync.sh，否则前端改动会被判失败（deploy-update.sh 会显式报错而不是静默跳过）；数据库备份定时器与 nginx 路由同步也会跳过"
+            echo "::warning title=前端不会自动部署::远端无 sudo 且未装 cn-web-sync，本轮显式跳过前端（CN_SKIP_WEB=1）。如果这次提交改了前端，线上页面仍是旧的。要恢复自动部署：让 root 执行 ops/deploy/install-web-sync.sh。数据库备份定时器与 nginx 路由同步同样因为无 sudo 而跳过。"
           fi
 
       - name: 上传产物
@@ -254,11 +270,13 @@ jobs:
 
       - name: 部署预检（不修改任何文件）
         # 部署最贵的错误是「做了一半才发现做不下去」。预检把三件事提前到第一次写盘之前：
-        # 产物齐不齐、前端要不要换、当前身份有没有权限换（无 sudo 且没装 cn-web-sync 时
-        # 换不了前端）。这里红了说明连一个字节都没动，可以放心重试。
+        # 产物齐不齐、前端要不要换、当前身份有没有权限换。
+        # CN_SKIP_WEB 由上一步的能力探测决定：0=严格（前端有变化而无权限就失败），
+        # 1=显式跳过前端（已在注解里告警）。人工跑脚本时默认严格。
         run: |
           set -o pipefail
-          ssh -F ~/.ssh/config cn-target "bash '$CN_STAGE/deploy-update.sh' --check '$CN_STAGE'" \
+          ssh -F ~/.ssh/config cn-target \
+            "CN_SKIP_WEB='$CN_SKIP_WEB' bash '$CN_STAGE/deploy-update.sh' --check '$CN_STAGE'" \
             2>&1 | tee /tmp/cn-precheck.log
 
       - name: 同步备份定时器
@@ -294,7 +312,7 @@ jobs:
           # GitHub 的日志要登录才看得到，机器上留一份才能直接查上一次部署的结果。
           # 只换产物、不动数据库。install-server.sh 会 DROP SCHEMA，绝不能在这里调用。
           ssh -F ~/.ssh/config cn-target \
-            "set -o pipefail; mkdir -p '$CN_REMOTE_HOME/cn/logs'; bash '$CN_STAGE/deploy-update.sh' '$CN_STAGE' 2>&1 | tee '$CN_REMOTE_HOME/cn/logs/deploy-last.log'" \
+            "set -o pipefail; mkdir -p '$CN_REMOTE_HOME/cn/logs'; CN_SKIP_WEB='$CN_SKIP_WEB' bash '$CN_STAGE/deploy-update.sh' '$CN_STAGE' 2>&1 | tee '$CN_REMOTE_HOME/cn/logs/deploy-last.log'" \
             2>&1 | tee /tmp/cn-restart.log
 
       - name: 同步 nginx 文档路由

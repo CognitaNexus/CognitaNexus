@@ -55,6 +55,20 @@ SRC="$(cd "$SRC" && pwd)"
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m[警告] %s\033[0m\n' "$*" >&2; }
 
+# 前端「是否需要同步」的判据：比 index.html 引用的资源文件名集合，而不是整个文件的哈希。
+#
+# 为什么不能用整文件 sha256（第一版就是这么写的，被自己坑了一次）：
+# 同一个 lockfile 在同一台机器上重建，Vite 产出的 js/css 文件名由内容哈希决定，完全稳定；
+# 但 index.html 里注入的 preload 顺序、空白、换行在不同 Node 版本与不同机器上会变。
+# 实测：本地重建的入口集合与线上逐字一致（13 个文件同名），整文件哈希却不同。
+# 拿整文件哈希当判据，等于「每次重新构建都判定前端有变化」，于是永远要求同步能力。
+#
+# 文件名集合相同就意味着产物等价：任何一个源文件改动都会改变它的内容哈希，
+# 也就必然改变被 index.html 引用的文件名。
+web_signature() {
+  grep -oE 'assets/[A-Za-z0-9_.-]+\.(js|css)' "$1" 2>/dev/null | sort -u | tr '\n' ' '
+}
+
 # 探测 sudo 是否真能用。-n 是不问密码；会问密码的 sudo 在 CI 里等于挂死。
 HAS_SUDO=0
 if sudo -n true 2>/dev/null; then HAS_SUDO=1; fi
@@ -78,12 +92,12 @@ printf '部署身份 %s｜家目录 %s｜sudo=%s｜前端同步=%s\n' \
 WEB_STAGE="$SRC/web"
 WEB_NEEDS_SYNC=0
 if [ -d "$WEB_STAGE" ] && [ -f "$WEB_STAGE/index.html" ]; then
-  want="$(sha256sum "$WEB_STAGE/index.html" | cut -d' ' -f1)"
+  want="$(web_signature "$WEB_STAGE/index.html")"
   have=""
   if [ -r "$WEB_ROOT/index.html" ]; then
-    have="$(sha256sum "$WEB_ROOT/index.html" | cut -d' ' -f1)"
+    have="$(web_signature "$WEB_ROOT/index.html")"
   fi
-  if [ "$want" != "$have" ]; then
+  if [ -n "$want" ] && [ "$want" != "$have" ]; then
     WEB_NEEDS_SYNC=1
     echo "前端产物与线上不一致，需要同步到 $WEB_ROOT"
     if [ "$HAS_WEB_SYNC" -eq 0 ] && [ "${CN_SKIP_WEB:-0}" != "1" ]; then
@@ -105,7 +119,7 @@ EOF
       WEB_NEEDS_SYNC=0
     fi
   else
-    echo "前端产物与线上一致（index.html 同哈希），跳过前端同步"
+    echo "前端产物与线上一致（index.html 引用的资源文件名相同），跳过前端同步"
   fi
 elif [ "${CN_SKIP_WEB:-0}" != "1" ]; then
   warn "产物目录里没有 web/index.html，本轮不更新前端"
@@ -236,15 +250,15 @@ printf '经 nginx 的公开检索 %s\n' "$code"
 
 # 前端是否真的换了：拿线上 index.html 与产物再比一次，别只信「命令没报错」。
 if [ "${WEB_NEEDS_SYNC:-0}" -eq 1 ]; then
-  want="$(sha256sum "$WEB_STAGE/index.html" | cut -d' ' -f1)"
+  want="$(web_signature "$WEB_STAGE/index.html")"
   now=""
   if [ -r "$WEB_ROOT/index.html" ]; then
-    now="$(sha256sum "$WEB_ROOT/index.html" | cut -d' ' -f1)"
+    now="$(web_signature "$WEB_ROOT/index.html")"
   fi
   if [ "$want" = "$now" ]; then
-    echo "前端已更新：$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' "$WEB_ROOT/index.html" | head -1)"
+    echo "前端已更新：$(grep -oE 'assets/index-[A-Za-z0-9_.-]+\.js' "$WEB_ROOT/index.html" | head -1)"
   else
-    echo "前端未生效：线上 index.html 哈希与产物不一致" >&2
+    echo "前端未生效：线上 index.html 引用的资源与产物不一致" >&2
     fail=1
   fi
 fi
