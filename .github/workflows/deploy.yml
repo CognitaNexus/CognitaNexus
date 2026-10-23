@@ -255,7 +255,7 @@ jobs:
           elif [ "$skip_web" -eq 0 ]; then
             echo "::notice title=远端能力::无 sudo，但已装 cn-web-sync，前端可自动部署"
           else
-            echo "::warning title=前端不会自动部署::远端无 sudo 且未装 cn-web-sync，本轮显式跳过前端（CN_SKIP_WEB=1）。如果这次提交改了前端，线上页面仍是旧的。要恢复自动部署：让 root 执行 ops/deploy/install-web-sync.sh。数据库备份定时器与 nginx 路由同步同样因为无 sudo 而跳过。"
+            echo "::warning title=前端不会自动部署::远端无 sudo 且未装 cn-web-sync，本轮显式跳过前端（CN_SKIP_WEB=1）。如果这次提交改了前端，线上页面仍是旧的。要恢复自动部署：让 root 执行 ops/deploy/install-web-sync.sh。数据库备份不受影响（走部署账号 crontab），nginx 路由同步仍需 root。"
           fi
 
       - name: 上传产物
@@ -287,10 +287,19 @@ jobs:
           set -o pipefail
           ssh -F ~/.ssh/config cn-target "bash '$CN_STAGE/install-backup.sh'" 2>&1 | tee /tmp/cn-backup-install.log
 
-      - name: 备份定时器（无 sudo 跳过）
+      - name: 备份定时器（无 sudo 跳过，备份仍在跑）
+        # 2026-10-23 起备份实际由部署账号自己的 crontab 驱动（每天 02:20 北京时间，
+        # 脚本走 TCP + 属主口令，不需要切 postgres）。所以这里只是「systemd 那一版没装」，
+        # 不是「没有备份」——措辞必须写清，否则下一个人会以为要抢救。
         if: env.CN_HAS_SUDO != 'yes'
         run: |
-          echo "::warning title=数据库备份未安装::远端无 sudo，install-backup.sh 未执行。线上当前没有 cn-db-backup.timer，请让 root 装一次，否则没有任何自动备份。"
+          ssh -F ~/.ssh/config cn-target "crontab -l 2>/dev/null | grep -c pg-backup.sh || true" 2>&1 | tee /tmp/cn-backup-cron.log
+          n="$(tail -1 /tmp/cn-backup-cron.log | tr -dc '0-9')"
+          if [ "${n:-0}" -ge 1 ]; then
+            echo "::notice title=备份走 crontab::远端无 sudo，systemd 定时器未装；部署账号 crontab 里有每日备份，本轮无需处理"
+          else
+            echo "::warning title=数据库备份缺失::远端既没有 systemd 定时器，crontab 里也没有 pg-backup.sh，线上当前没有自动备份"
+          fi
 
       - name: 同步日志上限
         # journald 配额与 logrotate 规则由仓库维护，每次部署对齐一次（脚本幂等）。

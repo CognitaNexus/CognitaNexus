@@ -6,6 +6,7 @@
 !nginx-cn.conf
 !install-server.sh
 !install-backup.sh
+!install-extras.sh
 !install-logging.sh
 !install-nginx.sh
 !upload.sh

@@ -169,12 +169,20 @@ done
 if [ "$WEB_NEEDS_SYNC" -eq 1 ]; then
   log "同步前端产物到 $WEB_ROOT"
   if [ "$HAS_SUDO" -eq 1 ]; then
-    sudo rm -rf "$WEB_ROOT.new"
+    # 与 cn-web-sync 用同一套「改名让位」顺序：不能先 rm 再 mv，中间那一瞬站点是空的。
+    sudo rm -rf "$WEB_ROOT.new" "$WEB_ROOT.old"
     sudo install -d -m 755 "$WEB_ROOT.new"
     sudo cp -r "$WEB_STAGE"/. "$WEB_ROOT.new/"
     sudo chmod -R a+rX "$WEB_ROOT.new"
-    sudo rm -rf "$WEB_ROOT"
-    sudo mv "$WEB_ROOT.new" "$WEB_ROOT"
+    if [ -e "$WEB_ROOT" ]; then
+      sudo mv "$WEB_ROOT" "$WEB_ROOT.old" || { echo "无法为 $WEB_ROOT 让位" >&2; exit 1; }
+    fi
+    if ! sudo mv "$WEB_ROOT.new" "$WEB_ROOT"; then
+      { [ -e "$WEB_ROOT.old" ] && sudo mv "$WEB_ROOT.old" "$WEB_ROOT"; } || true
+      echo "新版本就位失败，已退回上一版" >&2
+      exit 1
+    fi
+    sudo rm -rf "$WEB_ROOT.old"
   else
     # root 侧脚本会自己校验源目录：必须在调用者家目录下、必须有 index.html。
     # 这条校验是「sudoers 只放行一条命令」仍然安全的前提。

@@ -95,18 +95,39 @@ esac
 owner="$(stat -c %U "$SRC")"
 [ "$owner" = "$REAL_USER" ] || { echo "拒绝：源目录属主是 $owner，不是 $REAL_USER" >&2; exit 1; }
 
-# 边界 3：只接受「整目录替换」，不做增量也绝不跟随符号链接到外部。
-if [ -d "$WEB_ROOT" ] && [ ! -w "$(dirname "$WEB_ROOT")" ]; then
-  echo "拒绝：$(dirname "$WEB_ROOT") 不可写" >&2
+# 边界 3：整目录替换，但要能退回上一版。
+# 原实现是 rm -rf 现行目录再 mv 新的进去：这两步之间站点是空的，如果 mv 失败（磁盘满、
+# 权限、告警阻塞），/var/www/cn 就没了，nginx 直接 403。改成「改名让位 → 新版本就位 →
+# 可读性自检 → 才清旧的」，每一步失败都能退回去。
+if [ ! -d "$(dirname "$WEB_ROOT")" ]; then
+  echo "拒绝：$(dirname "$WEB_ROOT") 不存在" >&2
   exit 1
 fi
-
-rm -rf "$WEB_ROOT.new"
+rm -rf "$WEB_ROOT.new" "$WEB_ROOT.old"
 install -d -m 755 "$WEB_ROOT.new"
 cp -r "$SRC"/. "$WEB_ROOT.new"/
 chmod -R a+rX "$WEB_ROOT.new"
-rm -rf "$WEB_ROOT"
-mv "$WEB_ROOT.new" "$WEB_ROOT"
+[ -f "$WEB_ROOT.new/index.html" ] || { echo "拒绝：拷贝后没有 index.html" >&2; rm -rf "$WEB_ROOT.new"; exit 1; }
+
+if [ -e "$WEB_ROOT" ]; then
+  mv "$WEB_ROOT" "$WEB_ROOT.old" || { echo "拒绝：无法让位 $WEB_ROOT" >&2; exit 1; }
+fi
+if ! mv "$WEB_ROOT.new" "$WEB_ROOT"; then
+  [ -e "$WEB_ROOT.old" ] && mv "$WEB_ROOT.old" "$WEB_ROOT"
+  echo "拒绝：新版本就位失败，已退回上一版" >&2
+  exit 1
+fi
+
+# nginx worker 读不到就等于站点白屏。此时 .old 还在，直接退回，不让流水线绿着出事。
+if command -v runuser >/dev/null 2>&1 && id www-data >/dev/null 2>&1; then
+  if ! runuser -u www-data -- test -r "$WEB_ROOT/index.html"; then
+    rm -rf "$WEB_ROOT"
+    [ -e "$WEB_ROOT.old" ] && mv "$WEB_ROOT.old" "$WEB_ROOT"
+    echo "拒绝：替换后 nginx 用户读不到 index.html，已退回上一版" >&2
+    exit 1
+  fi
+fi
+rm -rf "$WEB_ROOT.old"
 echo "前端已同步：$SRC → $WEB_ROOT（$(du -sh "$WEB_ROOT" | cut -f1)）"
 HELPER_EOF
 chmod 755 "$HELPER"

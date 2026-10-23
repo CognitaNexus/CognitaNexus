@@ -15,8 +15,8 @@
 | 部署账号 | 写死 ubuntu，新机是 buaa |
 | 暂存目录 | 写死 /home/ubuntu/cn-incoming |
 | 部署密钥 | CI 用的 cn-deploy 公钥**原先不在新机**，现已追加 |
-| 前端能否自动部署 | 不能（/var/www/cn 属主 root，buaa 无 sudo） |
-| 数据库自动备份 | **新机没有装** cn-db-backup.timer |
+| 前端能否自动部署 | 不能（/var/www/cn 属主 root，buaa 拿不到 root，见第八节） |
+| 数据库自动备份 | **已可用**（2026-10-23 起走 buaa 的 crontab，见第八节），不需要 root |
 
 ---
 
@@ -69,12 +69,16 @@ sudo bash install-web-sync.sh buaa
 
 不想给了就 `sudo rm -f /etc/sudoers.d/cn-web-sync`，立刻退回原状。
 
-### 第 4 步（建议做，需要 root）：装上数据库备份定时器
+### 第 4 步（已完成，不需要 root）：数据库备份
 
-新机目前**一次备份都没跑过**。workflow 里已经把它做成一步，有 sudo 才会执行：
+2026-10-23 已落地，走部署账号自己的 crontab，每天 02:20 北京时间跑一次。
+明细与首次真跑数据见第八节，此处不再重复。
+
+如果哪天拿到了 root，可以把 cron 那条换成 systemd timer：
 
 ```bash
-sudo bash install-backup.sh
+sudo bash install-backup.sh --run-now
+crontab -l | grep -v pg-backup.sh | crontab -   # 换掉 cron，避免两份都跑
 ```
 
 ---
@@ -163,10 +167,91 @@ index.html 引用的资源文件名集合——实测本地重建与线上 13 �
 **未验证**
 
 - install-web-sync.sh 没有在真机安装过（需要 root），因此前端自动部署这条路只做了
-  静态审查与自检逻辑，没有走过完整链路。
-- 数据库备份定时器未安装，线上目前**没有任何自动备份**。
+  静态审查与自检逻辑，没有走过完整链路。原因见第八节：**这台机器现在没有任何可用的 root 通路**。
+- 数据库备份：已于 2026-10-23 用「部署账号 crontab + TCP + 属主口令」落地并真跑一次，
+  见第八节。真正的一次**整库恢复演练**还没做（找不到能建沙箱库的账号）。
 - 部署耗时：本次 build 约 6 分钟（Maven 依赖 + 898 个测试），deploy 约 4 分钟
   （上传 140MB + 三个 Spring 服务串行冷启动）。
+
+---
+
+## 八、备份已落地，前端卡在「这台机器没有 root」
+
+### 8.1 先纠正一个旧结论
+
+之前写的是「新机没有装 cn-db-backup.timer」。实际查下来更糟也更具体：
+
+- `/etc/systemd/system/cn-db-backup.{service,timer}` **是存在的**（10-22 那次安装就写了）
+- 但 timer 是 `disabled / inactive`
+- 且 service 指向的 `/home/buaa/cn-deploy/pg-backup.sh` **不存在**
+
+也就是说：这个单元装了个壳，就算哪天被 enable，每次触发也只会以 203/EXEC 失败。
+`systemctl status` 里只是一行红字，很容易一直没人看。
+
+### 8.2 关键发现：buaa 的 sudo 口令是锁死的
+
+```
+$ passwd -S
+buaa L 10/22/2026 0 99999 7 -1        # L = locked
+```
+
+`sudo -n -l` 能列出规则（说明 buaa 在 sudoers 里），但 `sudo` 永远在等一个不存在的口令。
+所以「把口令给我」这条路不成立 —— 不是没人知道，是机器上根本没设。
+
+现有的 NOPASSWD 白名单只有 apt update、shared_project 的 chown/chmod、
+`systemctl restart nginx` 这几条（另一个项目留下的），都够不到 `/var/www/cn` 与 `/etc/sudoers.d`。
+Oracle 的 Run Command 插件也不可用（`oracle-cloud-agent` 是 inactive，而启用它本身要 root）。
+
+### 8.3 于是备份改成不需要 root 的做法
+
+`pg-backup.sh` 现在按运行身份自动选连接方式：
+
+| 身份 | 连接方式 | 用在哪 |
+| --- | --- | --- |
+| root | `runuser -u postgres`，本地 socket 对等认证 | systemd 单元（将来有 root 时） |
+| 普通账号 | TCP 到 127.0.0.1，用该库属主账号 + 口令（从 `~/cn/conf/cn-env.sh` 读） | buaa 自己的 crontab |
+
+部署账号的 crontab 里现在是：
+
+```
+20 18 * * * /usr/bin/bash /home/buaa/cn-deploy/pg-backup.sh >> /home/buaa/cn/logs/db-backup.log 2>&1
+```
+
+服务器时区是 UTC，18:20 UTC = 北京时间次日 02:20，与原来 timer 的意图一致。
+脚本内有 `flock`，所以将来装上 timer 忘了删 cron 也不会两份同时跑。
+
+2026-10-23 首次真跑结果（`~/cn/db-backup/20261023-082653/`）：
+
+| 库 | 大小 | 归档条目 | 关键表行数 |
+| --- | --- | --- | --- |
+| core_db | 103,471,949 | 382 | achievement 27382 / scholar 85047 / contribution 130218 |
+| ingestion_db | 21,295,524 | 65 | staged_record 33632 / collect_job 32 |
+| query_db | 72,208,267 | 90 | qry_contribution 333962 / qry_coauthor_edge 783616 |
+
+验证方式：把 core_db.dump 取回本地，`pg_restore -a -t core_achievement` 解出 COPY 段，
+数据行数 **27382**，与清单记录、与线上 `select count(*)` 三方一致；sha256 记在 manifest 里。
+
+**没做的**：整库恢复演练。`core_owner` 没有 CREATEDB，本地开发库的 postgres 也没有可用口令，
+没有地方建一个沙箱库。要真正做这件事，需要一个 `CREATEDB` 的账号。
+
+### 8.4 前端为什么只能继续卡着
+
+`/var/www/cn` 是 root:root，`find /var/www/cn -writable` 对 buaa 返回空；
+nginx 的 `root /var/www/cn` 是唯一入口。没有 root 就写不进去，这不是脚本问题。
+
+`install-extras.sh` 仍然保留，它把两件事合成一次 root 操作，且自带 `--check`：
+
+```bash
+bash  ~/cn-deploy-scripts/install-extras.sh --check   # 不要 root，只体检
+sudo  bash ~/cn-deploy-scripts/install-extras.sh      # 需要 root，装 web-sync + 备份 timer
+```
+
+`--check` 在 2026-10-23 实跑，能正确报出「timer 已注册但 disabled」
+与「service 指向的脚本不存在」，不影响任何文件。
+
+要拿到那一次 root，现实路径只有控制台一侧：Oracle Cloud 实例的控制台连接（串口）
+进单用户模式，或把引导卷挂到另一台机器上改 `sudoers`。两条都要动引导配置，
+按你「不要乱改服务器配置」的要求，我没有尝试。
 
 ---
 

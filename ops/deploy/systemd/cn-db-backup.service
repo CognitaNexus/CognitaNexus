@@ -5,8 +5,14 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=ubuntu
-Group=ubuntu
+# 为什么是 root 而不是部署账号：备份要「切到 postgres」，而新机的部署账号在 sudoers 里
+# 但需要口令，systemd 里没有终端可以输密码。脚本内部用 runuser 切 postgres，root 只用于
+# 这一步；不写 pg_hba、不建库角色、不改任何数据库配置。
+# 产物属主由 CN_BACKUP_OWNER 指定，脚本结束时会 chown 回去，buaa 仍然管得了自己的备份目录。
+# 注意：这两行故意保持 root，install-server.sh 的 s|User=ubuntu| 替换不会命中。
+User=root
+Group=root
+Environment=CN_BACKUP_OWNER=ubuntu
 WorkingDirectory=/home/ubuntu/cn
 # 备份是 IO 密集型，别和采集/查询抢 CPU 与磁盘。
 Nice=10
