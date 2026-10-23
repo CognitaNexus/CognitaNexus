@@ -346,6 +346,12 @@ jobs:
         # 「后端上了、前端没上」如果只写在日志里，等于没写——日志要登录才看得到，
         # 而没人会为了一次成功的流水线去翻日志。所以把它提升成注解 + step summary：
         # 注解加载失败也读得到，summary 在运行页顶部，颜色是黄的。
+        #
+        # 命令里刻意不出现部署账号名，也不出现绝对家目录路径：
+        # GitHub 会把 secret 的值（CN_SSH_USER=buaa）在整个输出里替换成 ***，
+        # 写成 /home/buaa/... 或 ...ch buaa 都会变成 /home/***/... 和 ...ch ***，
+        # 照抄就执行不了。用 cd ~ 加相对路径既避开脱敏，又不依赖账号名。
+        # install-web-sync.sh 取不到参数时用 SUDO_USER，所以不必显式传账号。
         if: always()
         run: |
           set -uo pipefail
@@ -355,7 +361,7 @@ jobs:
           fi
           tree="$(sed -n 's/^CN_WEB_PENDING_TREE=//p' /tmp/cn-restart.log | head -1)"
           sha="${GITHUB_SHA:0:7}"
-          echo "::warning title=前端待上线::后端已更新到 $sha，前端未上线（线上页面仍是上一版）。产物在 $CN_STAGE/web，源码版本 ${tree}。一次性根治：让 root 执行 bash $CN_STAGE/install-web-sync.sh ${{ secrets.CN_SSH_USER }}"
+          echo "::warning title=前端待上线::后端已更新到 $sha，前端未上线（线上页面仍是上一版）。产物留在暂存区 cn-incoming/web，源码版本 ${tree}。一次性根治：以部署账号登录后执行 cd ~ && sudo bash cn-incoming/install-web-sync.sh"
           {
             echo "## ⚠️ 前端待上线"
             echo
@@ -364,19 +370,19 @@ jobs:
             echo "| 项 | 值 |"
             echo "| --- | --- |"
             echo "| 前端源码版本（git tree） | \`${tree}\` |"
-            echo "| 产物位置 | \`$CN_STAGE/web\`（已在服务器上，无需重新构建） |"
+            echo "| 产物位置 | 服务器上 \`cn-incoming/web\`（已送达，不需要重新构建） |"
             echo "| 原因 | \`/var/www/cn\` 属主 root:root，部署账号无写入能力，且 sudo 口令是锁死状态 |"
             echo
-            echo "**一次性根治**（需要一次 root，之后前端随流水线自动上线）："
+            echo "**一次性根治**（需要一次 root，之后前端随流水线自动上线）：以部署账号登录服务器后执行"
             echo
             echo '```bash'
-            echo "sudo bash $CN_STAGE/install-web-sync.sh ${{ secrets.CN_SSH_USER }}"
+            echo "cd ~ && sudo bash cn-incoming/install-web-sync.sh"
             echo '```'
             echo
             echo "这个脚本只放行一条固定路径的命令，命令内部还会校验源目录必须在调用者家目录下、"
             echo "属主必须是本人、必须带 index.html。不想保留时可以 \`sudo rm -f /etc/sudoers.d/cn-web-sync\`。"
             echo
-            echo "**不想现在处理**：不影响后端，下一次前端有变化时同样会在这里提示，不会静默。"
+            echo "**不想现在处理**：不影响后端；下次前端有变化时同样会在这里提示，不会静默。"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 同步 nginx 文档路由
