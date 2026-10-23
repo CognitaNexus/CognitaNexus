@@ -220,6 +220,13 @@ Oracle 的 Run Command 插件也不可用（`oracle-cloud-agent` 是 inactive，
 服务器时区是 UTC，18:20 UTC = 北京时间次日 02:20，与原来 timer 的意图一致。
 脚本内有 `flock`，所以将来装上 timer 忘了删 cron 也不会两份同时跑。
 
+**改备份脚本之后要注意**：CI 里那一步 `install-backup.sh` 只在有 sudo 时才执行，
+所以改了 `ops/deploy/pg-backup.sh` 不会自动落到 `~/cn-deploy/`。没有 root 时手工覆盖：
+
+```bash
+scp ops/deploy/pg-backup.sh buaa@168.110.3.136:~/cn-deploy/pg-backup.sh
+```
+
 2026-10-23 首次真跑结果（`~/cn/db-backup/20261023-082653/`）：
 
 | 库 | 大小 | 归档条目 | 关键表行数 |
