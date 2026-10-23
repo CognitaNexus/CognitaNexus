@@ -10,8 +10,10 @@
 !install-nginx.sh
 !upload.sh
 !deploy-update.sh
+!install-web-sync.sh
 !pg-backup.sh
 !README.md
+!CI-CD-恢复说明.md
 !systemd/
 !systemd/*.service
 !systemd/*.timer

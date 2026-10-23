@@ -1,14 +1,27 @@
 name: build-and-deploy
 
-# 推 dev 分支即构建三个服务与前端，传到目标机后由 deploy-update.sh 换产物并重启。
+# 推 dev 分支即构建三个服务与前端，构建通过后再传到目标机换产物。
 #
-# 为什么在 GitHub 上构建而不是在服务器上：
-# 目标机是 2 核，三个 Spring 服务的 Maven 构建加前端打包要三四十分钟，
-# 且内存峰值不可控；runner 是 4 核且带缓存，本轮实测后端 63s、前端 16s。
+# ---------------------------------------------------------------------------
+# 2026-10-23 重构：CI 与 CD 拆成两个 job
 #
-# 为什么用命令行 ssh/rsync 而不是 appleboy 那两个 action：
-# action 出错时只报「exit code 1」，密钥格式这类问题看不到原因；直接用命令行
-# 可以先把密钥校验一遍，并把真实报错通过 ::error:: 注解暴露到 API 上。
+# 原来是一个 job 从头走到尾。问题不在于慢，而在于**耦合**：目标机换掉之后，
+# 部署那一段必然失败，于是整个 job 报红，而「构建过、测试过、门禁过」这件事
+# 被同一个红叉吞掉了——看板上分不清是代码坏了还是机器没了。实际情况是后者，
+# 而且持续了两天没人发现（10-22 换机后 CI 一次都没跑过）。
+#
+# 拆开之后语义明确：
+#   build   只判「这份代码能不能上」。失败 = 代码问题，必须修。
+#   deploy  只判「能不能送到机器上」。失败 = 环境问题，机器修好就能重跑。
+# deploy 通过 needs 依赖 build，build 红了 deploy 根本不启动。
+#
+# 顺带解掉三处与新机不匹配的东西（详见 ops/deploy/REBUILD-2026-10-22.md）：
+#   1. 暂存目录不再写死 /home/ubuntu/cn-incoming，改成连上之后用远端 $HOME 推导；
+#   2. 不再要求服务器上预先存在 ~/cn-deploy/deploy-update.sh —— 直接用本次产物里的
+#      那份，杜绝「仓库改了、服务器上是旧副本」；
+#   3. 需要 sudo 的三步（备份定时器、日志上限、nginx 路由）先探测远端能力，
+#      没 sudo 就跳过并留 ::warning:: 注解，而不是让整个部署红掉。
+# ---------------------------------------------------------------------------
 on:
   push:
     branches: [dev]
@@ -20,7 +33,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -84,19 +97,35 @@ jobs:
           pick query
           pick ingestion
           cp -r frontend/dist/. out/web/
-          # 部署脚本也随产物一起发下去：否则服务器上那份是首次安装时留下的旧副本，
-          # 仓库里改了 deploy-update.sh 却不生效，排查起来很费时间。
-          cp ops/deploy/deploy-update.sh out/deploy-update.sh
-          # 备份脚本同理：仓库是唯一来源，服务器上的副本每次部署都覆盖一遍。
+          # 部署脚本随产物一起发下去：服务器上那份是首次安装时留下的旧副本，
+          # 仓库里改了却不生效，排查起来很费时间。
+          cp ops/deploy/deploy-update.sh out/
+          # 前端同步助手的一次性安装脚本：需要 root 执行，CI 只负责送到机器上。
+          cp ops/deploy/install-web-sync.sh out/
           cp ops/deploy/pg-backup.sh ops/deploy/install-backup.sh out/
-          # 日志上限的初始化脚本：幂等，每次部署顺手对齐一次 journald 配额与 logrotate 规则。
           cp ops/deploy/install-logging.sh out/
-          # nginx 站点配置与它的幂等安装脚本：OpenAPI 文档路由与限流都在这里，
-          # 不随产物一起发下去就只能靠人工登录服务器改，改完还会在下次重装时丢。
           cp ops/deploy/nginx-cn.conf ops/deploy/install-nginx.sh out/
           mkdir -p out/systemd
           cp ops/deploy/systemd/cn-db-backup.service ops/deploy/systemd/cn-db-backup.timer out/systemd/
           du -sh out out/app out/web
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: cn-dist
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: cn-dist
+          path: out
 
       - name: 准备 SSH
         env:
@@ -169,7 +198,26 @@ jobs:
           } > ~/.ssh/config
           chmod 600 ~/.ssh/config
           # 15 秒内连不上就当场失败，而不是挂到 job 超时
-          ssh -F ~/.ssh/config -o ConnectTimeout=15 -o BatchMode=yes cn-target 'echo "已连上 $(hostname)"'
+          ssh -F ~/.ssh/config -o ConnectTimeout=15 -o BatchMode=yes cn-target \
+            'echo "已连上 $(hostname)（$CN_SSH_USER@$CN_SSH_HOST）"' 2>&1 | tee /tmp/cn-ssh.log
+
+      - name: 探测远端部署环境
+        # 目标机的能力决定后面能做什么：家目录在哪、有没有 sudo。
+        # 探测结果写进 GITHUB_ENV，后面的步骤据此分支——不靠这里写死用户名与路径。
+        run: |
+          set -euo pipefail
+          info="$(ssh -F ~/.ssh/config -o BatchMode=yes -o ConnectTimeout=15 cn-target \
+            'printf "REMOTE_HOME=%s\nHAS_SUDO=%s\n" "$HOME" "$(sudo -n true 2>/dev/null && echo yes || echo no)"')"
+          echo "$info"
+          while IFS='=' read -r k v; do
+            [ -n "$k" ] && echo "CN_$k=$v" >> "$GITHUB_ENV"
+          done <<< "$info"
+          echo "CN_STAGE=$CN_REMOTE_HOME/cn-incoming" >> "$GITHUB_ENV"
+          if [ "$CN_HAS_SUDO" = "yes" ]; then
+            echo "::notice::远端有 sudo，前端与运维加固都可自动完成"
+          else
+            echo "::warning title=远端无 sudo::前端需要 root 侧装一次 install-web-sync.sh，否则前端改动会被跳过（deploy-update.sh 会显式失败而不是静默跳过）"
+          fi
 
       - name: 上传产物
         # 目标机没有 rsync（install-server.sh 只装 JDK/PG/Redis/nginx），
@@ -177,46 +225,80 @@ jobs:
         # 先清空暂存区，否则上一轮残留的旧 jar 会被当成新产物。
         run: |
           set -o pipefail
-          ssh -F ~/.ssh/config cn-target 'rm -rf /home/ubuntu/cn-incoming && mkdir -p /home/ubuntu/cn-incoming' 2>&1 | tee /tmp/cn-upload.log
-          tar -C out -czf - . | ssh -F ~/.ssh/config cn-target 'tar xzf - -C /home/ubuntu/cn-incoming' 2>&1 | tee -a /tmp/cn-upload.log
-          ssh -F ~/.ssh/config cn-target 'du -sh /home/ubuntu/cn-incoming; ls -la /home/ubuntu/cn-incoming/app' 2>&1 | tee -a /tmp/cn-upload.log
+          ssh -F ~/.ssh/config cn-target "rm -rf '$CN_STAGE' && mkdir -p '$CN_STAGE'" 2>&1 | tee /tmp/cn-upload.log
+          tar -C out -czf - . | ssh -F ~/.ssh/config cn-target "tar xzf - -C '$CN_STAGE'" 2>&1 | tee -a /tmp/cn-upload.log
+          ssh -F ~/.ssh/config cn-target "du -sh '$CN_STAGE'; ls -la '$CN_STAGE/app'" 2>&1 | tee -a /tmp/cn-upload.log
+
+      - name: 部署预检（不修改任何文件）
+        # 部署最贵的错误是「做了一半才发现做不下去」。预检把三件事提前到第一次写盘之前：
+        # 产物齐不齐、前端要不要换、当前身份有没有权限换（无 sudo 且没装 cn-web-sync 时
+        # 换不了前端）。这里红了说明连一个字节都没动，可以放心重试。
+        run: |
+          set -o pipefail
+          ssh -F ~/.ssh/config cn-target "bash '$CN_STAGE/deploy-update.sh' --check '$CN_STAGE'" \
+            2>&1 | tee /tmp/cn-precheck.log
 
       - name: 同步备份定时器
         # 备份脚本与定时器不属于「换产物」，单独一步：它不重启任何服务，
         # 失败也不该影响本次部署，所以放在重启之前，出错时更有辨识度。
+        if: env.CN_HAS_SUDO == 'yes'
         run: |
           set -o pipefail
-          ssh -F ~/.ssh/config cn-target 'bash /home/ubuntu/cn-incoming/install-backup.sh' 2>&1 | tee /tmp/cn-backup-install.log
+          ssh -F ~/.ssh/config cn-target "bash '$CN_STAGE/install-backup.sh'" 2>&1 | tee /tmp/cn-backup-install.log
+
+      - name: 备份定时器（无 sudo 跳过）
+        if: env.CN_HAS_SUDO != 'yes'
+        run: |
+          echo "::warning title=数据库备份未安装::远端无 sudo，install-backup.sh 未执行。线上当前没有 cn-db-backup.timer，请让 root 装一次，否则没有任何自动备份。"
 
       - name: 同步日志上限
         # journald 配额与 logrotate 规则由仓库维护，每次部署对齐一次（脚本幂等）。
         # continue-on-error：这是运维加固，不该成为业务上线的单点阻塞——日志规则没装上
         # 的后果是磁盘慢慢涨，而部署被跳过是服务停在旧版本，后者更急。
         # 失败仍会在运行记录里显示为警告，不会静默吞掉。
+        if: env.CN_HAS_SUDO == 'yes'
         continue-on-error: true
         run: |
           set -o pipefail
-          ssh -F ~/.ssh/config cn-target 'bash /home/ubuntu/cn-incoming/install-logging.sh' 2>&1 | tee /tmp/cn-logging-install.log
+          ssh -F ~/.ssh/config cn-target "bash '$CN_STAGE/install-logging.sh'" 2>&1 | tee /tmp/cn-logging-install.log
 
-      - name: 更新部署脚本并重启服务
+      - name: 换产物并重启
         run: |
           set -o pipefail
-          # 先更新部署脚本自身，再执行它（脚本已在本次上传的产物里）。
-          ssh -F ~/.ssh/config cn-target 'if [ -f /home/ubuntu/cn-incoming/deploy-update.sh ]; then install -m 755 /home/ubuntu/cn-incoming/deploy-update.sh /home/ubuntu/cn-deploy/deploy-update.sh; fi'
-          # 完整输出同时落到 /home/ubuntu/cn/logs/deploy-last.log：
-          # GitHub 的日志要登录才看得到，服务器上留一份才能在机器上直接查上一次部署的结果。
+          # 直接用本次上传的那份脚本，不再往 ~/cn-deploy 装一份：
+          # 两份副本迟早会漂移，而「部署脚本自己是不是最新」是最难查的那类问题。
+          # 完整输出同时落到 $CN_REMOTE_HOME/cn/logs/deploy-last.log：
+          # GitHub 的日志要登录才看得到，机器上留一份才能直接查上一次部署的结果。
           # 只换产物、不动数据库。install-server.sh 会 DROP SCHEMA，绝不能在这里调用。
-          ssh -F ~/.ssh/config cn-target "set -o pipefail; bash /home/ubuntu/cn-deploy/deploy-update.sh /home/ubuntu/cn-incoming 2>&1 | tee /home/ubuntu/cn/logs/deploy-last.log" 2>&1 | tee /tmp/cn-restart.log
+          ssh -F ~/.ssh/config cn-target \
+            "set -o pipefail; mkdir -p '$CN_REMOTE_HOME/cn/logs'; bash '$CN_STAGE/deploy-update.sh' '$CN_STAGE' 2>&1 | tee '$CN_REMOTE_HOME/cn/logs/deploy-last.log'" \
+            2>&1 | tee /tmp/cn-restart.log
 
       - name: 同步 nginx 文档路由
         # OpenAPI 的六条路由与 cn_docs 限流区都在 nginx-cn.conf 里。脚本幂等：
-        # 内容没变不 reload，nginx -t 不过会回滚。
-        # continue-on-error：这一项失败只影响文档页面是否走新路由，不该把「服务已上线新版本」
-        # 这一步变成失败——业务接口不依赖它。
+        # 内容没变不 reload，nginx -t 不过会回滚。需要 sudo，无 sudo 时跳过。
+        if: env.CN_HAS_SUDO == 'yes'
         continue-on-error: true
         run: |
           set -o pipefail
-          ssh -F ~/.ssh/config cn-target 'bash /home/ubuntu/cn-incoming/install-nginx.sh /home/ubuntu/cn-incoming/nginx-cn.conf' 2>&1 | tee /tmp/cn-nginx.log
+          ssh -F ~/.ssh/config cn-target \
+            "CN_HOME='$CN_REMOTE_HOME/cn' bash '$CN_STAGE/install-nginx.sh' '$CN_STAGE/nginx-cn.conf'" \
+            2>&1 | tee /tmp/cn-nginx.log
+
+      - name: 上线后冒烟
+        # 只打公开接口，不需要任何凭据，也不写数据。
+        # 部署脚本内部已经查过本机端口与 nginx→query 这条链路，这里再走一次
+        # 「从外网域名进来」的完整链路——它和 127.0.0.1 不是同一条路。
+        run: |
+          set -uo pipefail
+          fail=0
+          for path in "/" "/core/actuator/health" "/query/api/v1/public/search/achievements?page=1&size=1"; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://${{ secrets.CN_SSH_HOST }}${path}" || true)"
+            printf '%-55s %s\n' "$path" "$code"
+            [ "$code" = "200" ] || fail=1
+          done
+          [ "$fail" -eq 0 ] || echo "::error::外网入口自检未通过，请查看上面的状态码"
+          exit "$fail"
 
       - name: 失败诊断
         # 日志要登录才能看，所以把每个步骤的尾部报错提升成注解，
