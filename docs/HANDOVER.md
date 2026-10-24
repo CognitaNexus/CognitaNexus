@@ -417,17 +417,35 @@ buaa 的 crontab 每天 18:20 UTC（北京 02:20）跑 `~/cn-deploy/pg-backup.sh
 
 不要靠「部署脚本跑成功了」来推断线上是什么代码。用下面四条独立证据，每一条都能单独证伪。
 
-**① jar 字节哈希（最硬的判据）**
+**① class 文件联合哈希（最硬的判据）**
+
+整包 `sha256sum` **不能跨平台比**。本地是 Windows 工作区，资源文件（如 `application.yml`）带 CRLF 进 jar；CI 在 Linux 检出的是 LF。整包哈希必然不同，而代码可能完全一样 —— 2026-10-24 就踩过：同一份代码，本地构建与 CI 构建整包哈希不同，差点误判成「线上不是这份代码」或「构建不可重现」。
+
+要比就比编译产物本身：
 
 ```bash
-# 线上
-ssh buaa@168.110.3.136 'cd ~/cn/app && sha256sum *.jar'
-# 本地（用当前工作区重新构建）
-./mvnw -o -B -ntp -DskipTests -Dspotless.check.skip=true package
-sha256sum services/*/target/*-service-0.2.0.jar
+# 本地与线上各跑一次：对 BOOT-INF/classes 下所有 .class 的内容算联合哈希
+python3 -c "
+import zipfile,hashlib,glob,os
+for p in sorted(glob.glob('*.jar')):
+    z=zipfile.ZipFile(p)
+    cl=[n for n in z.namelist() if n.startswith('BOOT-INF/classes/') and n.endswith('.class')]
+    h=hashlib.sha256()
+    for n in sorted(cl):
+        h.update(n.encode()); h.update(hashlib.sha256(z.read(n)).digest())
+    print(os.path.basename(p).ljust(26), len(cl), h.hexdigest()[:20])
+"
 ```
 
-Boot 3.5 的 repackage 产出**可重现 jar**：同样的源码两次独立构建哈希完全相同（2026-10-24 实测三个 jar 全等）。所以哈希相等即可判定「线上就是这份代码」。注意 pom 里并没有设 `project.build.outputTimestamp`，可重现是插件自带的，不是我们配的 —— 如果哪天升级 Boot 大版本，这条判据要先重新验证一次。
+实测（2026-10-24，本地构建 vs 线上 CI 构建）：
+
+| 服务 | class 数 | 联合哈希 | 结果 |
+| --- | --- | --- | --- |
+| core | 456 | `8d28b3664f18b7e09054` | 相同 |
+| ingestion | 128 | `00b1c6fdd72a32403388` | 相同 |
+| query | 112 | `1b6224621c98c047e9de` | 相同 |
+
+class 哈希相等即「编译出的字节码相同」，可判定线上就是这份代码。资源文件那部分哈希会不同，逐一比对可确认差异只在 `application.yml` 的行尾 —— YAML 两种行尾都能解析，无功能影响。**只有本地和线上都在同一操作系统构建时，整包 sha256 才是合法判据。**
 
 **② 进程启动时间晚于 jar 写入时间**
 
