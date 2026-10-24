@@ -35,6 +35,36 @@ public class PublicAnalyticsController {
   }
 
   /**
+   * 机构清单：可搜索、可翻页。
+   *
+   * <p>机构名放查询参数（{@code /organizations/detail?organization=...}）而不是路径段：机构名里有
+   * 斜杠、逗号与撇号，进路径会被网关与框架各解码一次，同一个名字可能匹配不到自己的成果。
+   */
+  @GetMapping("/organizations")
+  public ResponseEntity<ApiResponse<Map<String, Object>>> organizations(
+      @RequestParam(required = false, defaultValue = "REAL") String dataNature,
+      @RequestParam(required = false) String q,
+      @RequestParam(required = false, defaultValue = "1") int page,
+      @RequestParam(required = false, defaultValue = "20") int size) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            analyticsService.organizations(dataNature, q, page, size), TraceIdHolder.current()));
+  }
+
+  /** 单个机构的成果清单；机构名必须与机构清单返回值逐字一致。 */
+  @GetMapping("/organizations/detail")
+  public ResponseEntity<ApiResponse<Map<String, Object>>> organization(
+      @RequestParam String organization,
+      @RequestParam(required = false, defaultValue = "REAL") String dataNature,
+      @RequestParam(required = false, defaultValue = "1") int page,
+      @RequestParam(required = false, defaultValue = "20") int size) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            analyticsService.organization(organization, dataNature, page, size),
+            TraceIdHolder.current()));
+  }
+
+  /**
    * 关键词热点（FR13）。
    *
    * <p>年份窗用两个可空参数表达「不限」，而不是用一个字符串解析：空值就是空值，

@@ -452,4 +452,102 @@ public class AnalyticsService {
   private static String normalizeNature(String raw) {
     return DataNatureScope.normalize(raw);
   }
+
+  /**
+   * 机构清单（FR11 机构排名的可浏览版本）。
+   *
+   * <p>为什么不复用总览里的 {@code topOrganizations}：那一份固定取前 20，只够做首页排行。要回答
+   * 「某个大学有哪些成果、有多少学者」必须能按名字搜、能翻页。计数口径与排行榜完全一致
+   * （同成果同机构只计一次），否则会出现「排行第 5 的机构点进去只有 3 条」这种自相矛盾。
+   *
+   * <p>口径边界写进响应：按来源给出的机构原值分组，同一机构的不同写法会各自成条。这是投影的事实
+   * （投影里没有机构实体标识），不在这里做启发式合并——把「University of California, Berkeley」
+   * 截成「University of California」会把不同校区合成一家，比碎片化更糟。
+   */
+  public Map<String, Object> organizations(String dataNature, String q, int page, int size) {
+    PublicBarrierGuard.BarrierSnapshot barrier = guard.assertPubliclyServed();
+    String generation = barrier.activeGeneration();
+    String nature = normalizeNature(dataNature);
+    int safeSize = Math.min(Math.max(size, 1), 100);
+    int safePage = Math.max(page, 1);
+    String keyword = q == null || q.isBlank() ? null : q.trim();
+
+    List<Map<String, Object>> items = new ArrayList<>();
+    for (AnalyticsMapper.OrganizationRow row :
+        mapper.pageOrganizations(
+            generation, nature, keyword, safeSize, (safePage - 1) * safeSize)) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("organization", row.organization());
+      item.put("achievementCount", row.achievementCount());
+      item.put("scholarCount", row.scholarCount());
+      items.add(item);
+    }
+    long total = mapper.countOrganizations(generation, nature, keyword);
+
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("items", items);
+    data.put("page", safePage);
+    data.put("size", safeSize);
+    data.put("total", total);
+    data.put("query", keyword);
+    data.put("scope", scope(nature));
+    data.put(
+        "countingRules",
+        Map.of(
+            "achievements", "按去重成果实体计数，同成果同机构只计一次、跨机构各计一次",
+            "scholars", "该机构字符串下出现过的学者人数，未按机构实体归并",
+            "grouping", "按来源给出的机构原值分组；同一机构的不同写法会各自成条，不做启发式合并"));
+    data.put("ruleVersion", RULE_VERSION);
+    data.put("publishedRevision", barrier.publishedRevision());
+    data.put("generatedAt", Instant.now());
+    return data;
+  }
+
+  /**
+   * 单个机构的成果清单。
+   *
+   * <p>机构用查询参数传而不是路径段：机构名里有斜杠、逗号、撇号（实测形如
+   * {@code Taylor's University,School of Computer Science,...}），放进路径会被网关与 Spring 各自
+   * 解码一次，同一个名字可能匹配不到。名字必须与列表里返回的值逐字相等，不做模糊匹配——模糊匹配
+   * 会让「点进 A 机构」看到 B 机构的成果。
+   */
+  public Map<String, Object> organization(
+      String organization, String dataNature, int page, int size) {
+    if (organization == null || organization.isBlank()) {
+      throw BusinessException.invalidArgument("必须给出机构名（与机构清单中的值逐字一致）");
+    }
+    PublicBarrierGuard.BarrierSnapshot barrier = guard.assertPubliclyServed();
+    String generation = barrier.activeGeneration();
+    String nature = normalizeNature(dataNature);
+    int safeSize = Math.min(Math.max(size, 1), 100);
+    int safePage = Math.max(page, 1);
+
+    List<Map<String, Object>> items = new ArrayList<>();
+    for (AnalyticsMapper.OrganizationAchievementRow row :
+        mapper.pageOrganizationAchievements(
+            generation, nature, organization, safeSize, (safePage - 1) * safeSize)) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("achievementId", row.achievementId());
+      item.put("title", row.title());
+      item.put("type", row.type());
+      item.put("publicationYear", row.publicationYear());
+      item.put("venue", row.venue());
+      item.put("doi", row.doi());
+      item.put("citationCount", row.citationCount());
+      items.add(item);
+    }
+    long total = mapper.countOrganizationAchievements(generation, nature, organization);
+
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("organization", organization);
+    data.put("items", items);
+    data.put("page", safePage);
+    data.put("size", safeSize);
+    data.put("total", total);
+    data.put("scope", scope(nature));
+    data.put("ruleVersion", RULE_VERSION);
+    data.put("publishedRevision", barrier.publishedRevision());
+    data.put("generatedAt", Instant.now());
+    return data;
+  }
 }

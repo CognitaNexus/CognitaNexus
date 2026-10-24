@@ -113,4 +113,35 @@ class PublicAnalyticsControllerTest {
     // 传 null 就下传 null：接口层不得把「不限」翻译成某个魔法字符串。
     verify(service).keywordHotspots("REAL", null, null, 20);
   }
+
+  @Test
+  @DisplayName("机构清单：参数原样下传，结果进统一响应包")
+  void organizationsPassThrough() {
+    when(service.organizations("REAL", "tsing", 2, 20))
+        .thenReturn(Map.of("total", 1L, "items", java.util.List.of()));
+
+    ResponseEntity<ApiResponse<Map<String, Object>>> response =
+        controller.organizations("REAL", "tsing", 2, 20);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(200);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().data()).containsEntry("total", 1L);
+    // 接口层不做任何归一：搜索词、页码与页大小必须与调用方给的完全一致，
+    // 归一规则属于服务层（那里有测试盯着），两处各做一次就会出现「页面显示第 2 页、实际查第 1 页」。
+    verify(service).organizations("REAL", "tsing", 2, 20);
+  }
+
+  @Test
+  @DisplayName("机构详情：机构名作为查询参数逐字下传，不做路径解码")
+  void organizationDetailPassThrough() {
+    String name = "Taylor's University,School of Computer Science";
+    when(service.organization(name, "REAL", 1, 20)).thenReturn(Map.of("total", 0L));
+
+    ResponseEntity<ApiResponse<Map<String, Object>>> response =
+        controller.organization(name, "REAL", 1, 20);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(200);
+    assertThat(response.getBody().data()).containsEntry("total", 0L);
+    verify(service).organization(name, "REAL", 1, 20);
+  }
 }

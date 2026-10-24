@@ -622,4 +622,126 @@ public interface AnalyticsMapper {
       @Param("topicId") String topicId,
       @Param("dataNature") String dataNature,
       @Param("limit") int limit);
+
+  // ---------------------------------------------------------------------------
+  // 机构聚合（FR11 机构排名下钻）
+  // ---------------------------------------------------------------------------
+
+  /**
+   * 机构分页清单。
+   *
+   * <p>与 {@link #topOrganizations} 的差别只在「能不能翻页与搜索」：那个固定取前 20 给总览当排行，
+   * 这个要支撑「按名字找机构、逐页浏览、点进去看成果」。两者必须用同一套计数口径
+   * （{@code count(DISTINCT achievement_id)}），否则排行榜第 3 名点进去只看到 2 条成果。
+   *
+   * <p>按 {@code o.organization} 原值分组而不是先做归一：投影里没有机构实体标识，只有来源给出的
+   * 机构字符串。做启发式截断（比如取第一个逗号前）会把「University of California, Berkeley」
+   * 截成「University of California」，把不同校区合并成一家。宁可碎片，不可错并。
+   */
+  @Select(
+      """
+      <script>
+      SELECT o.organization AS organization,
+             count(DISTINCT o.achievement_id) AS achievementCount,
+             count(DISTINCT o.scholar_id) AS scholarCount
+      FROM qry_contribution_org o
+      JOIN qry_achievement a
+        ON a.generation = o.generation AND a.achievement_id = o.achievement_id
+      WHERE o.generation = #{generation}
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+        <if test="q != null">AND o.organization ILIKE '%' || #{q} || '%'</if>
+      GROUP BY o.organization
+      ORDER BY count(DISTINCT o.achievement_id) DESC, o.organization
+      LIMIT #{limit} OFFSET #{offset}
+      </script>
+      """)
+  List<OrganizationRow> pageOrganizations(
+      @Param("generation") String generation,
+      @Param("dataNature") String dataNature,
+      @Param("q") String q,
+      @Param("limit") int limit,
+      @Param("offset") int offset);
+
+  /** 机构总数（同一过滤条件），供分页器算页数。 */
+  @Select(
+      """
+      <script>
+      SELECT count(DISTINCT o.organization)
+      FROM qry_contribution_org o
+      JOIN qry_achievement a
+        ON a.generation = o.generation AND a.achievement_id = o.achievement_id
+      WHERE o.generation = #{generation}
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+        <if test="q != null">AND o.organization ILIKE '%' || #{q} || '%'</if>
+      </script>
+      """)
+  long countOrganizations(
+      @Param("generation") String generation,
+      @Param("dataNature") String dataNature,
+      @Param("q") String q);
+
+  /** 单个机构的成果清单，按年份与引用量排序（与领域洞察的代表成果同一口径）。 */
+  @Select(
+      """
+      <script>
+      SELECT a.achievement_id AS achievementId,
+             a.title AS title,
+             a.type AS type,
+             a.publication_year AS publicationYear,
+             a.venue AS venue,
+             a.doi AS doi,
+             a.citation_count AS citationCount
+      FROM qry_contribution_org o
+      JOIN qry_achievement a
+        ON a.generation = o.generation AND a.achievement_id = o.achievement_id
+      WHERE o.generation = #{generation} AND o.organization = #{organization}
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+      GROUP BY a.achievement_id, a.title, a.type, a.publication_year,
+               a.venue, a.doi, a.citation_count
+      ORDER BY a.publication_year DESC NULLS LAST,
+               a.citation_count DESC NULLS LAST,
+               a.achievement_id
+      LIMIT #{limit} OFFSET #{offset}
+      </script>
+      """)
+  List<OrganizationAchievementRow> pageOrganizationAchievements(
+      @Param("generation") String generation,
+      @Param("dataNature") String dataNature,
+      @Param("organization") String organization,
+      @Param("limit") int limit,
+      @Param("offset") int offset);
+
+  /** 单机构的成果总数：同一成果在机构下可能有多行（多作者），必须去重。 */
+  @Select(
+      """
+      <script>
+      SELECT count(DISTINCT o.achievement_id)
+      FROM qry_contribution_org o
+      JOIN qry_achievement a
+        ON a.generation = o.generation AND a.achievement_id = o.achievement_id
+      WHERE o.generation = #{generation} AND o.organization = #{organization}
+        AND a.effective_status = 'EFFECTIVE' AND a.visibility = 'PUBLIC'
+        <if test="dataNature != null">AND a.data_nature = #{dataNature}</if>
+      </script>
+      """)
+  long countOrganizationAchievements(
+      @Param("generation") String generation,
+      @Param("dataNature") String dataNature,
+      @Param("organization") String organization);
+
+  /** 机构分页行。 */
+  record OrganizationRow(String organization, long achievementCount, long scholarCount) {}
+
+  /** 机构下的成果行。 */
+  record OrganizationAchievementRow(
+      String achievementId,
+      String title,
+      String type,
+      Integer publicationYear,
+      String venue,
+      String doi,
+      Long citationCount) {}
 }
