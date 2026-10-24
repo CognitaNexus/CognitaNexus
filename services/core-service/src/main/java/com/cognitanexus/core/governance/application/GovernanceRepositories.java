@@ -40,6 +40,14 @@ public interface GovernanceRepositories {
     /** 按相似度分档计数，用于让「先处理哪一批」成为一个可判断的问题。 */
     CandidateBuckets countOpenCandidatesByBucket(double highLow, double midLow);
 
+    /**
+     * 取某一档里最靠前的若干 OPEN 候选标识，供按档批量驳回。
+     *
+     * @param bucket {@code HIGH} / {@code MID} / {@code LOW}
+     */
+    List<String> listOpenCandidateIdsByBucket(
+        String bucket, double highLow, double midLow, int limit);
+
     Optional<DedupCandidate> findById(String id);
 
     /**

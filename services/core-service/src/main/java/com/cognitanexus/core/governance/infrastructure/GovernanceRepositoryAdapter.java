@@ -82,6 +82,12 @@ public class GovernanceRepositoryAdapter
   }
 
   @Override
+  public List<String> listOpenCandidateIdsByBucket(
+      String bucket, double highLow, double midLow, int limit) {
+    return mapper.listCandidateIdsByBucket("OPEN", bucket, highLow, midLow, limit);
+  }
+
+  @Override
   public Optional<DedupCandidate> findById(String id) {
     return mapper.findCandidate(id).map(this::toCandidate);
   }

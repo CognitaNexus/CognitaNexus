@@ -59,6 +59,24 @@ public class GovernanceResolutionWorkflow {
         resolved.requested(), resolved.resolved(), resolved.skipped(), released);
   }
 
+  /**
+   * 按相似度档批量驳回 + 重评估。
+   *
+   * <p>与 {@link #batchReject} 的唯一区别是「候选从哪来」：那边由调用方给标识，这边按分档阈值取
+   * 一批。后续的重评估必须完全一致——裁决解除的是「待治理」的成因之一，成果能否随之公开仍由
+   * 重评估按既定条件判，不由批量入口直接决定。
+   */
+  public BatchOutcome batchRejectByBucket(
+      String bucket, int limit, String reason, ActorContext actor) {
+    GovernanceService.BatchResolveOutcome resolved =
+        governance.batchRejectByBucket(bucket, limit, reason, actor);
+    List<String> released =
+        catalog.recheckReleaseAfterResolution(
+            resolved.affectedAchievementIds(), actor, noteOf("按档批量驳回", reason));
+    return new BatchOutcome(
+        resolved.requested(), resolved.resolved(), resolved.skipped(), released);
+  }
+
   private static String noteOf(String source, String reason) {
     String base = reason == null || reason.isBlank() ? "候选裁决" : reason;
     return source + "后重评估发布：" + base;

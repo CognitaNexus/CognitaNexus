@@ -262,6 +262,50 @@ public class GovernanceService {
   }
 
   /**
+   * 按相似度档批量驳回。
+   *
+   * <p>它解决的是一件具体的事：积压两万余条候选，逐页勾选在人力上不可完成。分档计数已经回答了
+   * 「哪一档最多」，这里再补一步「把那档的一批取出来驳回」。
+   *
+   * <p>为什么只做驳回、不做合并：理由与 {@link #batchReject} 完全相同，且更强——按档取出的这批
+   * 候选没有人工看过任何一条，而合并要求逐条显式指定幸存实体，那正是「相似标题不得直接合并」
+   * 这条红线的落点。批量合并会把「相似度高」偷换成「确认相同」。
+   *
+   * <p>低置信档才是这个入口的主要用途：相似度低于 0.7 的候选绝大多数是关键词巧合，驳回的代价
+   * 对称（驳回错了可以再合并），而这一档通常占了积压的大头。
+   *
+   * @param bucket {@code HIGH} / {@code MID} / {@code LOW}
+   * @param limit 本批条数，受 {@link #MAX_BATCH_RESOLVE} 约束
+   */
+  @Transactional
+  public BatchResolveOutcome batchRejectByBucket(
+      String bucket, int limit, String reason, ActorContext actor) {
+    Capabilities.require(actor, RoleNames.CAP_GOVERNANCE_MANAGE);
+    String normalized = normalizeBucket(bucket);
+    int cap = Math.min(Math.max(limit, 1), MAX_BATCH_RESOLVE);
+    // 先校验理由再取候选：没有理由的批量操作不该先动数据库再报错。
+    requireReason(reason);
+    List<String> ids =
+        candidates.listOpenCandidateIdsByBucket(normalized, SIMILARITY_HIGH, SIMILARITY_MID, cap);
+    if (ids.isEmpty()) {
+      return new BatchResolveOutcome(0, 0, List.of(), List.of());
+    }
+    return batchReject(ids, reason, actor);
+  }
+
+  /** 档位取值校验：只接受三个确定值，拼错不应被当成「低置信」。 */
+  private static String normalizeBucket(String bucket) {
+    if (bucket == null || bucket.isBlank()) {
+      throw BusinessException.invalidArgument("必须指定相似度档位：HIGH / MID / LOW");
+    }
+    String upper = bucket.trim().toUpperCase(java.util.Locale.ROOT);
+    if (!"HIGH".equals(upper) && !"MID".equals(upper) && !"LOW".equals(upper)) {
+      throw BusinessException.invalidArgument("档位只能是 HIGH / MID / LOW，实际为：" + bucket);
+    }
+    return upper;
+  }
+
+  /**
    * 批量裁决候选为「不同实体」（驳回）。
    *
    * <p><b>只提供批量驳回，不提供批量合并。</b>两个方向的代价不对称：驳回错了只是留下两个各自

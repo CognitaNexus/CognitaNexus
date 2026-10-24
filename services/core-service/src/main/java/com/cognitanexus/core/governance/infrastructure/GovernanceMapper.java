@@ -168,6 +168,39 @@ public interface GovernanceMapper {
       @Param("highLow") double highLow,
       @Param("midLow") double midLow);
 
+  /**
+   * 取某一相似度档里最靠前的若干候选标识。
+   *
+   * <p>存在的理由只有一个：积压到两万条时，「逐页勾选」本身就是不可完成的动作，而分档计数只回答
+   * 「哪一档多」不回答「怎么动手」。这里按同一套阈值把一档的候选取出来，交给批量驳回。
+   *
+   * <p>只取出标识、不取出整行：批量的下一步是逐条独立裁决（每条都要判在不在、是否已被他人处理），
+   * 这一步必须复用单条裁决的路径，不能为了快而写一条 UPDATE。排序带 {@code id} 兜底，
+   * 保证同样的条件每次取到同一批，否则「驳回前 200 条」在两次调用之间会漂移。
+   */
+  @Select(
+      """
+      <script>
+      SELECT t.id FROM (
+        SELECT id, coalesce((evidence->>'similarity')::numeric, 0) AS sim
+        FROM gov_dedup_candidate WHERE status = #{status}
+      ) t
+      <choose>
+        <when test="bucket == 'HIGH'">WHERE t.sim &gt;= #{highLow}</when>
+        <when test="bucket == 'MID'">WHERE t.sim &gt;= #{midLow} AND t.sim &lt; #{highLow}</when>
+        <otherwise>WHERE t.sim &lt; #{midLow}</otherwise>
+      </choose>
+      ORDER BY t.sim DESC, t.id
+      LIMIT #{limit}
+      </script>
+      """)
+  List<String> listCandidateIdsByBucket(
+      @Param("status") String status,
+      @Param("bucket") String bucket,
+      @Param("highLow") double highLow,
+      @Param("midLow") double midLow,
+      @Param("limit") int limit);
+
   /** 候选列表行：实体字段 + 相似度（相似度单独成列，便于排序与分档）。 */
   record CandidateListRow(
       String id,

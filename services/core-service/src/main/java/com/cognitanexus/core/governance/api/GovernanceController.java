@@ -193,6 +193,38 @@ public class GovernanceController {
     return ResponseEntity.ok(ApiResponse.ok(view, TraceIdHolder.current()));
   }
 
+  /**
+   * 按相似度档批量驳回。
+   *
+   * <p>为积压准备的动作：两万余条候选靠逐页勾选在人力上做不完，而分档计数只回答「哪档多」。
+   * 这里按同一套阈值取一档的若干条并驳回。
+   *
+   * <p><b>没有对应的「按档批量合并」。</b>合并必须逐条显式指定幸存实体，这是「相似标题不得直接
+   * 合并」的落点；批量合并会把「相似度高」偷换成「确认相同」。驳回错了可以再合并，方向不对称，
+   * 所以只开放可逆的那一侧。
+   *
+   * <p>理由必填：它会随每条候选的裁决写入审计，没有理由的批量操作事后无法复核。
+   */
+  @PostMapping("/candidates/batch-reject-by-bucket")
+  public ResponseEntity<ApiResponse<Map<String, Object>>> batchRejectByBucket(
+      @RequestBody BatchRejectByBucketRequest body) {
+    if (body == null || body.bucket() == null || body.bucket().isBlank()) {
+      throw com.cognitanexus.sharedkernel.BusinessException.invalidArgument(
+          "必须指定相似度档位：HIGH / MID / LOW");
+    }
+    GovernanceResolutionWorkflow.BatchOutcome outcome =
+        workflow.batchRejectByBucket(
+            body.bucket(), body.limit(), body.reason(), ActorContextHolder.currentOrNull());
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("requested", outcome.requested());
+    view.put("resolved", outcome.resolved());
+    view.put("skipped", outcome.skipped());
+    view.put("releasedCount", outcome.released().size());
+    view.put("released", outcome.released());
+    view.put("note", "只执行驳回（判定为不同实体），不执行合并；被驳回的候选之后仍可手动合并");
+    return ResponseEntity.ok(ApiResponse.ok(view, TraceIdHolder.current()));
+  }
+
   @GetMapping("/anomalies")
   public ResponseEntity<ApiResponse<List<Map<String, Object>>>> anomalies(
       @RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size) {
@@ -446,6 +478,9 @@ public class GovernanceController {
 
   /** 批量驳回请求体。 */
   public record BatchRejectRequest(List<String> candidateIds, String reason) {}
+
+  /** 按档批量驳回的入参。limit 为 0 时由服务层夹到默认上限。 */
+  public record BatchRejectByBucketRequest(String bucket, int limit, String reason) {}
 
   /** 合并请求体。 */
   public record MergeRequest(String survivorId, String mergedId, String reason) {}
