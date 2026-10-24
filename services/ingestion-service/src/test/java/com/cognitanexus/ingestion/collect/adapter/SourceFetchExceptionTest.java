@@ -62,6 +62,36 @@ class SourceFetchExceptionTest {
   }
 
   @Test
+  @DisplayName("响应体片段随消息带上：只报状态码等于把唯一能解释原因的信息丢掉")
+  void httpStatusCarriesBodySnippet() {
+    SourceFetchException ex =
+        SourceFetchException.httpStatus("Wikidata", 400, null, "SPARQL-QUERY: queryStr=SELECT ...");
+    assertThat(ex.getMessage()).contains("400").contains("SPARQL-QUERY");
+    assertThat(ex.statusCode()).isEqualTo(400);
+  }
+
+  @Test
+  @DisplayName("响应体压成单行并截断：整页 HTML 不该把日志淹掉")
+  void bodySnippetIsFlattenedAndTruncated() {
+    String html = "<html>\n  <body>\r\n    error\n  </body>\n</html>";
+    assertThat(SourceFetchException.snippetOf(html)).doesNotContain("\n").doesNotContain("\r");
+
+    String huge = "x".repeat(SourceFetchException.BODY_SNIPPET_LIMIT + 50);
+    String snippet = SourceFetchException.snippetOf(huge);
+    // "：" + 上限个字符 + "…"
+    assertThat(snippet).hasSize(SourceFetchException.BODY_SNIPPET_LIMIT + 2).endsWith("…");
+  }
+
+  @Test
+  @DisplayName("空响应体不产生只有冒号的尾巴")
+  void emptyBodyLeavesNoTrailingColon() {
+    assertThat(SourceFetchException.snippetOf(null)).isEmpty();
+    assertThat(SourceFetchException.snippetOf("   ")).isEmpty();
+    assertThat(SourceFetchException.httpStatus("Wikidata", 400, null, "  ").getMessage())
+        .doesNotContain("：");
+  }
+
+  @Test
   @DisplayName("没有 Retry-After 的 5xx：状态码保留，等待时间留空")
   void serverErrorWithoutHeaderHasNoRetryAfter() {
     SourceFetchException ex = SourceFetchException.httpStatus("OpenAlex", 503, null);

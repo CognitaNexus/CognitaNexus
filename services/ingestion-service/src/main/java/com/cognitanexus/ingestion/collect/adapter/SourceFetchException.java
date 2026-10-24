@@ -39,15 +39,47 @@ public class SourceFetchException extends BusinessException {
   /** 来源返回非 200。{@code retryAfterHeader} 可为 null。 */
   public static SourceFetchException httpStatus(
       String sourceLabel, int statusCode, String retryAfterHeader) {
+    return httpStatus(sourceLabel, statusCode, retryAfterHeader, null);
+  }
+
+  /**
+   * 来源返回非 200，并带上响应体片段。
+   *
+   * <p>为什么要带响应体：只报「返回 400」等于把唯一能解释原因的信息丢掉。SPARQL 端点的 400 一定
+   * 附带一段说明（语法错误、变量未绑定、查询被拒），OpenAlex 的 400 也会说明哪个参数不对。不带正文时，
+   * 运维只能对着一个状态码猜，而这条失败会被原样写进任务日志与前端回执。
+   *
+   * <p>只截取前 {@value #BODY_SNIPPET_LIMIT} 个字符：错误页可能是整页 HTML，原样带上去会把日志淹掉。
+   */
+  public static SourceFetchException httpStatus(
+      String sourceLabel, int statusCode, String retryAfterHeader, String bodySnippet) {
     String suffix =
         retryAfterHeader == null || retryAfterHeader.isBlank()
             ? ""
             : "（要求等待 " + retryAfterHeader + "）";
     return new SourceFetchException(
         ErrorCode.DEPENDENCY_UNAVAILABLE,
-        sourceLabel + " 返回 " + statusCode + suffix,
+        sourceLabel + " 返回 " + statusCode + suffix + snippetOf(bodySnippet),
         statusCode,
         parseRetryAfter(retryAfterHeader));
+  }
+
+  /** 响应体片段的字符上限。 */
+  static final int BODY_SNIPPET_LIMIT = 200;
+
+  /** 把响应体压成单行片段；空白或空体返回空串，不产生「：」后什么都没有的尾巴。 */
+  static String snippetOf(String body) {
+    if (body == null) {
+      return "";
+    }
+    String flat = body.replaceAll("\\s+", " ").trim();
+    if (flat.isEmpty()) {
+      return "";
+    }
+    if (flat.length() > BODY_SNIPPET_LIMIT) {
+      flat = flat.substring(0, BODY_SNIPPET_LIMIT) + "…";
+    }
+    return "：" + flat;
   }
 
   /** 响应体超过允许上限：不解析、不落库，避免一次异常响应把内存与库撑爆。 */

@@ -56,6 +56,14 @@ public class OpenAlexAdapter implements SourceAdapter {
   /** 单篇成果最多保留的领域数，理由见 {@link #mappedTopics}。 */
   private static final int MAX_MAPPED_TOPICS = 3;
 
+  /**
+   * 单次 OR 过滤能带的标识个数上限。
+   *
+   * <p>50 是 OpenAlex 自身的限制，超出的标识会被静默丢弃——请求照常 200，只是少返回几条。
+   * 这类「不报错的少」比报错难查，所以在入口就截断并由调用方按批组织。
+   */
+  private static final int MAX_IDENTIFIERS_PER_REQUEST = 50;
+
   private final ObjectMapper objectMapper;
   private final HttpClient httpClient;
   private final String userAgent;
@@ -186,6 +194,76 @@ public class OpenAlexAdapter implements SourceAdapter {
     url.append("&select=id,doi,title,publication_year,publication_date,type,cited_by_count,")
         .append("primary_location,authorships,topics,primary_topic,abstract_inverted_index");
     // 带上联系邮箱进入 polite pool，获得更稳定的配额；这是 OpenAlex 官方建议的做法
+    if (userAgent != null && userAgent.contains("mailto:")) {
+      String mail = userAgent.substring(userAgent.indexOf("mailto:") + 7);
+      int end = mail.indexOf(')');
+      if (end > 0) {
+        mail = mail.substring(0, end);
+      }
+      url.append("&mailto=")
+          .append(java.net.URLEncoder.encode(mail, java.nio.charset.StandardCharsets.UTF_8));
+    }
+    if (apiKey != null && !apiKey.isBlank()) {
+      url.append("&api_key=")
+          .append(
+              java.net.URLEncoder.encode(apiKey.trim(), java.nio.charset.StandardCharsets.UTF_8));
+    }
+    return url.toString();
+  }
+
+  /**
+   * 按标识批量取作品元数据（引文反向回填专用）。
+   *
+   * <p>与 {@link #fetch} 的区别只在「怎么选记录」：那边用 {@code search=} 做关键词检索，这边用
+   * {@code filter=doi:...|...} 精确命中一批已知标识。用 search 取指定 DOI 是不行的——搜索会把
+   * 相似题名的别的论文也带回来，回填「补节点」这件事上，取错一篇就多一条错误实体。
+   *
+   * <p>一批最多 50 个标识：OpenAlex 的 OR 过滤上限就是 50，超出的部分会被静默忽略，看上去
+   * 「少抓了几条」而不是报错。所以在入口处就截断并让调用方按批组织请求。
+   *
+   * @param kind {@code DOI} 或 {@code OPENALEX_ID}（大小写不敏感）
+   * @param values 已经归一的标识值；OPENALEX_ID 形如 {@code w2057327293}
+   * @param allowed 字段白名单，来自来源运行配置
+   */
+  public List<CollectedRecord> fetchByIdentifiers(
+      String kind, List<String> values, Set<String> allowed) {
+    if (values == null || values.isEmpty()) {
+      return List.of();
+    }
+    boolean byDoi = !"OPENALEX_ID".equalsIgnoreCase(kind);
+    String field = byDoi ? "doi" : "openalex_id";
+    List<String> capped =
+        values.size() > MAX_IDENTIFIERS_PER_REQUEST
+            ? values.subList(0, MAX_IDENTIFIERS_PER_REQUEST)
+            : values;
+    String filter = field + ":" + String.join("|", capped);
+    String url =
+        buildFilterUrl(
+            "https://api.openalex.org/works", filter, capped.size(), 1, userAgent, apiKey);
+    JsonNode root = get(url);
+    Instant fetchedAt = Instant.now();
+    Set<String> allowedFields = new LinkedHashSet<>(allowed);
+    List<CollectedRecord> records = new ArrayList<>();
+    for (JsonNode item : root.path("results")) {
+      CollectedRecord record = toRecord(item, fetchedAt, allowedFields);
+      if (record != null) {
+        records.add(record);
+      }
+    }
+    return records;
+  }
+
+  /** 按标识过滤的 URL。只带 filter 不带 search：两者同时出现时 OpenAlex 取交集，会把结果清空。 */
+  static String buildFilterUrl(
+      String base, String filter, int perPage, int pageNo, String userAgent, String apiKey) {
+    StringBuilder url = new StringBuilder(base);
+    url.append(base.contains("?") ? "&" : "?");
+    url.append("filter=")
+        .append(java.net.URLEncoder.encode(filter, java.nio.charset.StandardCharsets.UTF_8));
+    url.append("&per-page=").append(Math.max(perPage, 1));
+    url.append("&page=").append(Math.max(pageNo, 1));
+    url.append("&select=id,doi,title,publication_year,publication_date,type,cited_by_count,")
+        .append("primary_location,authorships,topics,primary_topic,abstract_inverted_index");
     if (userAgent != null && userAgent.contains("mailto:")) {
       String mail = userAgent.substring(userAgent.indexOf("mailto:") + 7);
       int end = mail.indexOf(')');

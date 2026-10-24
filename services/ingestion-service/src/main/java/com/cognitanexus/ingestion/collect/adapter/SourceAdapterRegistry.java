@@ -47,6 +47,11 @@ public class SourceAdapterRegistry {
     register(
         new NobelAdapter(
             objectMapper, httpClient, properties.userAgent(), properties.maxResponseBytes()));
+    // 专利：论文之外的类别没有通用的元数据服务，必须逐类接入。Wikidata 是免密钥可查的那一家，
+    // 理由与取舍写在 WikidataPatentAdapter 的类注释里。
+    register(
+        new WikidataPatentAdapter(
+            objectMapper, httpClient, properties.userAgent(), properties.maxResponseBytes()));
   }
 
   private void register(SourceAdapter adapter) {

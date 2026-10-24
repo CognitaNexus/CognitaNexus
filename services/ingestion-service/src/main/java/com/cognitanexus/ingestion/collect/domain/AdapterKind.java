@@ -24,6 +24,17 @@ public enum AdapterKind {
    */
   NOBEL("Nobel", true),
   /**
+   * Wikidata（SPARQL），面向专利。
+   *
+   * <p>为什么要单独接一家：专利没有像 Crossref／OpenAlex 那样的通用元数据服务。USPTO ODP 无 key
+   * 直接 401，EPO OPS 匿名 403，PatentsView 旧接口已下线；Wikidata 是唯一免密钥、可程序化按属性
+   * 投影、且条款允许再分发的来源（CC0）。
+   *
+   * <p>允许空查询：它的查询串是「附加过滤」而不是「检索词」，留空表示遍历全量专利清单
+   * （约一千条），这是专利这一类补数据的正常用法。
+   */
+  WIKIDATA_PATENT("Wikidata 专利", true),
+  /**
    * 文件导入：记录由使用者以 CSV/JSON 文件提供，不经外部抓取。
    *
    * <p>它没有对应的 {@code SourceAdapter}：导入走 {@code ImportService} 直接把记录交给 core，
