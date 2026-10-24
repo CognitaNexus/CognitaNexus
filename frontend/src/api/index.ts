@@ -113,6 +113,34 @@ export const queryApi = {
     })
   },
 
+  /**
+   * 机构清单（FR11 机构维度的可浏览版本）。
+   *
+   * 机构名走查询参数而不是路径段：机构原值里有斜杠、逗号与撇号，进路径会被网关与框架各解码一次，
+   * 同一个名字可能匹配不到自己的成果。
+   */
+  organizations(params: {
+    q?: string
+    dataNature?: string
+    page?: number
+    size?: number
+  }) {
+    return request<Record<string, unknown>>('query', '/api/v1/public/analytics/organizations', {
+      query: { ...params },
+    })
+  },
+
+  organizationDetail(params: {
+    organization: string
+    dataNature?: string
+    page?: number
+    size?: number
+  }) {
+    return request<Record<string, unknown>>('query', '/api/v1/public/analytics/organizations/detail', {
+      query: { ...params },
+    })
+  },
+
   graph(params: {
     scholarId: string
     depth?: number
@@ -822,6 +850,37 @@ export const adminApi = {
     )
   },
 
+  /**
+   * 引文反向回填：把「站内引了很多次、但本站还没收录」的外部文献收进来。
+   *
+   * 与 hydrateCitations 方向相反：那个补「站内论文引用了谁」，这个补「被引的那一端」。
+   * 边只有在两端都在库内时才连得起来，所以节点不补，观测采得再全也只有少数边能解析。
+   */
+  backfillCitations(
+    params: { sourceCode?: string; kind?: string; limit?: number } = {},
+  ) {
+    return request<{
+      sourceCode: string
+      kind: string
+      requested: number
+      fetched: number
+      missing: number
+      accepted: number
+      attached: number
+      duplicate: number
+      rejected: number
+      remaining: number
+      failures: string[]
+    }>('ingest', '/api/v1/admin/ingestion/citations/backfill', {
+      method: 'POST',
+      query: {
+        sourceCode: params.sourceCode ?? 'openalex',
+        ...(params.kind ? { kind: params.kind } : {}),
+        limit: params.limit ?? 50,
+      },
+    })
+  },
+
   /** 自助提交的待审队列。每条都带查重提示（若有），审核员不必自己再去搜一遍。 */
   submissions(params: { page?: number; size?: number } = {}) {
     return requestEnvelope<SubmissionView[]>('core', '/api/v1/admin/core/submissions', {
@@ -1094,6 +1153,20 @@ export const adminApi = {
     return request<Record<string, unknown>>(
       'core',
       '/api/v1/admin/core/governance/candidates/batch-reject',
+      { method: 'POST', body },
+    )
+  },
+
+  /**
+   * 按相似度档批量驳回（判定为不同实体）。
+   *
+   * 服务端按同一套分档阈值取该档的前 limit 条 OPEN 候选再逐条裁决；没有对应的「按档批量合并」，
+   * 因为合并必须逐条显式指定幸存实体。驳回错了可以再合并，方向不对称，所以只开放可逆的一侧。
+   */
+  batchRejectCandidatesByBucket(body: { bucket: string; limit: number; reason: string }) {
+    return request<Record<string, unknown>>(
+      'core',
+      '/api/v1/admin/core/governance/candidates/batch-reject-by-bucket',
       { method: 'POST', body },
     )
   },

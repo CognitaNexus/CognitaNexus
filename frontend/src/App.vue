@@ -181,6 +181,7 @@ onUnmounted(() => {
           <RouterLink to="/">总览</RouterLink>
           <RouterLink to="/search">成果检索</RouterLink>
           <RouterLink to="/hotspots">关键词热点</RouterLink>
+          <RouterLink to="/organizations">机构</RouterLink>
           <RouterLink to="/network">合作网络</RouterLink>
           <RouterLink to="/ops">一致性与投递</RouterLink>
           <template v-if="session.authenticated">

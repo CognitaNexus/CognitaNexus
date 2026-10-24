@@ -779,6 +779,50 @@ async function batchReject() {
   }
 }
 
+/** 按档批量驳回的目标档位与条数。低置信是默认档：它通常占积压的大头，且驳回代价最低。 */
+const bucketToReject = ref('LOW')
+const bucketRejectLimit = ref(50)
+
+/**
+ * 按档批量驳回。
+ *
+ * 服务于一个具体处境：候选积压到两万多条时，「逐页勾选」在人力上不可完成，而分档计数只回答
+ * 「哪一档最多」。这里让服务端按同一套阈值取一档的前 N 条再逐条裁决。
+ *
+ * 只做驳回、不做合并：按档取出的这批候选没有人逐条看过，而合并要求显式指定幸存实体，那正是
+ * 「相似标题不得直接合并」的落点。驳回错了可以再合并，方向不对称，所以只开放可逆的一侧。
+ */
+async function batchRejectByBucket() {
+  if (!batchReason.value.trim()) {
+    actionError.value = '按档批量驳回同样需要写明依据。依据会逐条写入审计记录。'
+    return
+  }
+  resetAction()
+  busy.value = 'batch-reject-bucket'
+  try {
+    const result = await adminApi.batchRejectCandidatesByBucket({
+      bucket: bucketToReject.value,
+      limit: bucketRejectLimit.value,
+      reason: batchReason.value.trim(),
+    })
+    const resolvedCount = num(result.resolved)
+    const skipped = Array.isArray(result.skipped) ? (result.skipped as unknown[]).map(str) : []
+    actionNote.value =
+      `已按「${bucketToReject.value}」档驳回 ${resolvedCount} 条候选。` +
+      releaseNote(result) +
+      (skipped.length
+        ? `另有 ${skipped.length} 条未被处理：${skipped.slice(0, 3).join('；')}${skipped.length > 3 ? ' …' : ''}`
+        : '')
+    await loadCandidates()
+  } catch (cause) {
+    const described = describeError(cause)
+    actionError.value = described.message
+    actionCode.value = described.code
+  } finally {
+    busy.value = ''
+  }
+}
+
 function loadLedger() {
   const entityId = ledgerQuery.value.trim()
   if (!entityId) {
@@ -885,6 +929,46 @@ onMounted(loadAll)
           >
             {{ busy === 'batch-reject' ? '处理中…' : '判定为不同实体' }}
           </button>
+        </div>
+        <div
+          class="tiny"
+          style="
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            border: 1px solid var(--rule);
+            border-radius: var(--radius);
+            padding: 9px 13px;
+            margin-bottom: 8px;
+          "
+        >
+          <span>按档批量驳回：</span>
+          <select v-model="bucketToReject" style="width: 190px">
+            <option value="LOW">低置信（&lt; {{ workbench.midLow }}）· {{ workbench.low }} 条</option>
+            <option value="MID">
+              中置信（{{ workbench.midLow }}–{{ workbench.highLow }}）· {{ workbench.mid }} 条
+            </option>
+            <option value="HIGH">高置信（≥ {{ workbench.highLow }}）· {{ workbench.high }} 条</option>
+          </select>
+          <input
+            v-model.number="bucketRejectLimit"
+            type="number"
+            min="1"
+            max="200"
+            style="width: 80px"
+            title="单次上限 200 条"
+          />
+          <button
+            class="btn small"
+            :disabled="busy === 'batch-reject-bucket'"
+            @click="batchRejectByBucket"
+          >
+            {{ busy === 'batch-reject-bucket' ? '处理中…' : '驳回本档这一批' }}
+          </button>
+          <span class="faint">
+            用上面的「依据」输入框；服务端按同一套阈值取该档前 N 条并逐条裁决
+          </span>
         </div>
         <p v-if="candidates.items.length > 0" class="tiny faint" style="margin: 0 0 12px">
           只提供批量驳回，不提供批量合并：驳回错了可以再合并，合并错了要把参与关系、来源归属与门户授权从幸存实体上拆回来，两边代价不对称。合并必须逐条指定幸存实体。

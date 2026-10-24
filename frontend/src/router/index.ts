@@ -40,6 +40,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '关键词热点' },
   },
   {
+    path: '/organizations',
+    name: 'organizations',
+    component: () => import('@/views/OrganizationView.vue'),
+    meta: { title: '机构' },
+  },
+  {
     path: '/network',
     name: 'network',
     component: () => import('@/views/NetworkView.vue'),
