@@ -2,6 +2,7 @@ package com.cognitanexus.ingestion.collect.api;
 
 import com.cognitanexus.ingestion.collect.adapter.SourceAdapterRegistry;
 import com.cognitanexus.ingestion.collect.application.AbstractHydrationService;
+import com.cognitanexus.ingestion.collect.application.CitationBackfillService;
 import com.cognitanexus.ingestion.collect.application.CitationHydrationService;
 import com.cognitanexus.ingestion.collect.application.CollectExecutionService;
 import com.cognitanexus.ingestion.collect.application.CollectJobService;
@@ -54,6 +55,7 @@ public class AdminIngestionController {
   private final ImportService imports;
   private final CitationHydrationService citationHydration;
   private final AbstractHydrationService abstractHydration;
+  private final CitationBackfillService citationBackfill;
 
   public AdminIngestionController(
       SourceRunConfigService sources,
@@ -64,7 +66,8 @@ public class AdminIngestionController {
       CollectRepositories.JobRepository jobRepository,
       ImportService imports,
       CitationHydrationService citationHydration,
-      AbstractHydrationService abstractHydration) {
+      AbstractHydrationService abstractHydration,
+      CitationBackfillService citationBackfill) {
     this.sources = sources;
     this.jobs = jobs;
     this.execution = execution;
@@ -74,6 +77,7 @@ public class AdminIngestionController {
     this.imports = imports;
     this.citationHydration = citationHydration;
     this.abstractHydration = abstractHydration;
+    this.citationBackfill = citationBackfill;
   }
 
   /**
@@ -104,6 +108,29 @@ public class AdminIngestionController {
       @RequestBody List<String> dois, @RequestParam(defaultValue = "AUTO") String provider) {
     return ApiResponse.ok(
         citationHydration.hydrateDois(dois, providerOf(provider)), TraceIdHolder.current());
+  }
+
+  /**
+   * 引文反向回填：把「站内引了很多次、但本站没收录」的外部文献收进来。
+   *
+   * <p>与 {@code /citations/hydrate} 方向相反，两者要分开看：
+   *
+   * <ul>
+   *   <li>hydrate 补的是「站内论文引用了谁」——采回参考文献列表，边大多落在 EXTERNAL；
+   *   <li>backfill 补的是「被引的那一端」——把外部文献本身收进站内，边才连得起来。
+   * </ul>
+   *
+   * <p>回执里三个数必须一起读：{@code fetched}（来源真返回多少）、{@code missing}（来源查不到的
+   * 标识，比如作品已删除）、{@code remaining}（还剩多少候选）。只报「成功」而不报 missing，会把
+   * 「一批标识里三成在来源端已不存在」说成「全部补上了」。
+   */
+  @PostMapping("/citations/backfill")
+  public ApiResponse<CitationBackfillService.BackfillOutcome> backfillCitations(
+      @RequestParam(defaultValue = "openalex") String sourceCode,
+      @RequestParam(required = false) String kind,
+      // 默认值保守：每收一条新成果 core 都要做一次全库标题比对，单批超过 20 就会跑过读超时。
+      @RequestParam(defaultValue = "10") int limit) {
+    return ApiResponse.ok(citationBackfill.run(sourceCode, kind, limit), TraceIdHolder.current());
   }
 
   /**

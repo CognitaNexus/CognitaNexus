@@ -14,7 +14,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.cognitanexus.core.catalog.application.CatalogRepositories.CitationRepository;
-import com.cognitanexus.core.catalog.application.CatalogRepositories.CitationRepository.CitedKey;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.CitationRepository.CitedWork;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.CitationRepository.Observation;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.CitationRepository.ResolutionCounts;
@@ -275,31 +274,29 @@ class CitationNetworkServiceTest {
   // ---------------------------------------------------------------------------
 
   @Test
-  @DisplayName("重新解析只升级能查到的那部分外部引用")
-  void resolvePendingUpgradesOnlyResolvableKeys() {
-    when(citations.listUnresolvedKeys(anyInt()))
-        .thenReturn(
-            List.of(new CitedKey("OPENALEX_ID", "w200"), new CitedKey("OPENALEX_ID", "w999")));
-    when(identifiers.findEntityId("ACHIEVEMENT", IdentifierKind.OPENALEX_ID, "", "w200"))
-        .thenReturn(Optional.of("ach_b"));
-    when(identifiers.findEntityId("ACHIEVEMENT", IdentifierKind.OPENALEX_ID, "", "w999"))
-        .thenReturn(Optional.empty());
-    when(citations.resolveByKey(eq("OPENALEX_ID"), eq("w200"), eq("ach_b"), any())).thenReturn(2);
+  @DisplayName("重新解析把库内统计原样透传，并带上剩余可解析键数")
+  void resolvePendingPassesThroughBatchCounts() {
+    when(citations.resolveBatch(anyInt(), any()))
+        .thenReturn(new CitationRepository.ResolveBatch(2, 1, 2));
+    when(citations.countUnresolvedKeys()).thenReturn(17);
 
     var result = service.resolvePending(100, admin);
 
+    // 三个数字各自独立：扫了多少键、实际升级了多少键、连带点亮了多少行边。
+    // 合并成一个「处理了 N 条」会把「一个键带 200 行边」和「200 个键各 1 行」说成同一件事。
     assertThat(result.keysScanned()).isEqualTo(2);
     assertThat(result.keysResolved()).isEqualTo(1);
     assertThat(result.rowsResolved()).isEqualTo(2);
-    verify(citations, never()).resolveByKey(eq("OPENALEX_ID"), eq("w999"), anyString(), any());
+    assertThat(result.keysRemaining()).isEqualTo(17);
   }
 
   @Test
   @DisplayName("重新解析的扫描上限被夹逼，不能一次扫全表")
   void resolvePendingClampsLimit() {
-    when(citations.listUnresolvedKeys(anyInt())).thenReturn(List.of());
+    when(citations.resolveBatch(anyInt(), any()))
+        .thenReturn(new CitationRepository.ResolveBatch(0, 0, 0));
     service.resolvePending(999_999, admin);
-    verify(citations).listUnresolvedKeys(5000);
+    verify(citations).resolveBatch(eq(5000), any());
   }
 
   // ---------------------------------------------------------------------------

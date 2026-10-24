@@ -98,6 +98,41 @@ public class InternalController {
   }
 
   /**
+   * 引文反向回填的候选清单：站内被引最多、但本站还没收录的外部文献。
+   *
+   * <p>与 {@link #pendingCitations} 是相反方向的两件事，容易混：那个问「哪些站内论文还没采过参考
+   * 文献」，这个问「哪些站外文献被站内论文引了很多次却还没收录」。前者补的是观测，后者补的是节点；
+   * 节点不补，观测采得再全，边也只有 3% 能连起来。
+   *
+   * <p>同样由 core 出清单：收录状态的权威在 core，采集侧看不到 {@code core_identifier_registry}。
+   */
+  @GetMapping("/citations/backfill-candidates")
+  public ResponseEntity<ApiResponse<CitationNetworkService.BackfillPage>> backfillCandidates(
+      @RequestParam(required = false) String kind, @RequestParam(defaultValue = "50") int limit) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(citationNetwork.backfillCandidates(kind, limit), TraceIdHolder.current()));
+  }
+
+  /**
+   * 重新解析外部引用：把「注册表里已登记、边却仍是 EXTERNAL」的键升级成 RESOLVED。
+   *
+   * <p>为什么要有内部端点而不是只留管理端：引文反向回填是采集侧发起的（它取回外部文献并投进
+   * 来），收完节点之后必须立刻把边点亮，否则回填只增加成果数、不改引用网络，看起来「跑成功了」
+   * 却什么都没变。让采集侧带着用户 Cookie 去调管理端端点意味着把一个纯运维动作绑到人工会话上，
+   * 无人值守时跑不了。
+   *
+   * <p>只动 EXTERNAL 行，重复调用安全；{@code keysRemaining} 返回本轮之后还剩多少个可解析的键，
+   * 用来判断是「扫完了」还是「在原地打转」。
+   */
+  @PostMapping("/citations/resolve")
+  public ResponseEntity<ApiResponse<CitationNetworkService.ResolveResult>> resolveCitations(
+      @RequestParam(defaultValue = "500") int limit) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(
+            citationNetwork.resolvePending(limit, systemActor()), TraceIdHolder.current()));
+  }
+
+  /**
    * 待补摘要的成果清单。
    *
    * <p>与 {@link #pendingCitations} 同构：清单由 core 出，采集侧只负责按 DOI 去外网取。可见性、

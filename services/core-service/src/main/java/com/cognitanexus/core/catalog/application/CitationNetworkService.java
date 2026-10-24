@@ -1,7 +1,6 @@
 package com.cognitanexus.core.catalog.application;
 
 import com.cognitanexus.core.catalog.application.CatalogRepositories.CitationRepository;
-import com.cognitanexus.core.catalog.application.CatalogRepositories.CitationRepository.CitedKey;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.CitationRepository.CitedWork;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.CitationRepository.Observation;
 import com.cognitanexus.core.catalog.application.CatalogRepositories.CitationRepository.PendingWork;
@@ -286,31 +285,15 @@ public class CitationNetworkService {
   @Transactional
   public ResolveResult resolvePending(int limit, ActorContext actor) {
     int cap = Math.min(Math.max(limit, 1), MAX_RESOLVE_KEYS);
-    List<CitedKey> keys = citations.listUnresolvedKeys(cap);
-    int upgradedKeys = 0;
-    int upgradedRows = 0;
-    for (CitedKey key : keys) {
-      IdentifierKind kind;
-      try {
-        kind = IdentifierKind.valueOf(key.kind());
-      } catch (IllegalArgumentException ex) {
-        continue;
-      }
-      Optional<String> target =
-          identifiers.findEntityId(TARGET_ACHIEVEMENT, kind, "", key.valueNorm());
-      if (target.isEmpty()) {
-        continue;
-      }
-      int rows = citations.resolveByKey(key.kind(), key.valueNorm(), target.get(), Instant.now());
-      if (rows > 0) {
-        upgradedKeys++;
-        upgradedRows += rows;
-      }
-    }
+    // 一条语句完成「挑键 + 匹配注册表 + 升级边」：逐键循环是 2N 次往返，2000 个键会跑过
+    // 调用方的读超时，故障表现为「依赖不可用」，而实际原因只是分批太细。
+    CitationRepository.ResolveBatch batch = citations.resolveBatch(cap, Instant.now());
+    int remaining = citations.countUnresolvedKeys();
     Map<String, Object> after = new LinkedHashMap<>();
-    after.put("keysScanned", keys.size());
-    after.put("keysResolved", upgradedKeys);
-    after.put("rowsResolved", upgradedRows);
+    after.put("keysScanned", batch.keysScanned());
+    after.put("keysResolved", batch.keysResolved());
+    after.put("rowsResolved", batch.rowsResolved());
+    after.put("keysRemaining", remaining);
     audit.record(
         AuditRecorder.AuditEntry.of(
             actor,
@@ -320,8 +303,14 @@ public class CitationNetworkService {
             null,
             after,
             "重新解析外部引用"));
-    log.info("引用重新解析 扫描键={} 升级键={} 升级条目={}", keys.size(), upgradedKeys, upgradedRows);
-    return new ResolveResult(keys.size(), upgradedKeys, upgradedRows);
+    log.info(
+        "引用重新解析 扫描键={} 升级键={} 升级条目={} 剩余可解析键={}",
+        batch.keysScanned(),
+        batch.keysResolved(),
+        batch.rowsResolved(),
+        remaining);
+    return new ResolveResult(
+        batch.keysScanned(), batch.keysResolved(), batch.rowsResolved(), remaining);
   }
 
   // ---------------------------------------------------------------------------
@@ -499,6 +488,53 @@ public class CitationNetworkService {
         items, citations.countPendingWorks(blankToNull(search), blankToNull(topicId)));
   }
 
+  /**
+   * 引文反向回填的候选清单：站内被引用次数最多、但本站还没有收录的外部文献。
+   *
+   * <p>为什么需要反向回填：正向补水把「本篇引用了谁」记下来了，但 80 万条边里只有 3.4% 的另一端
+   * 在库内，其余全是 EXTERNAL。缺口不在采集，在「被引的那一端不存在」——所以要让边连起来，只能把
+   * 被引最多的外部文献收进站内。收一篇被引 227 次的论文，一次能点亮 227 条边；随机补摘要做不到这点。
+   *
+   * <p>选样由 core 做而不是采集侧做：只有 core 同时知道「哪些标识还没收录」和「每个标识被引几次」。
+   * 采集侧只能看到边，看不到收录状态，自己挑会重复抓已经有的。
+   *
+   * @param kind 标识种类，只接受 {@code DOI} 与 {@code OPENALEX_ID}；为空按 DOI
+   */
+  @Transactional(readOnly = true)
+  public BackfillPage backfillCandidates(String kind, int limit) {
+    String normalizedKind = normalizeBackfillKind(kind);
+    int cap = Math.min(Math.max(limit, 1), 200);
+    List<CatalogRepositories.CitationRepository.BackfillCandidate> rows =
+        citations.listBackfillCandidates(normalizedKind, cap);
+    List<Map<String, Object>> items = new ArrayList<>(rows.size());
+    for (CatalogRepositories.CitationRepository.BackfillCandidate row : rows) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("kind", row.kind());
+      item.put("value", row.valueNorm());
+      item.put("refs", row.refs());
+      items.add(item);
+    }
+    return new BackfillPage(
+        items, citations.countBackfillCandidates(normalizedKind), normalizedKind);
+  }
+
+  /**
+   * 校验并规范化回填标识种类。
+   *
+   * <p>只放行 core 侧 {@code core_identifier_registry} 真实登记过的两种：来源给的其他标识（如 arXiv
+   * 编号）没有对应的收录判据，放进来会让「本站是否已有」永远判成否，同一批被反复抓取。
+   */
+  private static String normalizeBackfillKind(String kind) {
+    if (kind == null || kind.isBlank()) {
+      return "DOI";
+    }
+    String upper = kind.trim().toUpperCase(java.util.Locale.ROOT);
+    if (!"DOI".equals(upper) && !"OPENALEX_ID".equals(upper)) {
+      throw BusinessException.invalidArgument("引文反向回填只支持 DOI 与 OPENALEX_ID 两种标识，实际为：" + kind);
+    }
+    return upper;
+  }
+
   private static Map<String, Object> citedWorkView(CitedWork work) {
     Map<String, Object> item = new LinkedHashMap<>();
     item.put("id", work.achievementId());
@@ -652,9 +688,23 @@ public class CitationNetworkService {
       List<String> unmatchedDois,
       List<String> identifierConflicts) {}
 
-  /** 重新解析结果。 */
-  public record ResolveResult(int keysScanned, int keysResolved, int rowsResolved) {}
+  /**
+   * 重新解析结果。
+   *
+   * <p>{@code keysRemaining} 与 {@code keysScanned} 必须一起看：只报「扫描了多少、解析了多少」
+   * 分不清「已经扫完」和「一直扫同一批解析不了的键」——两种情况下调用都成功，而后者边数不变。
+   */
+  public record ResolveResult(
+      int keysScanned, int keysResolved, int rowsResolved, int keysRemaining) {}
 
   /** 待补清单。 */
   public record PendingPage(List<Map<String, Object>> items, int remaining) {}
+
+  /**
+   * 反向回填候选页。
+   *
+   * @param remaining 同一标识种类下还剩多少个待回填，用来判断还要跑几轮
+   * @param kind 实际生效的标识种类（入参为空时回落为 DOI，要回显给调用方而不是让它猜）
+   */
+  public record BackfillPage(List<Map<String, Object>> items, int remaining, String kind) {}
 }

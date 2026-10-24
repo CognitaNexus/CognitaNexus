@@ -187,6 +187,41 @@ public class CoreInternalClient {
   }
 
   /**
+   * 引文反向回填候选：站内被引次数最多、但本站还没有收录的外部文献标识。
+   *
+   * <p>与 {@link #pendingCitations} 是相反方向：那个补「站内论文的参考文献观测」，这个补「被引的
+   * 那一端节点」。前者最多把边记成 EXTERNAL，后者才能让边真正连起来。
+   *
+   * <p>为什么清单必须由 core 出：{@code core_identifier_registry} 才记录「本站收了哪些标识」，
+   * 采集侧看不到它，自己挑会重复抓已收录的作品。
+   *
+   * @param kind {@code DOI} 或 {@code OPENALEX_ID}；为空由 core 回落为 DOI
+   */
+  public BackfillCandidates backfillCandidates(String kind, int limit) {
+    StringBuilder path =
+        new StringBuilder("/internal/v1/citations/backfill-candidates?limit=")
+            .append(Math.max(limit, 1));
+    if (kind != null && !kind.isBlank()) {
+      path.append("&kind=").append(urlEncodePath(kind));
+    }
+    JsonNode body = exchange(HttpMethod.GET, path.toString(), null, null, null);
+    if (body == null) {
+      return new BackfillCandidates(List.of(), 0, kind);
+    }
+    JsonNode data = body.path("data");
+    List<BackfillCandidate> items = new ArrayList<>();
+    for (JsonNode item : data.path("items")) {
+      items.add(
+          new BackfillCandidate(
+              item.path("kind").asText(null),
+              item.path("value").asText(null),
+              item.path("refs").isNumber() ? item.path("refs").asInt() : 0));
+    }
+    return new BackfillCandidates(
+        items, data.path("remaining").asInt(0), data.path("kind").asText(kind));
+  }
+
+  /**
    * 待补摘要的成果清单。
    *
    * <p>与 {@link #pendingCitations} 同理：补哪些由 core 决定。这里额外只取有 DOI 的——摘要必须
@@ -240,6 +275,38 @@ public class CoreInternalClient {
         data.path("skipped").asInt(0),
         data.path("tooLong").asInt(0));
   }
+
+  /**
+   * 触发 core 重新解析外部引用，把刚回填进来的节点对应的边点亮。
+   *
+   * <p>回填与解析是两件事：回填只把外部文献收成站内成果，边仍停在 EXTERNAL；不解析的话
+   * 「成果数涨了、引用网络没变」，从外面看就是跑成功了却什么都没发生。所以回填的最后一公里
+   * 必须由这里补上。
+   *
+   * <p>返回值里 {@code keysRemaining} 用来判断是否还要再跑：为 0 表示可解析的键都处理完了。
+   */
+  public ResolveReceipt resolveCitations(int limit) {
+    JsonNode body =
+        exchange(
+            HttpMethod.POST,
+            "/internal/v1/citations/resolve?limit=" + Math.max(limit, 1),
+            null,
+            null,
+            null);
+    if (body == null) {
+      throw new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE, "core 未返回解析回执，本步结果未知");
+    }
+    JsonNode data = body.path("data");
+    return new ResolveReceipt(
+        data.path("keysScanned").asInt(0),
+        data.path("keysResolved").asInt(0),
+        data.path("rowsResolved").asInt(0),
+        data.path("keysRemaining").asInt(0));
+  }
+
+  /** 重新解析回执。 */
+  public record ResolveReceipt(
+      int keysScanned, int keysResolved, int rowsResolved, int keysRemaining) {}
 
   /**
    * 投递参考文献观测。
@@ -366,6 +433,16 @@ public class CoreInternalClient {
 
   /** 待补清单与剩余规模。 */
   public record PendingCitations(List<PendingCitation> items, int remaining) {}
+
+  /**
+   * 一个待反向回填的外部被引标识。
+   *
+   * @param refs 站内有多少篇引用了它；收进来之后能点亮的边数上限
+   */
+  public record BackfillCandidate(String kind, String value, int refs) {}
+
+  /** 回填候选页。remaining 是全量还剩多少个，用来判断还要跑几轮。 */
+  public record BackfillCandidates(List<BackfillCandidate> items, int remaining, String kind) {}
 
   /** 待补摘要的成果。 */
   public record PendingAbstract(String achievementId, String doi, String title) {}

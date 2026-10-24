@@ -80,6 +80,20 @@ public class AdminCitationController {
   }
 
   /**
+   * 引文反向回填的候选清单。
+   *
+   * <p>给采集台展示「下一步该收哪几篇站外文献」：按站内被引次数从高到低。与 {@code /pending} 的
+   * 方向相反——那个是「站内论文还缺参考文献观测」，这个是「站外文献被引很多但站内没有」。
+   */
+  @GetMapping("/backfill-candidates")
+  public ResponseEntity<ApiResponse<CitationNetworkService.BackfillPage>> backfillCandidates(
+      @RequestParam(required = false) String kind, @RequestParam(defaultValue = "50") int limit) {
+    Capabilities.require(ActorContextHolder.currentOrNull(), RoleNames.CAP_SOURCE_MANAGE);
+    return ResponseEntity.ok(
+        ApiResponse.ok(citationNetwork.backfillCandidates(kind, limit), TraceIdHolder.current()));
+  }
+
+  /**
    * 内部投递口的管理端镜像。
    *
    * <p>正常路径是采集服务用服务令牌调 {@code /internal/v1/citation-observations}；这里的镜像只给

@@ -91,12 +91,17 @@ public class CitationRepositoryAdapter implements CitationRepository {
   }
 
   @Override
-  public List<CitedKey> listUnresolvedKeys(int limit) {
-    List<CitedKey> keys = new ArrayList<>();
-    for (CitationMapper.UnresolvedKeyRow row : mapper.listUnresolvedKeys(limit)) {
-      keys.add(new CitedKey(row.citedKind(), row.citedValueNorm()));
+  public ResolveBatch resolveBatch(int limit, Instant resolvedAt) {
+    CitationMapper.ResolveBatchRow row = mapper.resolveBatch(limit, resolvedAt);
+    if (row == null) {
+      return new ResolveBatch(0, 0, 0);
     }
-    return keys;
+    return new ResolveBatch(row.keysScanned(), row.keysResolved(), row.rowsResolved());
+  }
+
+  @Override
+  public int countUnresolvedKeys() {
+    return mapper.countUnresolvedKeys();
   }
 
   @Override
@@ -131,6 +136,22 @@ public class CitationRepositoryAdapter implements CitationRepository {
   @Override
   public int countPendingWorks(String search, String topicId) {
     return mapper.countPendingWorks(search, topicId);
+  }
+
+  @Override
+  public List<BackfillCandidate> listBackfillCandidates(String kind, int limit) {
+    List<BackfillCandidate> candidates = new ArrayList<>();
+    for (CitationMapper.BackfillCandidateRow row : mapper.listBackfillCandidates(kind, limit)) {
+      candidates.add(
+          new BackfillCandidate(
+              row.citedKind(), row.citedValueNorm(), row.refs() == null ? 0 : row.refs()));
+    }
+    return candidates;
+  }
+
+  @Override
+  public int countBackfillCandidates(String kind) {
+    return mapper.countBackfillCandidates(kind);
   }
 
   private static List<CitedWork> toWorks(List<CitationMapper.CitedWorkRow> rows) {

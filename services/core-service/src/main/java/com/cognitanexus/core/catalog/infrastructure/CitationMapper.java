@@ -178,16 +178,78 @@ public interface CitationMapper {
 
   record ResolutionCountsRow(int resolved, int external, int selfReferences) {}
 
-  /** 待重新解析的外部引用条目（按标识去重后再逐个查注册表，避免同一标识被查很多次）。 */
+  /**
+   * 还剩多少个「注册表里已有、边却仍是 EXTERNAL」的键。
+   *
+   * <p>用来判断重新解析是否真的推进了：只看「本轮解析了多少行」无法区分「已经扫完」与
+   * 「一直扫同一批」，两者都表现为调用成功。
+   */
   @Select(
       """
-      SELECT DISTINCT cited_kind AS citedKind, cited_value_norm AS citedValueNorm
-      FROM core_citation_reference WHERE resolution = 'EXTERNAL'
-      LIMIT #{limit}
+      SELECT count(*) FROM (
+        SELECT 1 FROM core_citation_reference r
+        JOIN core_identifier_registry i
+          ON i.identifier_kind = r.cited_kind
+         AND i.normalized_value = r.cited_value_norm
+         AND i.entity_type = 'ACHIEVEMENT'
+         AND i.scope = ''
+        WHERE r.resolution = 'EXTERNAL'
+        GROUP BY r.cited_kind, r.cited_value_norm
+      ) k
       """)
-  List<UnresolvedKeyRow> listUnresolvedKeys(@Param("limit") int limit);
+  int countUnresolvedKeys();
 
-  record UnresolvedKeyRow(String citedKind, String citedValueNorm) {}
+  /**
+   * 一次性把「注册表里已有、边却仍是 EXTERNAL」的前 N 个标识键升级成 RESOLVED。
+   *
+   * <p>为什么不用「先取键、再逐键更新」的两段式：那样每个键要一次 SELECT 加一次 UPDATE，
+   * 2000 个键就是 4000 次往返，实测超过调用方 20 秒的读超时，整步以 DEPENDENCY_UNAVAILABLE
+   * 报错——而它其实什么都没错，只是慢。改成一条语句后，扫描、匹配、更新都在库内完成。
+   *
+   * <p>三个计数在同一个语句里返回，必须在同一条语句里：分开统计会受并发写入影响，
+   * 出现「扫了 2000 个、解析了 2001 个」这种对不上的结果。
+   *
+   * <p>{@code LIMIT} 只框住「键」，不框「行」：一个被引 227 次的 DOI 会一次升级 227 行边。
+   * 按行限流会让高被引的那批永远排在后面——它们恰恰最该先连起来。
+   */
+  @Select(
+      """
+      WITH target AS (
+        SELECT r.cited_kind, r.cited_value_norm
+        FROM core_citation_reference r
+        JOIN core_identifier_registry i
+          ON i.identifier_kind = r.cited_kind
+         AND i.normalized_value = r.cited_value_norm
+         AND i.entity_type = 'ACHIEVEMENT'
+         AND i.scope = ''
+        WHERE r.resolution = 'EXTERNAL'
+        GROUP BY r.cited_kind, r.cited_value_norm
+        ORDER BY r.cited_kind, r.cited_value_norm
+        LIMIT #{limit}
+      ), upd AS (
+        UPDATE core_citation_reference r
+        SET cited_achievement_id = i.entity_id,
+            resolution = 'RESOLVED',
+            resolved_at = #{resolvedAt}
+        FROM core_identifier_registry i
+        JOIN target t
+          ON t.cited_kind = i.identifier_kind
+         AND t.cited_value_norm = i.normalized_value
+        WHERE i.entity_type = 'ACHIEVEMENT'
+          AND i.scope = ''
+          AND r.cited_kind = t.cited_kind
+          AND r.cited_value_norm = t.cited_value_norm
+          AND r.resolution = 'EXTERNAL'
+        RETURNING r.cited_kind, r.cited_value_norm
+      )
+      SELECT (SELECT count(*) FROM target) AS keysScanned,
+             (SELECT count(DISTINCT (cited_kind, cited_value_norm)) FROM upd) AS keysResolved,
+             (SELECT count(*) FROM upd) AS rowsResolved
+      """)
+  ResolveBatchRow resolveBatch(@Param("limit") int limit, @Param("resolvedAt") Instant resolvedAt);
+
+  /** 一次批量重新解析的计数。 */
+  record ResolveBatchRow(int keysScanned, int keysResolved, int rowsResolved) {}
 
   @Update(
       """
@@ -272,4 +334,50 @@ public interface CitationMapper {
       </script>
       """)
   int countPendingWorks(@Param("search") String search, @Param("topicId") String topicId);
+
+  /**
+   * 高频「本站还没有」的外部被引标识，按被引次数降序。
+   *
+   * <p>这是引文反向回填的选样依据：正向补水只能让「站内论文引用了谁」这件事被记录下来，边却因为
+   * 另一端不在库内而全部落在 EXTERNAL。要让边真正连起来，只能反过来把被引最多的外部文献收进来。
+   *
+   * <p>「本站还没有」不能只看 {@code core_paper.doi_norm}：外部标识里大半是 OpenAlex 作品号
+   * （实测 66 万条 OPENALEX_ID 对 12 万条 DOI），它不存在于 core_paper 的任何列。统一查
+   * {@code core_identifier_registry} 才能把两种标识都判对，否则会把已经收过的作品再抓一遍。
+   *
+   * <p>用 NOT EXISTS 而不是 NOT IN：子查询含 NULL 时 NOT IN 会把整个条件判成未知，结果一条都取不到，
+   * 而查询本身不报错。
+   */
+  @Select(
+      """
+      SELECT r.cited_kind AS citedKind, r.cited_value_norm AS citedValueNorm, count(*) AS refs
+      FROM core_citation_reference r
+      WHERE r.resolution = 'EXTERNAL' AND r.cited_kind = #{kind}
+        AND r.cited_value_norm IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM core_identifier_registry i
+          WHERE i.identifier_kind = r.cited_kind AND i.normalized_value = r.cited_value_norm
+        )
+      GROUP BY r.cited_kind, r.cited_value_norm
+      ORDER BY count(*) DESC, r.cited_value_norm
+      LIMIT #{limit}
+      """)
+  List<BackfillCandidateRow> listBackfillCandidates(
+      @Param("kind") String kind, @Param("limit") int limit);
+
+  /** 同一口径下还剩多少个可回填标识：用来回答「还要跑几轮」，不能靠本批条数推断。 */
+  @Select(
+      """
+      SELECT count(DISTINCT r.cited_value_norm)
+      FROM core_citation_reference r
+      WHERE r.resolution = 'EXTERNAL' AND r.cited_kind = #{kind}
+        AND r.cited_value_norm IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM core_identifier_registry i
+          WHERE i.identifier_kind = r.cited_kind AND i.normalized_value = r.cited_value_norm
+        )
+      """)
+  int countBackfillCandidates(@Param("kind") String kind);
+
+  record BackfillCandidateRow(String citedKind, String citedValueNorm, Integer refs) {}
 }

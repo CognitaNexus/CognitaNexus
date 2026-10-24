@@ -626,7 +626,24 @@ public interface CatalogRepositories {
 
     ResolutionCounts countReferencesOf(String citingAchievementId);
 
-    java.util.List<CitedKey> listUnresolvedKeys(int limit);
+    /**
+     * 一次批量把「注册表里已登记、边却仍是 EXTERNAL」的前 N 个标识键升级为已解析。
+     *
+     * <p>不是逐键循环：逐键要 2N 次数据库往返，2000 个键就超过调用方读超时，整步报
+     * DEPENDENCY_UNAVAILABLE——它没坏，只是慢。批量版在库内一次完成。
+     */
+    ResolveBatch resolveBatch(int limit, java.time.Instant resolvedAt);
+
+    /** 一次批量重新解析的计数。 */
+    record ResolveBatch(int keysScanned, int keysResolved, int rowsResolved) {}
+
+    /**
+     * 还剩多少个「注册表里已登记、边却仍是 EXTERNAL」的标识键。
+     *
+     * <p>与 {@link #resolveBatch} 同一口径（都 join 注册表），否则「剩余」会把永远解析不了
+     * 的站外文献算进来，数字只增不减，看的人会以为重新解析坏了。
+     */
+    int countUnresolvedKeys();
 
     /**
      * 把一个标识键下的所有外部引用升级为已解析。
@@ -645,5 +662,17 @@ public interface CatalogRepositories {
     java.util.List<PendingWork> listPendingWorks(int limit, String search, String topicId);
 
     int countPendingWorks(String search, String topicId);
+
+    /**
+     * 高频「本站还没有」的外部被引标识，供引文反向回填选样。
+     *
+     * @param kind 标识种类（{@code DOI} 或 {@code OPENALEX_ID}）
+     */
+    java.util.List<BackfillCandidate> listBackfillCandidates(String kind, int limit);
+
+    int countBackfillCandidates(String kind);
+
+    /** 一个待回填的外部被引标识。refs 是「站内有多少篇引用了它」，代表收进来之后能连上多少条边。 */
+    record BackfillCandidate(String kind, String valueNorm, int refs) {}
   }
 }
