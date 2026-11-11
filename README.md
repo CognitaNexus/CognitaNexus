@@ -34,11 +34,11 @@ cd frontend && npm ci && npm run build
 | `frontend/` | 用户端和管理端 |
 | `ops/` | 环境、迁移、导入/备份和运维 |
 | `tests/` | 接口、浏览器与性能验证 |
-| `docs/` | 已确认的文档基线索引、必要工程约束与架构决策，见 [导航](docs/README.md) |
+| `docs/` | 编码规范、来源许可与分支流程，见 [工程文档](docs/README.md) |
 
 ## 需求与当前问题
 
-- 课程定稿：用户提供的 2026-11-11 压缩包，其中 SRS 为 V2.1（69 条 AC）；旧 [`analysis/s01-s02-69ac`](https://github.com/CognitaNexus/CognitaNexus/tree/analysis/s01-s02-69ac) 分支为历史分析成果（SRS V2.2），不自动覆盖课程定稿。
+- [课程定稿与架构决策](https://github.com/CognitaNexus/CognitaNexus/blob/course-docs/docs/README.md)：用户提供的 2026-11-11 压缩包，其中 SRS 为 V2.1（69 条 AC）；旧 [`analysis/s01-s02-69ac`](https://github.com/CognitaNexus/CognitaNexus/tree/analysis/s01-s02-69ac) 分支为历史分析成果（SRS V2.2），不自动覆盖课程定稿。
 - 需要改进：真实数据规模、增量导入、治理积压、100 万数据下的查询性能，以及部署验证；历史测试结果不等于新环境通过。
 - [开发 Issues](https://github.com/CognitaNexus/CognitaNexus/issues)；[分支与 PR 规范](docs/BRANCHING.md)。
 

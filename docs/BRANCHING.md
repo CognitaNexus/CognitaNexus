@@ -8,11 +8,14 @@
 | --- | --- | --- |
 | `main` | 稳定可回滚的工程版本 | 仅经 PR 审查后合并；禁止直接推送 |
 | `dev` | 日常联调、下一版集成 | PR 合入；**当前推送触发部署流水线**，更改前核实目标机 |
+| `course-docs` | 课程定稿索引、架构决策与课程交付文档 | 文档 PR 合入此分支 |
 | `analysis/s01-s02-69ac` | 历史 SRS V2.2 / 69 AC 与 S01/S02 分析资料（非本次课程定稿） | 只通过评审的文档 PR 更新，不直接放入产线 |
 | `feat/<issue>-<topic>` | 新功能 | 从 `dev` 拉，完成后 PR 到 `dev` |
 | `fix/<issue>-<topic>` | 缺陷修复 | 从 `dev` 拉，PR 到 `dev` |
-| `docs/<issue>-<topic>` | 文档调整 | PR 到相关目标分支 |
+| `docs/<topic>` | 课程文档调整 | 从 `course-docs` 拉，PR 到 `course-docs` |
 | `release/vX.Y.Z` | 发布候选（需要时创建） | 测试与审阅通过再合入 `main` |
+
+代码和课程文档分别提交。课程文档使用 `docs/<topic>` 分支合入 `course-docs`。与实现直接相关的编码规范、来源许可及运行说明随代码维护。
 
 ## 实际操作
 
