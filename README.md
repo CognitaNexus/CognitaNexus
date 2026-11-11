@@ -1,6 +1,6 @@
 # CognitaNexus 学术成果分享平台
 
-学术成果的采集、去重治理、学者认领、检索、统计和合作网络平台。**本仓库以工程实施为主；需求与分析基线见 [SRS V2.2 / 69 AC 分支](https://github.com/CognitaNexus/CognitaNexus/tree/analysis/s01-s02-69ac)。**
+学术成果的采集、去重治理、学者认领、检索、统计和合作网络平台。**本仓库以工程实施为主。课程文档以 2026-11-11 提供的《软件系统分析与设计.zip》为定稿依据；公开发布前需筛选其中涉及个人信息的附件。参见 [定稿目录说明](docs/README.md)。**
 
 ## 当前版本
 
@@ -21,7 +21,7 @@ cd frontend && npm ci && npm run build
 
 部署资产：`compose.yaml`、`ops/compose/`（容器部署候选），`ops/deploy/`（已有 systemd / Nginx 方案）。部署前复制 `.env.example` 为 `.env` 并设置非默认口令、访问令牌；**不要将凭据提交仓库**。Compose 的具体目标机器与端到端部署仍需在目标环境重新验证。
 
-本地启停与只读健康检查：见 [RESTART.md](RESTART.md)；详细运维说明以 [docs/HANDOVER.md](docs/HANDOVER.md) 的当前版本状态和实际运行环境为准。
+本地启停与只读健康检查：见 [RESTART.md](RESTART.md)；部署时以 `ops/` 下的实际配置、环境变量及验证结果为准，历史运维结论不可代替现状。
 
 ## 主要目录
 
@@ -34,12 +34,12 @@ cd frontend && npm ci && npm run build
 | `frontend/` | 用户端和管理端 |
 | `ops/` | 环境、迁移、导入/备份和运维 |
 | `tests/` | 接口、浏览器与性能验证 |
-| `docs/` | 当前设计、决策与验证证据，见 [导航](docs/README.md) |
+| `docs/` | 已确认的文档基线索引、必要工程约束与架构决策，见 [导航](docs/README.md) |
 
 ## 需求与当前问题
 
-- 需求/分析：[`analysis/s01-s02-69ac`](https://github.com/CognitaNexus/CognitaNexus/tree/analysis/s01-s02-69ac)（SRS V2.2、69 AC、S01/S02），实施以逐条追踪为准。
-- 需要改进：真实数据规模、增量导入、治理积压、100 万数据下的查询性能，以及目标云部署验证；历史测试结果不等于新环境通过。
+- 课程定稿：用户提供的 2026-11-11 压缩包，其中 SRS 为 V2.1（69 条 AC）；旧 [`analysis/s01-s02-69ac`](https://github.com/CognitaNexus/CognitaNexus/tree/analysis/s01-s02-69ac) 分支为历史分析成果（SRS V2.2），不自动覆盖课程定稿。
+- 需要改进：真实数据规模、增量导入、治理积压、100 万数据下的查询性能，以及部署验证；历史测试结果不等于新环境通过。
 - [开发 Issues](https://github.com/CognitaNexus/CognitaNexus/issues)；[分支与 PR 规范](docs/BRANCHING.md)。
 
 **请不要在本仓库发布账号口令、SSH 密钥、原始私有证明材料或生产环境信息。**
