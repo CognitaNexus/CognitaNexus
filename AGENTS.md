@@ -107,7 +107,7 @@ PR 的完成定义：
 ## 4. Git、评审与发布规范
 
 - 长期分支：`main` 稳定发布，`dev` 日常集成，`analysis/s01-s02-69ac` 需求分析。未经明确授权不强推、不删分支、不重写共享提交历史。
-- 开发从最新 `dev` 建立短生命周期分支：`feat/<issue>-topic`、`fix/<issue>-topic`、`docs/<issue>-topic`；PR 合到 `dev`，经验收再发布到 `main`。
+- 开发从最新 `dev` 建立短生命周期分支：`feat/<issue>-topic`、`fix/<issue>-topic`、`docs/<issue>-topic`；代码 PR 合到 `dev`，经验收再发布到 `main`。课程文档 PR 从 `course-docs` 建立并合回 `course-docs`。
 - 提交推荐：`feat(core): ...`、`fix(ingestion): ...`、`test(query): ...`、`docs: ...`、`chore(ops): ...`，主题说明实际行为变化。
 - PR 写明 Issue、需求依据、方案/关键取舍、影响范围、测试命令与真实结果、数据库/配置变更、风险和回滚。评审者重点看正确性、边界、授权、事务、数据一致性、资源和可维护性。
 - Review 指出问题后由作者修复并重新验证；作者不能把自己的“已检查”代替独立评审。
@@ -140,4 +140,4 @@ PR 的完成定义：
 4. **风险与回滚**：数据库/部署影响、观察指标、撤销办法。
 5. **下一步**：遗留问题与对应 Issue，避免无边界扩张任务。
 
-> 参考：[分支规范](docs/BRANCHING.md) · [课程定稿说明](docs/README.md) · [开发任务](https://github.com/CognitaNexus/CognitaNexus/issues)。
+> 参考：[分支规范](docs/BRANCHING.md) · [课程定稿说明](https://github.com/CognitaNexus/CognitaNexus/blob/course-docs/docs/README.md) · [开发任务](https://github.com/CognitaNexus/CognitaNexus/issues)。
