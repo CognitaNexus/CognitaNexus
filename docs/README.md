@@ -17,16 +17,16 @@
 - SPEC DOCX SHA-256：`9adf8d4ece8b827eec3a7275bce84bde42869b0320d3f849ae20806090e32b22`。
 - 需求分析报告 DOCX SHA-256：`5d5cbb6f0ef38f93292f7c630979b61cae8d9f337eef3bbb4cd68df5f3d05c46`。
 
-## 当前保留的工程资料
+## 架构决策与代码仓库入口
 
 | 路径 | 用途 |
 | --- | --- |
-| [根目录 AGENTS.md](../AGENTS.md) | 当前软件工程流程与智能体工作约束 |
-| [BRANCHING.md](BRANCHING.md) | Git 分支、PR 与发布流程 |
-| [编码规范](standards/编码规范.md) | 后端和前端编码约束（实施时核实与当前框架一致） |
+| [根目录 AGENTS.md](https://github.com/CognitaNexus/CognitaNexus/blob/main/AGENTS.md) | 当前软件工程流程与智能体工作约束 |
+| [分支规范](https://github.com/CognitaNexus/CognitaNexus/blob/main/docs/BRANCHING.md) | Git 分支、PR 与发布流程 |
+| [编码规范](https://github.com/CognitaNexus/CognitaNexus/tree/main/docs/standards) | 后端和前端编码约束（实施时核实与当前框架一致） |
 | [架构决策记录](architecture/adr/) | 历史工程取舍证据；不得视为覆盖本次课程定稿的正式架构 |
-| [来源许可与字段白名单](engineering/来源许可与字段白名单说明.md) | 公开数据源接入时的许可和字段约束 |
-| `../ops/`、`../tests/` | 当前部署、种子导入、接口和性能测试的可执行资产 |
+| [来源许可与字段白名单](https://github.com/CognitaNexus/CognitaNexus/tree/main/docs/engineering) | 公开数据源接入时的许可和字段约束 |
+| [ops](https://github.com/CognitaNexus/CognitaNexus/tree/main/ops)、[tests](https://github.com/CognitaNexus/CognitaNexus/tree/main/tests) | 当前部署、种子导入、接口和性能测试的可执行资产 |
 
 已从 `main` 删除旧的 V0.2 架构说明、过时运维手册、旧 SRS/SPEC 对照流水账、阶段性 AI 报告/提示词和历史统计报告；这些资料仍可通过 Git 历史查阅。不删除正式运行代码、Flyway、CI 或测试脚本。
 
