@@ -1,0 +1,36 @@
+# 统一换行与文本判定
+#
+# 背景：本项目在 Windows 上开发、后续在 Linux 容器中运行。若不做约束，
+# 检出的 CRLF 会让 Spotless / google-java-format 的校验结果依赖开发机，
+# 且 .sql 迁移文件带 CRLF 会导致 Flyway 校验和在不同平台不一致。
+# 因此源码与脚本一律以 LF 入库、按 LF 检出。
+
+* text=auto eol=lf
+
+*.java      text eol=lf
+*.sql       text eol=lf
+*.xml       text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.md        text eol=lf
+*.json      text eol=lf
+*.ts        text eol=lf
+*.vue       text eol=lf
+*.css       text eol=lf
+*.html      text eol=lf
+*.sh        text eol=lf
+
+# 二进制：禁止行尾转换与差异比较
+*.jar       binary
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.woff      binary
+*.woff2     binary
+*.pdf       binary
+
+# Windows 批处理必须保留 CRLF，否则 cmd 解析异常
+*.cmd       text eol=crlf
+*.bat       text eol=crlf

@@ -1,0 +1,104 @@
+{
+  "startedAt": "2026-10-17T12:14:12.817Z",
+  "endedAt": "2026-10-17T12:15:54.225Z",
+  "vus": 10,
+  "warmupSeconds": 30,
+  "steadySeconds": 60,
+  "thinkTimeMs": 1000,
+  "peakInFlight": 10,
+  "steadyRequests": 51,
+  "steadyRps": 0.85,
+  "overallSuccessRate": 0.6471,
+  "scenarios": [
+    {
+      "scenario": "search.achievements",
+      "requests": 27,
+      "ok": 24,
+      "httpErrors": 3,
+      "timeouts": 0,
+      "businessFailures": 0,
+      "successRate": 0.8889,
+      "p50": "6662.7",
+      "p95": "16951.9",
+      "p99": "18576.0",
+      "max": "18576.0",
+      "sampleErrors": [
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/achievements?dataNature=ALL&size=20&q=%E5%8C%BB%E5%AD%A6%E5%BD%B1%E5%83%8F&page=2",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/achievements?dataNature=ALL&size=20&q=%E6%95%B0%E6%8D%AE%E6%B2%BB%E7%90%86&page=1",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/achievements?dataNature=ALL&size=20&q=%E6%9E%84%E7%BB%93%E6%9E%84%E5%88%86%E6%9E%90%E6%96%B9%E6%B3%95&page=3"
+      ]
+    },
+    {
+      "scenario": "search.scholars",
+      "requests": 12,
+      "ok": 5,
+      "httpErrors": 4,
+      "timeouts": 3,
+      "businessFailures": 0,
+      "successRate": 0.4167,
+      "p50": "12238.5",
+      "p95": "20100.0",
+      "p99": "20100.0",
+      "max": "20100.0",
+      "sampleErrors": [
+        "timeout http://127.0.0.1:18083/api/v1/public/search/scholars?dataNature=ALL&q=%E4%BD%9C%E8%80%851234&page=2&size=20",
+        "timeout http://127.0.0.1:18083/api/v1/public/search/scholars?dataNature=ALL&q=%E4%BD%9C%E8%80%85777&page=1&size=20",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/scholars?dataNature=ALL&q=%E4%BD%9C%E8%80%851234&page=2&size=20",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/scholars?dataNature=ALL&q=%E4%BD%9C%E8%80%852&page=2&size=20",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/scholars?dataNature=ALL&q=%E4%BD%9C%E8%80%852&page=1&size=20"
+      ]
+    },
+    {
+      "scenario": "detail.achievement",
+      "requests": 5,
+      "ok": 3,
+      "httpErrors": 2,
+      "timeouts": 0,
+      "businessFailures": 0,
+      "successRate": 0.6,
+      "p50": "17.4",
+      "p95": "22.3",
+      "p99": "22.3",
+      "max": "22.3",
+      "sampleErrors": [
+        "HTTP 404 http://127.0.0.1:18081/api/v1/public/achievements/perf-00616122",
+        "HTTP 404 http://127.0.0.1:18081/api/v1/public/achievements/perf-00293501"
+      ]
+    },
+    {
+      "scenario": "analytics.overview",
+      "requests": 6,
+      "ok": 0,
+      "httpErrors": 0,
+      "timeouts": 6,
+      "businessFailures": 0,
+      "successRate": 0,
+      "p50": "20016.1",
+      "p95": "20045.9",
+      "p99": "20045.9",
+      "max": "20045.9",
+      "sampleErrors": [
+        "timeout http://127.0.0.1:18083/api/v1/public/analytics/overview?dataNature=ALL",
+        "timeout http://127.0.0.1:18083/api/v1/public/analytics/overview?dataNature=ALL",
+        "timeout http://127.0.0.1:18083/api/v1/public/analytics/overview?dataNature=ALL",
+        "timeout http://127.0.0.1:18083/api/v1/public/analytics/overview?dataNature=ALL",
+        "timeout http://127.0.0.1:18083/api/v1/public/analytics/overview?dataNature=ALL"
+      ]
+    },
+    {
+      "scenario": "network.graph",
+      "requests": 1,
+      "ok": 1,
+      "httpErrors": 0,
+      "timeouts": 0,
+      "businessFailures": 0,
+      "successRate": 1,
+      "p50": "6726.6",
+      "p95": "6726.6",
+      "p99": "6726.6",
+      "max": "6726.6",
+      "sampleErrors": []
+    }
+  ],
+  "note": "RPS 是稳定段的平均值；活跃用户数不等于 RPS。业务失败指 HTTP 200 但结果结构/语义不自洽，未从样本中剔除。"
+}

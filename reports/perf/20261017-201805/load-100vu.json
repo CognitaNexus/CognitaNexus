@@ -1,0 +1,115 @@
+{
+  "startedAt": "2026-10-17T12:40:12.531Z",
+  "endedAt": "2026-10-17T12:46:32.695Z",
+  "vus": 100,
+  "warmupSeconds": 60,
+  "steadySeconds": 300,
+  "thinkTimeMs": 1000,
+  "peakInFlight": 100,
+  "steadyRequests": 4622,
+  "steadyRps": 15.41,
+  "overallSuccessRate": 0.249,
+  "scenarios": [
+    {
+      "scenario": "search.achievements",
+      "requests": 2286,
+      "ok": 446,
+      "httpErrors": 1821,
+      "timeouts": 19,
+      "businessFailures": 0,
+      "successRate": 0.1951,
+      "p50": "5012.8",
+      "p95": "11068.0",
+      "p99": "19132.1",
+      "max": "20108.8",
+      "sampleErrors": [
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/achievements?dataNature=ALL&size=20&type=AWARD&yearFrom=2015&yearTo=2026&sort=title_asc&page=3",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/achievements?dataNature=ALL&size=20&q=%E8%83%BD%E6%BA%90%E8%B0%83%E5%BA%A6&page=1",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/achievements?dataNature=ALL&size=20&q=%E8%83%BD%E6%BA%90%E8%B0%83%E5%BA%A6&page=2",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/achievements?dataNature=ALL&size=20&q=%E6%B2%A1%E6%9C%89%E8%BF%99%E4%B8%AA%E8%AF%8D&page=1",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/achievements?dataNature=ALL&size=20&type=PATENT&yearFrom=2015&yearTo=2026&sort=title_asc&page=2"
+      ]
+    },
+    {
+      "scenario": "search.scholars",
+      "requests": 915,
+      "ok": 102,
+      "httpErrors": 744,
+      "timeouts": 69,
+      "businessFailures": 0,
+      "successRate": 0.1115,
+      "p50": "5013.9",
+      "p95": "20006.5",
+      "p99": "20015.4",
+      "max": "20145.8",
+      "sampleErrors": [
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/scholars?dataNature=ALL&q=%E4%BD%9C%E8%80%851&page=1&size=20",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/scholars?dataNature=ALL&q=%E4%BD%9C%E8%80%85777&page=2&size=20",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/scholars?dataNature=ALL&q=%E4%BD%9C%E8%80%854321&page=1&size=20",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/scholars?dataNature=ALL&q=%E4%BD%9C%E8%80%851&page=2&size=20",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/scholars?dataNature=ALL&q=%E4%BD%9C%E8%80%852&page=1&size=20"
+      ]
+    },
+    {
+      "scenario": "detail.achievement",
+      "requests": 732,
+      "ok": 602,
+      "httpErrors": 130,
+      "timeouts": 0,
+      "businessFailures": 0,
+      "successRate": 0.8224,
+      "p50": "7.9",
+      "p95": "16.8",
+      "p99": "39.0",
+      "max": "259.5",
+      "sampleErrors": [
+        "HTTP 404 http://127.0.0.1:18081/api/v1/public/achievements/perf-00627656",
+        "HTTP 404 http://127.0.0.1:18081/api/v1/public/achievements/perf-00039972",
+        "HTTP 404 http://127.0.0.1:18081/api/v1/public/achievements/perf-00784221",
+        "HTTP 404 http://127.0.0.1:18081/api/v1/public/achievements/perf-00088223",
+        "HTTP 404 http://127.0.0.1:18081/api/v1/public/achievements/perf-00676684"
+      ]
+    },
+    {
+      "scenario": "analytics.overview",
+      "requests": 474,
+      "ok": 0,
+      "httpErrors": 467,
+      "timeouts": 7,
+      "businessFailures": 0,
+      "successRate": 0,
+      "p50": "5014.0",
+      "p95": "10015.3",
+      "p99": "20010.4",
+      "max": "20050.2",
+      "sampleErrors": [
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/analytics/overview?dataNature=ALL",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/analytics/overview?dataNature=ALL",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/analytics/overview?dataNature=ALL",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/analytics/overview?dataNature=ALL",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/analytics/overview?dataNature=ALL"
+      ]
+    },
+    {
+      "scenario": "network.graph",
+      "requests": 215,
+      "ok": 1,
+      "httpErrors": 214,
+      "timeouts": 0,
+      "businessFailures": 0,
+      "successRate": 0.0047,
+      "p50": "5010.6",
+      "p95": "10003.6",
+      "p99": "14974.4",
+      "max": "19985.7",
+      "sampleErrors": [
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/network/graph?scholarId=sch-perf-899&depth=1&dataNature=ALL",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/network/graph?scholarId=sch-perf-1847&depth=1&dataNature=ALL",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/network/graph?scholarId=sch-perf-3105&depth=1&dataNature=ALL",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/network/graph?scholarId=sch-perf-407&depth=1&dataNature=ALL",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/network/graph?scholarId=sch-perf-4100&depth=1&dataNature=ALL"
+      ]
+    }
+  ],
+  "note": "RPS 是稳定段的平均值；活跃用户数不等于 RPS。业务失败指 HTTP 200 但结果结构/语义不自洽，未从样本中剔除。"
+}

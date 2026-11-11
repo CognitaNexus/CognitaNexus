@@ -1,0 +1,108 @@
+{
+  "startedAt": "2026-10-17T12:35:03.518Z",
+  "endedAt": "2026-10-17T12:36:49.028Z",
+  "vus": 20,
+  "warmupSeconds": 30,
+  "steadySeconds": 60,
+  "thinkTimeMs": 1000,
+  "peakInFlight": 20,
+  "steadyRequests": 104,
+  "steadyRps": 1.73,
+  "overallSuccessRate": 0.4712,
+  "scenarios": [
+    {
+      "scenario": "search.achievements",
+      "requests": 50,
+      "ok": 28,
+      "httpErrors": 15,
+      "timeouts": 7,
+      "businessFailures": 0,
+      "successRate": 0.56,
+      "p50": "9696.2",
+      "p95": "20027.3",
+      "p99": "20148.5",
+      "max": "20148.5",
+      "sampleErrors": [
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/achievements?dataNature=ALL&size=20&q=%E6%9E%84%E7%BB%93%E6%9E%84%E5%88%86%E6%9E%90%E6%96%B9%E6%B3%95&page=3",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/achievements?dataNature=ALL&size=20&type=PROJECT&yearFrom=2015&yearTo=2026&sort=title_asc&page=1",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/achievements?dataNature=ALL&size=20&q=%E8%83%BD%E6%BA%90%E8%B0%83%E5%BA%A6&page=3",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/achievements?dataNature=ALL&size=20&q=zzz%E4%B8%8D%E5%AD%98%E5%9C%A8&page=1",
+        "timeout http://127.0.0.1:18083/api/v1/public/search/achievements?dataNature=ALL&size=20&q=%E5%9B%BE%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C&page=1"
+      ]
+    },
+    {
+      "scenario": "search.scholars",
+      "requests": 21,
+      "ok": 7,
+      "httpErrors": 8,
+      "timeouts": 6,
+      "businessFailures": 0,
+      "successRate": 0.3333,
+      "p50": "11379.1",
+      "p95": "20095.7",
+      "p99": "20120.0",
+      "max": "20120.0",
+      "sampleErrors": [
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/scholars?dataNature=ALL&q=%E4%BD%9C%E8%80%851&page=1&size=20",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/scholars?dataNature=ALL&q=%E4%BD%9C%E8%80%851&page=1&size=20",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/scholars?dataNature=ALL&q=%E4%BD%9C%E8%80%854321&page=1&size=20",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/search/scholars?dataNature=ALL&q=%E4%BD%9C%E8%80%851234&page=1&size=20",
+        "timeout http://127.0.0.1:18083/api/v1/public/search/scholars?dataNature=ALL&q=%E4%BD%9C%E8%80%852&page=1&size=20"
+      ]
+    },
+    {
+      "scenario": "detail.achievement",
+      "requests": 13,
+      "ok": 12,
+      "httpErrors": 1,
+      "timeouts": 0,
+      "businessFailures": 0,
+      "successRate": 0.9231,
+      "p50": "13.4",
+      "p95": "18.4",
+      "p99": "18.4",
+      "max": "18.4",
+      "sampleErrors": [
+        "HTTP 404 http://127.0.0.1:18081/api/v1/public/achievements/perf-00358187"
+      ]
+    },
+    {
+      "scenario": "analytics.overview",
+      "requests": 16,
+      "ok": 0,
+      "httpErrors": 7,
+      "timeouts": 9,
+      "businessFailures": 0,
+      "successRate": 0,
+      "p50": "20006.3",
+      "p95": "20090.9",
+      "p99": "20090.9",
+      "max": "20090.9",
+      "sampleErrors": [
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/analytics/overview?dataNature=ALL",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/analytics/overview?dataNature=ALL",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/analytics/overview?dataNature=ALL",
+        "timeout http://127.0.0.1:18083/api/v1/public/analytics/overview?dataNature=ALL",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/analytics/overview?dataNature=ALL"
+      ]
+    },
+    {
+      "scenario": "network.graph",
+      "requests": 4,
+      "ok": 2,
+      "httpErrors": 2,
+      "timeouts": 0,
+      "businessFailures": 0,
+      "successRate": 0.5,
+      "p50": "10119.6",
+      "p95": "15908.7",
+      "p99": "15908.7",
+      "max": "15908.7",
+      "sampleErrors": [
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/network/graph?scholarId=sch-perf-1432&depth=1&dataNature=ALL",
+        "HTTP 500 http://127.0.0.1:18083/api/v1/public/network/graph?scholarId=sch-perf-1307&depth=1&dataNature=ALL"
+      ]
+    }
+  ],
+  "note": "RPS 是稳定段的平均值；活跃用户数不等于 RPS。业务失败指 HTTP 200 但结果结构/语义不自洽，未从样本中剔除。"
+}

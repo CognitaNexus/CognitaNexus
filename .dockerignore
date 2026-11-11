@@ -1,0 +1,47 @@
+# 镜像构建上下文排除项。
+#
+# 这份文件同时服务三个后端镜像与前端镜像，因此排除项按「任何镜像都不需要」来选。
+#
+# 关键一条是 target/ 与 node_modules/：不排除它们，每次构建都会把几百 MB 的本地产物
+# 送进构建上下文，构建会慢到让人放弃用镜像。构建阶段会在容器内自己编译。
+
+# 构建产物
+**/target/
+**/node_modules/
+**/dist/
+
+# 版本控制与工具元数据
+.git/
+.gitattributes
+.gitignore
+.mvn/
+mvnw
+mvnw.cmd
+
+# 本地运行痕迹：日志、PID、上传的认领材料
+ops/local/run/
+ops/local/*.log
+*.log
+core-run.log
+target-build.log
+
+# 本地数据与备份
+ops/backup/
+ops/restore/
+*.dump
+*.sql.gz
+
+# 配置与密钥：绝不能进镜像。compose 在运行时以环境变量注入。
+.env
+.env.*
+!.env.example
+
+# 编辑器与系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 项目内部记录
+.workbuddy/
+reports/

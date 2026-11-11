@@ -1,45 +1,45 @@
-# CognitaNexus
+# CognitaNexus 学术成果分享平台
 
-以学者为中心的学术成果聚合、共享与管理平台，覆盖论文、专利、科研项目和获奖四类成果。
+学术成果的采集、去重治理、学者认领、检索、统计和合作网络平台。**本仓库以工程实施为主；需求与分析基线见 [SRS V2.2 / 69 AC 分支](https://github.com/CognitaNexus/CognitaNexus/tree/analysis/s01-s02-69ac)。**
 
-## 当前阶段
+## 当前版本
 
-项目处于**需求建模 / SRS 与核心 SPEC 初稿**阶段。当前仓库维护需求、模块规格、图源和评审材料，尚未提供应用代码或运行部署流程。
+- **v1 工程基线**：由 `dev` 的 2026-10-24 快照整理而来；2026-11-11 首次纳入 `main`。这是代码版本整理，**不代表全部 69 AC 已验收**。
+- 后端：Java 21 / Spring Boot 3.5 / Maven，`core-service`、`ingestion-service`、`query-service` 三个可独立部署单元。
+- 前端：Vue 3 / TypeScript / Vite。数据：PostgreSQL（`core_db`、`ingestion_db`、`query_db`，各服务独立归属）与 Redis（会话 / 缓存）。
+- `core` 负责业务事实与授权；`ingestion` 负责采集和交接；`query` 负责检索、统计、网络及读投影。跨服务同步沿用 Outbox / Inbox。
+- R1–R7 是逻辑能力编号，不等于七个独立微服务。华为云 ECS/RDS/OBS/CSS/DCS 拓扑属于目标方案，不能当作已经部署的事实。
 
-- 需求依据：V1.9 需求基线，正文状态为待小组评审。
-- **当前唯一工程实施候选：双组共同 SRS V1.1 Implementation RC**；已依据 V1.9 进行工程可行性与需求边界收敛，尚待 CognitaNexus 与 OvO 双方签认，未 Frozen。此前六人稿及 514 页双组汇编均保留为历史来源，不再作为现行开发规范。
-- 核心 SPEC V1.0 为 Review Candidate，需联合评审；不代表规则已冻结。
-- FR01、FR02 为 Must；O01、O02 为 Optional，不作为一期基础验收的前置条件。
+## 开发入口
 
-## 阅读入口
-
-1. [需求基线 V1.9](docs/requirements/学术成果分享平台需求分析与可行性报告.md)
-2. [调研与可行性论证附录](docs/requirements/学术成果分享平台调研与可行性论证附录.md)
-3. [SRS 编写与需求建模规范 V1.0](docs/srs/CognitaNexus_SRS编写与需求建模规范_V1.0.md)
-4. [六人模块 SRS 导航](docs/srs/modules/README.md)
-5. **[工程可实施双组共同 SRS V1.1 RC](docs/srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.md)** · [对应 Word](docs/srs/CognitaNexus-Shared-SRS-V1.1-Implementation-RC.docx)；[工程可行性评审与12项取舍](docs/reports/srs/engineering-feasibility-scope-review-2026-10-12.md)
-6. [核心 SPEC 候选稿](docs/spec/CognitaNexus-Core-SPEC-V1.0.md)
-7. **[OvO 124 条子需求/287 条 AC 逐条收敛来源表](docs/srs/integration/engineering-scope-trace-v1.1-rc.md)** · [历史自动归并 V1.0](docs/srs/integration/shared-ac-resolution-v1.0-rc.md)（仅审计，不作为现行实施）
-8. [文档目录与维护约定](docs/README.md)
-
-## 项目结构
-
-```text
-CognitaNexus/
-├── README.md
-├── .gitignore
-├── AGENTS.md
-├── .local/submissions/   # 本地原始交付与待验证导出；不纳入 Git
-└── docs/
-    ├── README.md
-    ├── requirements/       # 需求基线与调研依据
-    ├── srs/                # 编写规范、共同SRS候选、模块 SRS 与评审输入
-    │   ├── modules/
-    │   ├── review/
-    │   └── incoming/       # 历史成员原稿，当前为本地未跟踪材料
-    ├── spec/               # 核心 SPEC 候选稿与追踪
-    ├── uml/                # PlantUML 图源与生成图
-    └── reports/            # 评审材料
+```bash
+git clone https://github.com/CognitaNexus/CognitaNexus.git
+cd CognitaNexus
+./mvnw -B verify
+cd frontend && npm ci && npm run build
 ```
 
-根目录原有 PNG 和待验证 CodeArts ZIP 已归入 `.local/submissions/uml-reference-2026-10-12/`，仅作本机参考；正式 UML 以 `docs/uml/` 下的 `.puml` 为维护源。`docs/srs/incoming/` 中既有成员原稿暂保留原路径，避免破坏现有引用，也不作为默认提交内容。后续分析、设计及实现资产在获准进入对应阶段后再增加。
+部署资产：`compose.yaml`、`ops/compose/`（容器部署候选），`ops/deploy/`（已有 systemd / Nginx 方案）。部署前复制 `.env.example` 为 `.env` 并设置非默认口令、访问令牌；**不要将凭据提交仓库**。Compose 的具体目标机器与端到端部署仍需在目标环境重新验证。
+
+本地启停与只读健康检查：见 [RESTART.md](RESTART.md)；详细运维说明以 [docs/HANDOVER.md](docs/HANDOVER.md) 的当前版本状态和实际运行环境为准。
+
+## 主要目录
+
+| 目录 | 用途 |
+| --- | --- |
+| `services/core-service/` | 账号、授权、认领、成果与治理 |
+| `services/ingestion-service/` | 采集源适配器、任务与交接 |
+| `services/query-service/` | 查询、统计、合作网络与投影 |
+| `libraries/shared-kernel/` | 跨服务最小共享类型 |
+| `frontend/` | 用户端和管理端 |
+| `ops/` | 环境、迁移、导入/备份和运维 |
+| `tests/` | 接口、浏览器与性能验证 |
+| `docs/` | 当前设计、决策与验证证据，见 [导航](docs/README.md) |
+
+## 需求与当前问题
+
+- 需求/分析：[`analysis/s01-s02-69ac`](https://github.com/CognitaNexus/CognitaNexus/tree/analysis/s01-s02-69ac)（SRS V2.2、69 AC、S01/S02），实施以逐条追踪为准。
+- 需要改进：真实数据规模、增量导入、治理积压、100 万数据下的查询性能，以及目标云部署验证；历史测试结果不等于新环境通过。
+- [开发 Issues](https://github.com/CognitaNexus/CognitaNexus/issues)；[分支与 PR 规范](docs/BRANCHING.md)。
+
+**请不要在本仓库发布账号口令、SSH 密钥、原始私有证明材料或生产环境信息。**

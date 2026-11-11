@@ -1,0 +1,15 @@
+[Unit]
+Description=每天 02:20（Asia/Shanghai）触发 CognitaNexus 数据库备份
+
+[Timer]
+# 服务器时区是 UTC，02:20 CST = 18:20 UTC。写成 UTC 是为了不受 systemd 默认时区影响，
+# 用 date 在机器上核对过：UTC 18:20 对应北京时间次日 02:20。
+OnCalendar=*-*-* 18:20:00 UTC
+# 机器若在触发点关机/重启，开机后补跑一次，不要因为错过就跳一天。
+Persistent=true
+# 抖动 5 分钟，避免和整点的 certbot、sysstat 挤在一起。
+RandomizedDelaySec=300
+Unit=cn-db-backup.service
+
+[Install]
+WantedBy=timers.target

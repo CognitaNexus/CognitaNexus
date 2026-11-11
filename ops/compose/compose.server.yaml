@@ -1,0 +1,52 @@
+# 服务器覆盖配置。
+#
+# 用法（在仓库根执行）：
+#   docker compose -f compose.yaml -f ops/compose/compose.server.yaml up -d --build
+#
+# 覆盖的原则：**只改与「谁能看到、谁能连」有关的东西，不改应用行为**。开发期与服务器上
+# 如果跑的是两套不同参数（不同的批大小、不同的超时），那么本地验证过的性质就不能推广到
+# 服务器——这正是这份文件要保持最小的原因。
+#
+# ⚠️ 本机 Docker 不可用，本文件**未在服务器上验证过**，属待实测项（见 README「部署」）。
+
+services:
+  postgres:
+    # 服务器上不再把数据库暴露到宿主机：没有它就无法用本机 psql 直连，也就没有绕过应用层
+    # 权限模型去改数据的入口。
+    ports: !override []
+    restart: always
+    # 停机前给足时间完成检查点，避免每次重启都做一遍崩溃恢复。
+    stop_grace_period: 60s
+
+  redis-session:
+    ports: !override []
+    restart: always
+
+  redis-cache:
+    ports: !override []
+    restart: always
+
+  core-service:
+    ports: !override []
+    restart: always
+    # 只在同源代理（web 服务）之后对外开放，因此不需要把 8081 映射出来。
+    environment:
+      # 生产必须关掉调试类端点暴露；health 保留给容器健康检查与外部探活。
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health
+      # 采集与投递的日志级别降到 WARN：服务器上日志是要被读的，不是要被存满磁盘的。
+      LOGGING_LEVEL_COM_COGNITANEXUS: INFO
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_JDBC_CORE: WARN
+
+  query-service:
+    ports: !override []
+    restart: always
+
+  ingestion-service:
+    ports: !override []
+    restart: always
+
+  web:
+    restart: always
+    ports:
+      # 唯一对外端口，保持映射到宿主机。
+      - '${CN_WEB_PORT:-80}:80'
