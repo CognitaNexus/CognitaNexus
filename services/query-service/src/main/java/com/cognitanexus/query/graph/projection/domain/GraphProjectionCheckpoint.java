@@ -78,6 +78,21 @@ public record GraphProjectionCheckpoint(
    *     不把「空批」误记成游标前进）
    */
   public GraphProjectionCheckpoint advanced(String cursor, int works, long failed, Instant now) {
+    return advanced(cursor, works, failed, lastError, now);
+  }
+
+  /**
+   * 记录一批进度，并记下本批失败的摘要。
+   *
+   * <p>失败摘要写进 {@code last_error} 而不是直接抛异常：单条成果永久失败不应该让整次回填停在
+   * 同一条脏数据上（那会让它后面的成果永远轮不到修复），但失败必须可定位——{@code failed_works}
+   * 只给数量，{@code last_error} 给出「哪条、什么原因」。错过的点在游标继续前进后由
+   * {@code GraphProjectionReconciler.repair()} 单点补齐。
+   *
+   * @param error 本批失败摘要；null 表示保留上一次的错误摘要（成功批次不应抹掉已知问题）
+   */
+  public GraphProjectionCheckpoint advanced(
+      String cursor, int works, long failed, String error, Instant now) {
     if (cursor == null || cursor.isBlank()) {
       throw new IllegalArgumentException("进度推进必须带游标；空游标会让下一轮从第一页重扫");
     }
@@ -90,7 +105,7 @@ public record GraphProjectionCheckpoint(
         processedWorks + Math.max(works, 0),
         processedBatches + 1,
         failedWorks + Math.max(failed, 0L),
-        lastError,
+        error == null ? lastError : error,
         startedAt,
         now,
         null);

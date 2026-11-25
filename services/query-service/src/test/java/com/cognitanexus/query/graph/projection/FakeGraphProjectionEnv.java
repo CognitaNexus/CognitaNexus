@@ -103,6 +103,13 @@ public final class FakeGraphProjectionEnv {
     }
 
     @Override
+    public boolean deleteWork(String workId) {
+      maybeFail(workId, "deleteWork");
+      calls.add("deleteWork:" + workId);
+      return works.remove(workId) != null;
+    }
+
+    @Override
     public Optional<GraphProjectionMeta> readMeta(String scope) {
       if (meta == null || !meta.scope().equals(scope)) {
         return Optional.empty();

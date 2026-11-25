@@ -11,7 +11,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -262,7 +261,20 @@ public class GraphProjectionReconciler {
               null,
               null));
     } else if (effective.scanOrphans() && !truncated) {
+      // 多探一行：图侧公开成果数超过扫描上限时无法区分「刚好这么多」与「还有更多」，
+      // 而「没扫到」与「PG 里没有」在孤立判定里是同一件事——不写清楚就会把未扫描的成果
+      // 说成「孤立已清零」。与 PG 侧扫描同口径：达到上限 + 1 就标记截断。
       List<String> graphIds = inspector.publicWorkIds(effective.scanLimit() + 1);
+      if (graphIds.size() > effective.scanLimit()) {
+        findings.add(
+            new GraphReconciliationFinding(
+                Severity.INFO,
+                "GRAPH_SCAN_TRUNCATED",
+                effectiveScope,
+                "图侧公开成果超过扫描上限，孤立扫描只覆盖前 " + effective.scanLimit() + " 条标识；未扫描到的成果不在孤立结论范围内",
+                (long) effective.scanLimit(),
+                (long) graphIds.size()));
+      }
       for (String id : graphIds) {
         if (!pgIdSet.contains(id)) {
           orphaned.add(id);
@@ -290,8 +302,9 @@ public class GraphProjectionReconciler {
     }
 
     // ---- 抽样证据核对 ----
+    // 抽样只为定位「哪几条成果不一致」，集合级结论已由前面的计数/标识扫描给出，
+    // 因此这里不再单独维护一份「不一致成果」集合（曾经有一个从未被读取的局部变量）。
     List<String> sample = sampleOf(pgIds, effective.sampleSize());
-    Set<String> mismatched = new HashSet<>();
     if (!sample.isEmpty()) {
       Map<String, List<String>> expectedByWork = expectedPairs(stage.generation(), sample);
       Map<String, Set<String>> graphPairs = inspector.materializedPairsOf(sample);
@@ -300,7 +313,6 @@ public class GraphProjectionReconciler {
             new TreeSet<>(expectedByWork.getOrDefault(workId, List.of()));
         Set<String> actualPairKeys = graphPairs.getOrDefault(workId, Set.of());
         if (!expectedPairKeys.equals(actualPairKeys)) {
-          mismatched.add(workId);
           findings.add(
               new GraphReconciliationFinding(
                   Severity.ERROR,
@@ -329,7 +341,6 @@ public class GraphProjectionReconciler {
         }
         String actualTitle = graphTitles.get(workId);
         if (!expectedTitle.equals(actualTitle)) {
-          mismatched.add(workId);
           findings.add(
               new GraphReconciliationFinding(
                   Severity.ERROR,
@@ -341,7 +352,6 @@ public class GraphProjectionReconciler {
         }
         Set<String> titles = evidenceTitles.getOrDefault(workId, Set.of());
         if (!titles.isEmpty() && !titles.equals(Set.of(expectedTitle))) {
-          mismatched.add(workId);
           findings.add(
               new GraphReconciliationFinding(
                   Severity.ERROR,
@@ -383,8 +393,17 @@ public class GraphProjectionReconciler {
   /**
    * 定向修复：缺口成果重新同步、孤立成果退场。
    *
-   * <p>孤立成果用 {@link Long#MAX_VALUE} 作为退场版本：它在 PG 中已不存在，没有可信版本可用，
-   * 而版本守卫不允许退场请求被旧值挡住——留着它的代价是幽灵合作边。
+   * <p>两条不可让步的规则：
+   *
+   * <ol>
+   *   <li><b>只有真正改了图的动作才算「已修复」</b>：{@code STALE_IGNORED} 意味着版本守卫拒绝了
+   *       本次写入（图里已是同样或更新的版本），把它计入修复数会让「修了 200 条」变成一句空话；
+   *   <li><b>退场不能用哨兵版本号</b>：曾经用 {@link Long#MAX_VALUE} 退场孤立成果，结果是
+   *       {@code Work.source_version} 被抬到最大值，该成果日后在 PG 中重新合格公开时，正常版本的
+   *       {@code replaceWork} 被版本守卫永久拒绝（返回 {@code STALE_IGNORED}），图上再也恢复不了。
+   *       正确做法是：PG 里还有该行 → 用它真实的 {@code aggregate_version} 退场（留墓碑）；
+   *       PG 里根本没有这一行 → 直接删除节点与边（无版本的墓碑没有意义）。
+   * </ol>
    */
   public GraphRepairResult repair(GraphReconciliationReport report) {
     if (report == null) {
@@ -411,24 +430,31 @@ public class GraphProjectionReconciler {
         notes.add(workId + " 已不在 PG 投影中，未按缺口修复（交由孤立扫描处理）");
         continue;
       }
-      if (outcome.get().failed()) {
+      GraphSyncOutcome value = outcome.get();
+      if (value.failed()) {
         failed++;
-        notes.add(workId + " 重新同步失败：" + outcome.get().describe());
-      } else {
+        notes.add(workId + " 重新同步失败：" + value.describe());
+      } else if (value.applied()) {
         repaired++;
+      } else {
+        // STALE_IGNORED：图里已是同样或更新的版本，本次没有任何写入。计成修复会虚报成果。
+        notes.add(workId + " 已是同样或更新的版本（" + value.action() + "），未重写");
       }
     }
-    for (String workId : report.orphanedWorks()) {
-      try {
-        boolean applied = store.retireWork(workId, Long.MAX_VALUE);
-        if (applied) {
-          retired++;
-        } else {
-          notes.add(workId + " 退场未生效（版本守卫拒绝）");
+
+    boolean generationMismatch = hasFinding(report, "GENERATION_MISMATCH");
+    if (generationMismatch && !report.orphanedWorks().isEmpty()) {
+      // generation 不一致时「图里有、本代 PG 合格集合里没有」也可能只是「属于别的代」。
+      // 删掉别人的代是不可逆的数据丢失，正确动作是整库重建（ADR-005 §5.3）。
+      notes.add(
+          "generation 不一致：跳过 " + report.orphanedWorks().size() + " 条孤立成果的退场，应先按 ADR-005 §5.3 整库重建");
+    } else {
+      for (String workId : report.orphanedWorks()) {
+        switch (retireOrphan(report.generation(), workId, notes)) {
+          case RETIRED -> retired++;
+          case SKIPPED -> notes.add(workId + " 未被退场（无写入）");
+          case FAILED -> failed++;
         }
-      } catch (RuntimeException ex) {
-        failed++;
-        notes.add(workId + " 退场失败：" + ex.getClass().getSimpleName());
       }
     }
     if (report.watermarkBehind()) {
@@ -440,6 +466,50 @@ public class GraphProjectionReconciler {
     GraphRepairResult result = new GraphRepairResult(repaired, retired, failed, notes);
     log.info("图投影定向修复完成 {}", result.summary());
     return result;
+  }
+
+  /** 单条孤立成果的处理结局；只有 RETIRED 才能计入「已退场」。 */
+  private enum OrphanOutcome {
+    RETIRED,
+    SKIPPED,
+    FAILED
+  }
+
+  /**
+   * 退场一条孤立成果（图里有、PG 合格集合里没有）。
+   *
+   * <p>分两种情形，<b>都不用哨兵版本号</b>（见 {@link #repair} 的类注释）：
+   *
+   * <ul>
+   *   <li>PG 仍有这一行（例如公开资格被收紧、成果转非公开）→ 用 PG 的真实 {@code aggregate_version}
+   *       调 {@code retireWork}，留下墓碑；日后重新公开时该版本之后的写入能正常应用；
+   *   <li>PG 完全没有这一行（被合并删除、旧环境残留）→ {@code deleteWork} 删除节点与边。
+   *       维持一个「无版本的墓碑」只会让该节点在图上永久占位，且日后重新出现时容易被旧值挡住。
+   * </ul>
+   *
+   * <p>PG 读取失败时按 FAILED 计入并记录异常类型：对账工具不能因为一条读失败而谎报「已退场」。
+   */
+  private OrphanOutcome retireOrphan(String generation, String workId, List<String> notes) {
+    try {
+      Optional<GraphProjectedWork> inPg = source.loadWork(generation, workId);
+      if (inPg.isPresent()) {
+        long pgVersion = inPg.get().sourceVersion();
+        return store.retireWork(workId, pgVersion) ? OrphanOutcome.RETIRED : OrphanOutcome.SKIPPED;
+      }
+      return store.deleteWork(workId) ? OrphanOutcome.RETIRED : OrphanOutcome.SKIPPED;
+    } catch (RuntimeException ex) {
+      notes.add(workId + " 退场失败：" + ex.getClass().getSimpleName());
+      return OrphanOutcome.FAILED;
+    }
+  }
+
+  private static boolean hasFinding(GraphReconciliationReport report, String code) {
+    for (GraphReconciliationFinding finding : report.findings()) {
+      if (code.equals(finding.code())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

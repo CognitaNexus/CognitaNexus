@@ -17,8 +17,10 @@ import com.cognitanexus.query.graph.projection.infrastructure.GraphProjectionChe
 import com.cognitanexus.query.graph.projection.infrastructure.GraphProjectionSourceAdapter;
 import com.cognitanexus.query.graph.projection.infrastructure.GraphProjectionSourceMapper;
 import com.cognitanexus.query.graph.projection.infrastructure.Neo4jGraphProjectionInspector;
+import com.cognitanexus.query.graph.projection.worker.GraphProjectionWorker;
 import com.cognitanexus.query.platform.persistence.JsonCodec;
 import com.cognitanexus.query.projection.application.ProjectionProperties;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -116,6 +118,39 @@ public class GraphProjectionConfiguration {
           synchronizer,
           store,
           neo4jProperties.maxAuthorsPerWorkForMaterializedEdge(),
+          projectionProperties.consumerId());
+    }
+
+    /**
+     * 增量追赶调度。
+     *
+     * <p>三个条件缺一不装：{@code cn.query.graph.enabled} 与
+     * {@code cn.query.graph.projection.enabled} 由外层配置类保证，本方法再要求
+     * {@code worker-enabled=true}（后台写入必须显式开启）与 {@link GraphEventProjector} 存在
+     * （没有投影器就没有可委托的追赶动作；条件写在这里而不是类上，是因为组件扫描下的
+     * {@code @ConditionalOnBean} 与 Bean 定义顺序有关，装配结果会随扫描顺序变化）。
+     */
+    @Bean
+    @ConditionalOnBean(GraphEventProjector.class)
+    @ConditionalOnProperty(
+        prefix = "cn.query.graph.projection",
+        name = "worker-enabled",
+        havingValue = "true")
+    public GraphProjectionWorker graphProjectionWorker(
+        GraphEventProjector projector,
+        GraphProjectionStore store,
+        GraphProjectionSource source,
+        GraphProjectionCheckpointStore checkpoints,
+        GraphProjectionProperties properties,
+        Neo4jGraphProperties neo4jProperties,
+        ProjectionProperties projectionProperties) {
+      return new GraphProjectionWorker(
+          projector,
+          store,
+          source,
+          checkpoints,
+          properties,
+          neo4jProperties.scope(),
           projectionProperties.consumerId());
     }
 

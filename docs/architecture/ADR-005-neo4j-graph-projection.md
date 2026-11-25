@@ -221,15 +221,32 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
 - 按 `work_id` 稳定排序分页读取 `qry_contribution`（每批 ≤ 500 成果），每批：
   1. `upsertScholars`（批量 MERGE，版本守卫）；
   2. `replaceWork`（成果整体替换，含物化判定）；
-  3. 批量结束后 `advanceMeta` 推进 `projected_version` 到本批最大 `source_version`。
-- 断点就是 `GraphProjectionMeta.projected_version`：进程中断后从该水位之后继续；重复扫描的
-  批次因幂等而安全。**不使用内存 offset**——进程重启后 offset 无法解释「哪些成果已应用」。
+  3. 每批结束写一行回填断点（游标 = 本批最后一条 `work_id`），**全部灌完后**才把
+     `GraphProjectionMeta.projected_version` 推进到本次快照的 `published_revision`。
+- **断点与水位分开存**（`feat/graph-projection` 引入的 Flyway `V7__graph_projection_checkpoint.sql`，
+  表 `qry_graph_projection_checkpoint`，每个 `scope` 一行）：
+  - 水位（Neo4j `GraphProjectionMeta.projected_version`）回答「图能不能用于公开查询」，必须只前进、
+    语义极简；
+  - 断点回答「回填做到哪了」：`status ∈ {RUNNING, COMPLETED, FAILED}`、`generation`、`cursor_work_id`、
+    `base_revision`（快照锚点）、`processed_works`（只计 APPLIED/RETIRED/STALE_IGNORED）、
+    `failed_works`、`last_error`、时间戳。
+  - 为什么不能把断点塞进水位：一次写断点失败会变成「水位回退」，而水位回退会让已下线的合作边
+    重新被当成最新数据；反过来，回填半途就把水位推到 `published_revision`，读路径会把「只灌了一半」
+    的图当成完整图使用。因此 `GraphProjectionWorker` 的增量追赶在断点未 `COMPLETED` 时**跳过**本轮
+    （`RUNNING` 与 `FAILED` 都算未完成）。
+- 游标用 `work_id` 而不是数字下标/内存 offset：分页按 `work_id` 稳定升序，插入新成果不会让游标错位；
+  重复扫描的批次因幂等而安全；进程重启后仍能回答「哪些成果已真正写入」。
+- 失败语义：单条成果的永久失败**不**中止整批（否则真正的问题数据永远轮不到修复），其标识与原因进
+  `failed_works`/`last_error`，游标继续前进；漏掉的点由对账后的定向修复（§6.2 `repair`）单点补齐。
+  失败数超过 `max-failed-works`（默认 100）时整次运行转 `FAILED`——「跑完了但有几万条没进图」不算成功。
 - 重建使用**新 generation**（`GraphProjectionMeta.generation`）。全部灌完并核对行数后，才允许
-  把公开读路径切到图库；切换前图查询一律走 PG（§7）。
+  把公开读路径切到图库；切换前图查询一律走 PG（§7）。generation 变化时拒绝在旧代游标上续跑，
+  正确动作是 `rebuild()`。
 
-> 现状：本分支提供 `GraphProjectionStore` 的幂等写、版本守卫与 `advanceMeta` 原语，
-> 以及 `resetAllForRebuild(scope)`。Backfill 调度器与 Outbox 接线属于后续 Issue（需与 Inbox 重放和
-> 隔离事件处理一起评审），本文只固定契约，不声称已完成。
+> 现状：本分支已提供幂等写、版本守卫、`advanceMeta`、`resetAllForRebuild(scope)`、分批回填与断点续跑
+> （`GraphBackfillService`）、事件增量（`GraphEventProjector`）、增量调度（`GraphProjectionWorker`）
+> 与对账/定向修复（`GraphProjectionReconciler`）。回填/对账的**对外触发入口**（HTTP/CLI）、指标告警
+> 与跨进程互斥（PG advisory lock）仍属后续 Issue，本文只固定契约，不声称已完成。
 
 ### 5.3 水位与 generation
 
@@ -360,8 +377,14 @@ CN_QUERY_GRAPH_ENABLED=false   # 重启 query-service
 ```
 
 - 默认就是关闭；关闭时不创建 Driver、不连图库、不执行 DDL，公开网络端点完全走现有 PG 实现；
-- 不需要改代码、不需要回滚 Flyway（本次没有新增迁移）；
+- 不需要改代码、不需要回滚 Flyway：`feat/graph-projection` 新增的 `V7__graph_projection_checkpoint.sql`
+  只新增一张断点表（`qry_graph_projection_checkpoint`），不修改任何已应用版本、不删除既有表或数据；
+  停用投影后它成为无引用的空表，可保留（向前修复，不做 `DROP`）。回填断点与 Neo4j 水位分表存储，
+  因此「关掉投影」不会留下让水位/断点互相污染的状态；
 - 已写入的图数据留在卷里，重新启用后必须先用 §8.2 或对账确认水位与 PG 一致，否则仍会降级。
+- 回填进行中要停写：先确认断点（`qry_graph_projection_checkpoint.status`）为 `RUNNING/FAILED` 还是
+  `COMPLETED`。停掉 Worker 只会停增量追赶，回填是一次显式调用，结束后断点转 `COMPLETED` 才允许
+  读路径信任水位。
 
 ### 8.2 从 PG 全量重建图
 
@@ -370,10 +393,12 @@ CN_QUERY_GRAPH_ENABLED=false   # 重启 query-service
    先读库内的全部 `GraphProjectionMeta.scope`，只要存在本次重建之外的作用域就抛
    `IllegalStateException` 并回滚（Community 单库单作用域；**只能在独占实例、已确认无其他作用域时
    执行**）；
-3. 按 §5.2 分批 Backfill（后续 Issue 提供调度器；当前可用 `Neo4jSchemaIT` / 手写脚本验证流程）；
+3. 按 §5.2 分批 Backfill：`GraphBackfillService.backfill(scope)`；每批结束把游标写进
+   `qry_graph_projection_checkpoint`（V7），进程中断后从 `cursor_work_id` 续跑，而不是从 0 重扫；
 4. 对账：比较 PG `qry_coauthor_edge` 与图中 `COOPERATED_WITH` 的 `(work_id, pair)` 数量、
    `qry_achievement` 与 `Work` 的公开数、`GraphProjectionMeta.projected_version` 与 PG
-   `published_revision`；
+   `published_revision`（`GraphProjectionReconciler.reconcile`，需要修复时 `repair` 定向重同步/退场，
+   但**不**直接改水位）；
 5. 核对通过后才把读路径切回图库。
 
 图不是备份对象：**任何图故障都用 PG 重建解决**，不从图导出恢复。恢复演练与 PostgreSQL 备份
@@ -434,7 +459,7 @@ CN_QUERY_GRAPH_ENABLED=false   # 重启 query-service
 | 单元 | 配置默认值/自检、schema 解析与初始化幂等、启动期降级与 fail-fast 开关、健康指示器恒 UP、整库重建独占性、领域模型不变量、路径规则（单一来源常量）、PG↔图逐例对比 | 已实现并通过（`Neo4jGraphPropertiesTest`、`Neo4jSchemaStatementSourceTest`、`Neo4jSchemaInitializerTest`、`Neo4jGraphConfigurationTest`、`Neo4jGraphProjectionStoreTest`、`GraphDomainModelTest`、`CollaborationGraphServiceTest`、`NetworkGraphParityTest`） |
 | 集成 | 真实 Neo4j 5.26：约束/索引幂等、唯一约束拒绝重复、节点/关系写读、证据、REAL/SIMULATED 隔离、高作者数不物化、版本守卫、成果下线、水位单调、跨作用域拒绝整库清空 | `Neo4jSchemaIT`（11 用例），连接本机 `bolt://127.0.0.1:17687` 通过 |
 | 性能 | 固定硬件/数据分布的 P50/P95/P99、错误率、资源；与 PG 基线对比 | **未执行**，不得声称图库更快 |
-| 一致性 | 真实数据抽样对账、故障注入、重建演练 | **未执行**（对账工具与调度器为后续 Issue） |
+| 一致性 | 真实 Neo4j + 真实 `query_db`：回填一致性、幂等/迟到/收紧、断点续跑、受控重建、四层对账与定向修复、水位不伪造追平；真实数据抽样与故障注入演练仍待补 | `GraphProjectionSyncIT`（9 用例）已通过；百万级与故障注入**未执行** |
 | 迁移 | 华为云 RDS+ECS / GES 演练 | **未执行** |
 
 结论边界：本 ADR 证明「图模型与规则可落地、可测、可回滚」，不证明「性能已达标」。

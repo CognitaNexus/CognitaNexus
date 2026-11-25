@@ -178,6 +178,24 @@ class GraphBackfillServiceTest {
   }
 
   @Test
+  @DisplayName("processed_works 只计成功成果：失败数单记在 failed_works，游标继续推进")
+  void processedWorksExcludesFailedWorks() {
+    seed(4);
+    store.permanentFailures.add("w-01");
+
+    GraphBackfillResult result = service().backfill(SCOPE);
+
+    assertThat(result.status()).isEqualTo(GraphBackfillStatus.COMPLETED);
+    // 4 条中 1 条永久失败：processed_works 只能是 3（与 V7 表注释同口径）。
+    assertThat(result.processedWorks()).isEqualTo(3);
+    assertThat(result.failedWorks()).isEqualTo(1);
+    // 游标不因单条失败而停在原地：漏掉的那条由对账 repair() 单点补齐。
+    assertThat(result.cursorWorkId()).isEqualTo("w-04");
+    assertThat(store.works).doesNotContainKey("w-01");
+    assertThat(checkpoints.saved.get(SCOPE).lastError()).contains("w-01");
+  }
+
+  @Test
   @DisplayName("失败过多：超过 max-failed-works 即转 FAILED，不把「跑完但没进图」当成功")
   void tooManyFailuresAbortRun() {
     seed(4);
@@ -189,6 +207,8 @@ class GraphBackfillServiceTest {
 
     assertThat(result.status()).isEqualTo(GraphBackfillStatus.FAILED);
     assertThat(result.failedWorks()).isEqualTo(2);
+    // processed_works 只计非失败成果（与 V7 表注释一致）：失败数不混入这个数字。
+    assertThat(result.processedWorks()).isZero();
     assertThat(result.note()).contains("超过上限");
     assertThat(checkpoints.saved.get(SCOPE).status()).isEqualTo(GraphBackfillStatus.FAILED);
     // 中止后可以从断点继续，而不是丢进度。

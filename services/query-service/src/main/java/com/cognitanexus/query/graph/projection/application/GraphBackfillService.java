@@ -28,6 +28,13 @@ import org.slf4j.LoggerFactory;
  *       FAILED。「跑完了但有几万条没进图」不是成功。
  * </ol>
  *
+ * <p><b>计数口径</b>：{@code processed_works} 只累加非失败成果（APPLIED / RETIRED /
+ * STALE_IGNORED），失败数单独落在 {@code failed_works} 与 {@code last_error}。
+ * 单条永久失败不会让整次回填停摆（否则真正的问题成果永远轮不到修复：回填会在同一条上反复卡住），
+ * 游标继续前进；这些漏格的点由 {@link GraphProjectionReconciler#repair} 在对账后单点补齐
+ * （对账的 {@code WORK_MISSING_IN_GRAPH} 会指名它们）。但失败数超过
+ * {@code max-failed-works} 时整次运行转 FAILED——不能被当成跑完了。
+ *
  * <p>并发：同进程内用 {@link AtomicBoolean} 互斥，避免调度器与人工触发同时写同一批成果——
  * ADR-005 §5.1 明确「同一 workId 必须串行消费」，版本守卫只兜底迟到/重放，不承担并发互斥。
  * 跨进程互斥需要 PG advisory lock 或运维层面的单实例约束，本类不假装已经解决。
@@ -136,9 +143,14 @@ public class GraphBackfillService {
         GraphSyncBatch batch = synchronizer.syncWorks(page);
         String nextCursor = page.get(page.size() - 1).workId();
         Instant now = clock.instant();
-        checkpoint = checkpoint.advanced(nextCursor, batch.processed(), batch.failed(), now);
+        // processed_works 只计「真正写进图」的成果（APPLIED / RETIRED / STALE_IGNORED），
+        // 失败数单独记在 failed_works + last_error（与 V7 表注释同一口径）。
+        // 若把失败成果也计入 processed_works，「跑完了但几万条没进图」会被一次求和掩盖。
+        int succeeded = (int) (batch.processed() - batch.failed());
+        String batchError = batch.failed() > 0 ? batch.failureSummary(5) : null;
+        checkpoint = checkpoint.advanced(nextCursor, succeeded, batch.failed(), batchError, now);
         checkpoints.save(checkpoint);
-        worksThisRun += batch.processed();
+        worksThisRun += succeeded;
         batchesThisRun++;
         cursor = nextCursor;
         if (batch.failed() > 0) {

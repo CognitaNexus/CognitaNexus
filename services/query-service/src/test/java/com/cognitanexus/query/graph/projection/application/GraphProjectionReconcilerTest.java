@@ -102,7 +102,7 @@ class GraphProjectionReconcilerTest {
   }
 
   @Test
-  @DisplayName("图里多出成果（孤立节点）：被检出，修复时退场而不是重新写入")
+  @DisplayName("图里多出成果（孤立节点）：被检出，PG 中已无该行时直接删除节点与边")
   void orphanedWorkIsDetectedAndRetired() {
     seedConsistentProjection();
     var ghost = FakeGraphProjectionEnv.work("w-ghost", 5L, "s-x", "s-y");
@@ -118,8 +118,96 @@ class GraphProjectionReconcilerTest {
     GraphRepairResult repair = reconciler.repair(report);
 
     assertThat(repair.retiredWorks()).isEqualTo(1);
+    // PG 里连行都没有：不存在可信版本号，因此不留「无版本的墓碑」，直接删除节点与边。
+    assertThat(store.works).doesNotContainKey("w-ghost");
+    assertThat(store.calls).contains("deleteWork:w-ghost");
+  }
+
+  @Test
+  @DisplayName("孤立成果退场不抬高 source_version：PG 以正常版本重新公开后能正常恢复")
+  void retiredOrphanCanBeRestoredAtNormalVersion() {
+    seedConsistentProjection();
+    var ghost = FakeGraphProjectionEnv.work("w-ghost", 5L, "s-x", "s-y");
+    store.works.put(
+        "w-ghost", new FakeGraphProjectionEnv.StoredWork(ghost.toWorkNode(), ghost.authorships()));
+
+    GraphReconciliationReport report = reconciler.reconcile(SCOPE, ReconcileOptions.defaults());
+    assertThat(reconciler.repair(report).retiredWorks()).isEqualTo(1);
+
+    // 日后 PG 里同一 workId 以正常聚合版本（15）重新成为合格公开成果。
+    source.add(FakeGraphProjectionEnv.work("w-ghost", 15L, "s-x", "s-y"));
+    GraphSyncOutcome outcome = synchronizer.syncWork(GEN, "w-ghost").orElseThrow();
+
+    assertThat(outcome.action())
+        .as("退场若把 source_version 抬到 Long.MAX_VALUE，这里会永久变成 STALE_IGNORED")
+        .isEqualTo(GraphSyncOutcome.Action.APPLIED);
+    assertThat(store.works.get("w-ghost").work().isPublic()).isTrue();
+  }
+
+  @Test
+  @DisplayName("孤立但 PG 仍保留该行：用 PG 真实版本退场（留墓碑），不用哨兵版本号")
+  void orphanStillPresentInPgIsRetiredWithPgVersion() {
+    seedConsistentProjection();
+    var ghost = FakeGraphProjectionEnv.work("w-ghost", 9L, "s-x", "s-y");
+    store.works.put(
+        "w-ghost", new FakeGraphProjectionEnv.StoredWork(ghost.toWorkNode(), ghost.authorships()));
+    // PG 里仍存在该成果，只是已不合格（例如公开资格被收紧）。
+    source.add(
+        FakeGraphProjectionEnv.work(
+            "w-ghost", 9L, false, "REAL", List.of(), List.of(), "s-x", "s-y"));
+
+    GraphReconciliationReport report = reconciler.reconcile(SCOPE, ReconcileOptions.defaults());
+    GraphRepairResult repair = reconciler.repair(report);
+
+    assertThat(repair.retiredWorks()).isEqualTo(1);
+    assertThat(store.calls).contains("retireWork:w-ghost:v9");
     assertThat(store.works.get("w-ghost").work().isPublic()).isFalse();
-    assertThat(store.works.get("w-ghost").authorships()).isEmpty();
+    assertThat(store.works.get("w-ghost").work().sourceVersion()).isEqualTo(9L);
+
+    // 重新公开（版本 15）能正常恢复：墓碑版本是 PG 的真实版本，不是 Long.MAX_VALUE。
+    source.add(FakeGraphProjectionEnv.work("w-ghost", 15L, "s-x", "s-y"));
+    assertThat(synchronizer.syncWork(GEN, "w-ghost").orElseThrow().action())
+        .isEqualTo(GraphSyncOutcome.Action.APPLIED);
+    assertThat(store.works.get("w-ghost").work().isPublic()).isTrue();
+  }
+
+  @Test
+  @DisplayName("STALE_IGNORED 不计入已修复：只有真正写入/退场才算修复")
+  void staleOutcomeIsNotCountedAsRepaired() {
+    seedConsistentProjection();
+    // 图里 w-2 已是更新的版本（99），但对账扫描看不到它 → 被报成「图内缺失」。
+    var newer = FakeGraphProjectionEnv.work("w-2", 99L, "s-b", "s-c");
+    store.works.put(
+        "w-2", new FakeGraphProjectionEnv.StoredWork(newer.toWorkNode(), newer.authorships()));
+    inspector.hidden.add("w-2");
+
+    GraphReconciliationReport report = reconciler.reconcile(SCOPE, ReconcileOptions.defaults());
+    assertThat(report.missingWorks()).containsExactly("w-2");
+
+    GraphRepairResult repair = reconciler.repair(report);
+
+    assertThat(repair.repairedWorks()).isZero();
+    assertThat(repair.complete()).isTrue();
+    assertThat(String.join("\n", repair.notes())).contains("STALE_IGNORED");
+  }
+
+  @Test
+  @DisplayName("generation 不一致：拒绝退场孤立成果（属于别的代，删了就不可逆）")
+  void orphanRetirementSkippedOnGenerationMismatch() {
+    seedConsistentProjection();
+    var ghost = FakeGraphProjectionEnv.work("w-ghost", 5L, "s-x", "s-y");
+    store.works.put(
+        "w-ghost", new FakeGraphProjectionEnv.StoredWork(ghost.toWorkNode(), ghost.authorships()));
+    store.meta = new GraphProjectionMeta(SCOPE, 10L, 10L, "gen0000", null);
+
+    GraphReconciliationReport report = reconciler.reconcile(SCOPE, ReconcileOptions.defaults());
+    assertThat(report.orphanedWorks()).contains("w-ghost");
+
+    GraphRepairResult repair = reconciler.repair(report);
+
+    assertThat(repair.retiredWorks()).isZero();
+    assertThat(store.works).containsKey("w-ghost");
+    assertThat(String.join("\n", repair.notes())).contains("整库重建");
   }
 
   @Test
@@ -205,6 +293,28 @@ class GraphProjectionReconcilerTest {
     assertThat(codes(report)).contains("SCAN_TRUNCATED", "ORPHAN_SCAN_SKIPPED");
     // 截断时跳过孤立扫描，避免把「没扫到的成果」误判成孤立并退场。
     assertThat(report.orphanedWorks()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("图侧扫描截断：图上公开成果超过上限时同样显式提示")
+  void graphScanTruncationIsExplicit() {
+    for (String id : List.of("w-10", "w-20")) {
+      var work = FakeGraphProjectionEnv.work(id, 1L, "s-a", "s-b");
+      source.add(work);
+      store.works.put(
+          id, new FakeGraphProjectionEnv.StoredWork(work.toWorkNode(), work.authorships()));
+    }
+    var ghost = FakeGraphProjectionEnv.work("w-ghost", 5L, "s-x", "s-y");
+    store.works.put(
+        "w-ghost", new FakeGraphProjectionEnv.StoredWork(ghost.toWorkNode(), ghost.authorships()));
+
+    GraphReconciliationReport report =
+        reconciler.reconcile(SCOPE, new ReconcileOptions(null, 2, 2, true));
+
+    // PG 侧刚好扫满上限且没有更多：PG 扫描未被截断。
+    assertThat(report.scanTruncated()).isFalse();
+    // 图侧多于上限（3 > 2）：孤立扫描只覆盖前 2 条标识，必须写清楚。
+    assertThat(codes(report)).contains("GRAPH_SCAN_TRUNCATED", "WORK_ORPHANED_IN_GRAPH");
   }
 
   @Test

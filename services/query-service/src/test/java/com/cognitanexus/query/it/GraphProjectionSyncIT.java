@@ -662,6 +662,55 @@ class GraphProjectionSyncIT {
   }
 
   // ---------------------------------------------------------------------------
+  // 孤立退场与恢复
+  // ---------------------------------------------------------------------------
+
+  @Test
+  @Order(10)
+  @DisplayName("孤立成果退场后可恢复：PG 以较低正常版本重新公开时仍能写回图（不用哨兵版本号）")
+  void retiredOrphanCanBeRestoredAtNormalVersion() throws SQLException {
+    seedWork("w-0801", "PAPER", "基线论文", 2, "AUTO", "AUTO");
+    backfillService.backfill(SCOPE);
+
+    // 图里有一条 PG 中不存在的成果，且它的 source_version 比日后 PG 的正常版本更高（40 > 15）——
+    // 这正是「用 Long.MAX_VALUE 退场」与「用真实版本退场」都能通过、但只有删除能恢复的情形。
+    runner.write(
+        tx -> {
+          tx.run(
+                  "CREATE (:Work {work_id: 'w-0802', title: '幽灵成果', is_public: true, "
+                      + "data_origin: 'REAL', source_version: 40, edges_materialized: false})",
+                  Map.of())
+              .consume();
+          return null;
+        });
+
+    GraphReconciliationReport report = reconciler.reconcile(SCOPE, ReconcileOptions.defaults());
+    assertThat(report.orphanedWorks()).contains("w-0802");
+
+    GraphRepairResult repair = reconciler.repair(report);
+
+    assertThat(repair.retiredWorks()).isEqualTo(1);
+    assertThat(workNodeCount("w-0802")).as("PG 无此行 → 节点与边一起删除").isZero();
+
+    // PG 日后以正常聚合版本（15 < 40）重新收录同一 workId。
+    seedWork("w-0802", "PAPER", "重新公开的论文", 2, "AUTO", "AUTO");
+    execute(
+        "UPDATE qry_achievement SET aggregate_version = 15 WHERE generation = ? "
+            + "AND achievement_id = ?",
+        GEN,
+        "w-0802");
+
+    var outcome = synchronizer.syncWork(GEN, "w-0802").orElseThrow();
+
+    assertThat(outcome.action())
+        .as("退场若把 source_version 抬到 Long.MAX_VALUE，这里会永久变成 STALE_IGNORED")
+        .isEqualTo(
+            com.cognitanexus.query.graph.projection.application.GraphSyncOutcome.Action.APPLIED);
+    assertThat(isPublic("w-0802")).isTrue();
+    assertThat(cooperatedEdges("w-0802")).as("两位作者 → 1 条物化合作边").isEqualTo(1L);
+  }
+
+  // ---------------------------------------------------------------------------
   // 数据准备与清理
   // ---------------------------------------------------------------------------
 
@@ -708,6 +757,34 @@ class GraphProjectionSyncIT {
 
   private static String scholarIdOf(String workId, int index) {
     return "s-" + workId.substring(workId.indexOf('-') + 1) + "-" + index;
+  }
+
+  private static long workNodeCount(String workId) {
+    return runner
+        .query(
+            "MATCH (w:Work {work_id: $id}) RETURN count(w) AS total",
+            Map.of("id", workId),
+            record -> record.get("total").asLong())
+        .get(0);
+  }
+
+  private static boolean isPublic(String workId) {
+    return runner
+        .query(
+            "MATCH (w:Work {work_id: $id}) RETURN w.is_public AS flag",
+            Map.of("id", workId),
+            record -> record.get("flag").asBoolean())
+        .get(0);
+  }
+
+  private static long cooperatedEdges(String workId) {
+    return runner
+        .query(
+            "MATCH (:Scholar)-[c:COOPERATED_WITH]->() WHERE c.work_id = $id "
+                + "RETURN count(c) AS total",
+            Map.of("id", workId),
+            record -> record.get("total").asLong())
+        .get(0);
   }
 
   private static void seedContribution(
