@@ -309,6 +309,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          # 仅本 job 临时容器的测试口令，与 ops/local/test-db.sh 的约定一致。
+          POSTGRES_PASSWORD: postgres_it
+          POSTGRES_DB: postgres
+        ports:
+          # 端口写死 55432：8 个 *IT 内部断言连接串包含 ":55432/"。
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 10s
       neo4j:
         image: neo4j:5.26-community
         env:
@@ -336,6 +351,43 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
+
+      - name: 初始化测试库与角色
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          psql_super() {
+            docker exec -i "$PG_CONTAINER" \
+              psql -U postgres -v ON_ERROR_STOP=1 "$@"
+          }
+          psql_super -d postgres <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_owner') THEN
+              CREATE ROLE core_owner LOGIN PASSWORD 'core_owner_it';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_app') THEN
+              CREATE ROLE core_app LOGIN PASSWORD 'core_app_it';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'query_owner') THEN
+              CREATE ROLE query_owner LOGIN PASSWORD 'query_owner_it';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'query_app') THEN
+              CREATE ROLE query_app LOGIN PASSWORD 'query_app_it';
+            END IF;
+          END
+          $$;
+          SQL
+          for spec in core_it:core_owner query_it:query_owner; do
+            db="${spec%%:*}"
+            owner="${spec##*:}"
+            psql_super -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname = '$db'" | grep -q 1 \
+              || psql_super -d postgres -c "CREATE DATABASE $db OWNER $owner"
+          done
+          for db in core_it query_it; do
+            psql_super -d "$db" -Atc "select '$db OK'"
+          done
 
       - name: 图烟雾测试（约束 / 索引 / 导入 / 查询 / 最短路径）
         # 脚本自己负责超时轮询与逐项断言；任何一项失败都以非零码退出，

@@ -129,6 +129,17 @@ cn:
       # 它不可用时应降级回 PostgreSQL 而不是让整个公开查询服务被探针摘除；
       # 生产首次上线或升级 schema 时可临时置 true 做一次快速失败检查。
       fail-fast-on-startup: ${CN_NEO4J_FAIL_FAST_ON_STARTUP:false}
+      # 查询路由（ADR-005 §6.1 / §7 / §8.1）。默认 POSTGRES_ONLY：即使启用了图库，公开网络查询
+      # 也继续 100% 走 PostgreSQL，直到显式切换；一键回退就是把它改回 POSTGRES_ONLY（或关掉 enabled）。
+      #   POSTGRES_ONLY            只走 PostgreSQL（默认、回退）
+      #   SHADOW_COMPARE           PG 权威返回 + 同版本图查询逐字段对照（只记差异，不改结果）
+      #   NEO4J_WITH_PG_FALLBACK   优先图库，schema 未就绪/水位落后/图库异常时显式回退 PG
+      #   NEO4J_STRICT             强制图库，任何降级条件都 503（验收/测试用）
+      query:
+        mode: ${CN_QUERY_GRAPH_QUERY_MODE:POSTGRES_ONLY}
+        # 对照默认异步：灰度期的额外图查询不能把用户延迟翻倍；队列满时丢弃并计入 parityDroppedCount。
+        shadow-compare-async: ${CN_QUERY_GRAPH_SHADOW_ASYNC:true}
+        shadow-compare-queue-capacity: ${CN_QUERY_GRAPH_SHADOW_QUEUE_CAPACITY:64}
 
       # 阶段四：PG → Neo4j 的投影同步（回填/增量/对账）。默认关闭：默认不启动任何后台写入任务。
       # 全量重建会清空整库，必须由运维在“读路径已降级到 PG”的前提下显式触发（ADR-005 §8.2）。

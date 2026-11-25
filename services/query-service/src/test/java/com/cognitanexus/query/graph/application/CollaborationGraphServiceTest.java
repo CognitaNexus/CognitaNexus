@@ -177,6 +177,43 @@ class CollaborationGraphServiceTest {
   }
 
   @Test
+  @DisplayName("回归：路径结果带出实际载入的搜索子图规模（双侧：节点取大、边求和）")
+  void pathResultCarriesLoadedSubgraphSize() {
+    repository.add(
+        edge("s", "b", "w1"), edge("b", "t", "w2"), edge("s", "c", "w3"), edge("c", "t", "w4"));
+
+    GraphPathResult result = service.shortestPath("s", "t", GraphFilterCriteria.realOnly(), 1_000L);
+
+    // 起点侧扩到第 2 跳发现 t：载入 s/b/c/t 4 个节点、s-b/b-t/s-c/c-t 4 条边；
+    // 终点侧只需覆盖 distance-1=1 跳：载入 t/b/c 3 个节点、b-t/c-t 2 条边。
+    // 合并口径与 PG（ScopedGraphLoader 双侧）一致：节点 max(4,3)=4、边 4+2=6。
+    assertThat(result.loadedNodes()).isEqualTo(4);
+    assertThat(result.loadedEdges()).isEqualTo(6);
+    // 路径本身的大小与加载规模是两件事：3 个路径节点、2 跳。
+    assertThat(result.path()).hasSize(3);
+    assertThat(result.hopEdges()).hasSize(2);
+  }
+
+  @Test
+  @DisplayName("回归：0 跳与不可达结果同样带出载入规模，不是 1 个节点/0 条边")
+  void zeroHopAndUnreachableCarryLoadedSize() {
+    repository.add(edge("a", "b", "w1"), edge("a", "c", "w2"), edge("b", "d", "w3"));
+
+    GraphPathResult zeroHop =
+        service.shortestPath("a", "a", GraphFilterCriteria.realOnly(), 1_000L);
+    assertThat(zeroHop.reachable()).isTrue();
+    // 种子那一步就把 a 的邻居全部载入：a/b/c 3 个节点、a-b/a-c 2 条边。
+    assertThat(zeroHop.loadedNodes()).isEqualTo(3);
+    assertThat(zeroHop.loadedEdges()).isEqualTo(2);
+
+    GraphPathResult unreachable =
+        service.shortestPath("a", "lonely", GraphFilterCriteria.realOnly(), 1_000L);
+    assertThat(unreachable.reachable()).isFalse();
+    assertThat(unreachable.loadedNodes()).isEqualTo(4);
+    assertThat(unreachable.loadedEdges()).isEqualTo(3);
+  }
+
+  @Test
   @DisplayName("更短的路径优先于字典序更小的更长路径")
   void shortestPathPrefersFewerHops() {
     repository.add(

@@ -1,6 +1,6 @@
 package com.cognitanexus.query.network.api;
 
-import com.cognitanexus.query.network.application.NetworkService;
+import com.cognitanexus.query.network.application.NetworkQueryRouter;
 import com.cognitanexus.query.platform.web.ApiResponse;
 import com.cognitanexus.query.platform.web.TraceIdHolder;
 import java.util.Map;
@@ -17,15 +17,19 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>路径与子图范围上限由服务端强制，不接受客户端放宽：子图规模直接决定内存与计算量，
  * 让调用方指定上限等于把服务做成可被单次请求拖垮的形态。
+ *
+ * <p>控制器只做协议与输入处理，把请求交给 {@link NetworkQueryRouter}：PostgreSQL 权威实现与图投影
+ * 实现的选择、投影水位保护、降级回退与新旧对照都发生在应用层。这里刻意不出现任何图库类型
+ * （Driver / Session / Cypher），否则「换存储不改接口」就只剩一句口号（ADR-005 §9）。
  */
 @RestController
 @RequestMapping("/api/v1/public/network")
 public class PublicNetworkController {
 
-  private final NetworkService networkService;
+  private final NetworkQueryRouter router;
 
-  public PublicNetworkController(NetworkService networkService) {
-    this.networkService = networkService;
+  public PublicNetworkController(NetworkQueryRouter router) {
+    this.router = router;
   }
 
   @GetMapping("/graph")
@@ -38,7 +42,7 @@ public class PublicNetworkController {
       @RequestParam(required = false) String organization) {
     return ResponseEntity.ok(
         ApiResponse.ok(
-            networkService.neighborhood(
+            router.neighborhood(
                 scholarId.trim(),
                 depth,
                 maxNodes == null ? 0 : maxNodes,
@@ -57,7 +61,7 @@ public class PublicNetworkController {
       @RequestParam(required = false) String organization) {
     return ResponseEntity.ok(
         ApiResponse.ok(
-            networkService.shortestPath(
+            router.shortestPath(
                 from.trim(), to.trim(), dataNature, blankToNull(topic), blankToNull(organization)),
             TraceIdHolder.current()));
   }

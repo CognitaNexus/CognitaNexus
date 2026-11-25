@@ -39,7 +39,10 @@ public class Neo4jSchemaInitializer implements ApplicationRunner {
    * 必须存在的约束。
    *
    * <p>三个唯一约束分别保护：学者身份、成果身份、投影水位作用域。少任何一个，对应实体就可能在
-   * 重放/并发下重复，而图查询会把这些重复节点当成不同的人或成果。
+   * 重放/并发下重复，而图查询会把这些重复节点当成不同的人、成果。
+   *
+   * <p>回填完成度<b>不</b>在这里：它由 PostgreSQL 迁移 V7 的 {@code qry_graph_projection_checkpoint}
+   * （{@code scope} 主键）唯一记录，见 {@code PostgresGraphProjectionInitializationProbe}。
    */
   public static final Set<String> REQUIRED_CONSTRAINTS =
       Set.of("scholar_id_unique", "work_id_unique", "graph_projection_meta_scope_unique");

@@ -108,6 +108,11 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
 })
 ```
 
+回填的断点与完成度**不在图里**：它们是 PostgreSQL 迁移 `V7` 的表
+`qry_graph_projection_checkpoint(scope, status, generation, cursor_work_id, base_revision,
+processed_works, processed_batches, failed_works, last_error, started_at, updated_at, finished_at)`，
+由 Backfill 写入、由 `PostgresGraphProjectionInitializationProbe` 只读（§5.2、§6.1）。
+
 - 标识一律用**字符串**（架构 §9.3）。路径并列比较用规范 ID 的 Unicode 字典序，不用区域排序，
   也不转数字。
 - `Work.is_public=false` 是**墓碑**：成果曾投影、现在不再公开。保留它是为了在来源撤销后仍能
@@ -118,7 +123,8 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
 - 约束与索引见 `services/query-service/src/main/resources/neo4j/schema.cypher`：
   `scholar_id` / `work_id` / `GraphProjectionMeta.scope` 三个唯一约束；
   领域、机构、数据性质、公开位、来源版本、`AUTHORED.work_id`、`COOPERATED_WITH.work_id/pair_key/
-  data_origin` 索引。全部 `IF NOT EXISTS`，启动幂等。
+  data_origin` 索引。全部 `IF NOT EXISTS`，启动幂等。（回填完成度的唯一性由 PG 侧的
+  `qry_graph_projection_checkpoint.scope` 主键保证，不在图库重复建约束。）
 
 ### 4.2 关系
 
@@ -298,6 +304,37 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
    落后则**降级回 PostgreSQL**，不返回旧图；
 3. 图库不可达同样降级（§7）。
 
+**「不落后」不等于「可用」**：水位为 0 的空库在 `published_revision == 0` 时也满足第 2 条，
+但它从未回填过。因此判定必须同时满足下面四条，由 `ProjectionWatermarkGuard` 一次性给出：
+
+1. schema 就绪（缺唯一约束不得服务）；
+2. 水位记录存在，且 `projected_version > 0`（基线初始化已开始并有成果落库）；
+3. generation 双方**均可判定且严格相等**：`null`/空白/占位值 `UNINITIALIZED` 都按「未初始化」
+   处理，任一方缺失不得当作一致放行（否则一次漏传参数就等于整库图结果被信任）；
+4. 回填就绪探针（`GraphProjectionInitializationProbe`）读 PostgreSQL 断点表
+   `qry_graph_projection_checkpoint`（迁移 `V7`）：
+   - 存在该 `scope` 的行时，必须是 `status = COMPLETED`、`failed_works = 0` 且 `generation`
+     等于当前活动代；
+   - 表存在但**没有该 `scope` 的行**时，探针返回合成状态 `MISSING`（本 scope 从未回填），
+     判为未初始化——不得退化成「只看水位元数据」；
+   - 仅当断点表**本身不存在**（PostgreSQL `SQLState 42P01`，即 `V7` 尚未部署的环境）时，探针
+     返回 `Optional.empty()`，退化为第 2、3 条；其他数据库错误上抛，判为「水位不可读」（
+     `PROJECTION_META_UNREADABLE`），不得伪装成未初始化。
+
+不满足第 2～4 条的判定原因码是 `PROJECTION_NOT_INITIALIZED`，与 `PROJECTION_STALE` **分开**：
+落后等回填即可，未初始化必须重跑/修复回填，等下去不会自愈。`NEO4J_WITH_PG_FALLBACK` 下自动回退
+PG，`NEO4J_STRICT` 下返回 503。
+
+**回填完成度只有一个权威源，图可用性由两个存储的完成度共同决定**：
+
+| 事实 | 唯一权威源 | 完成条件 |
+| --- | --- | --- |
+| 基线回填是否完整跑完 | PostgreSQL `qry_graph_projection_checkpoint` | `status='COMPLETED' AND failed_works=0 AND generation=activeGeneration` |
+| 图投影是否追平 | Neo4j `GraphProjectionMeta` | `projected_version >= published_revision > 0 AND generation=activeGeneration` |
+
+两者必须**同时**成立才允许图库回答公开查询；任一不成立即 `PROJECTION_NOT_INITIALIZED` /
+`PROJECTION_STALE`。「回填完成度」只有 PG 这一个来源，图库里不另存一份副本。
+
 图里的 `is_public`/`data_origin` 只用于让「已投影的正确图」自洽，不是授权依据。
 
 ### 6.2 筛选条件
@@ -345,6 +382,11 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
    的一个；邻居按 `TreeSet` 升序访问，结果与遍历顺序、存储实现无关；
 4. 只返回一条，不枚举全部等长路径；零跳必须确认种子在范围内有合格合作边。
 
+`withinLimits`（响应里的 `nodes`/`edges`）在两条实现上语义唯一：**本次搜索实际载入的节点数与
+去重边数**。图侧由 `GraphSubgraphResult`/`GraphPathResult` 一路传出（双侧搜索节点取较大值、边取
+和），不得用「路径节点数 / 跳数」顶替——那是答案大小，不是搜索规模。正因为口径统一，
+`NetworkParityComparator` 只排除墙钟时间 `generatedAt`，`withinLimits` 参与逐字段比较。
+
 为什么不用 Cypher `shortestPath` / `allShortestPaths`：前者对等长路径的返回没有稳定约定；
 后者在稠密图上可能枚举出大量等长路径。把选择规则留在应用层，两个实现可以逐例比对
 （`NetworkGraphParityTest`），换图库时也只需替换「邻接扩边」而不必重新证明规则。
@@ -368,6 +410,8 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
 | 投影水位落后 `published_revision` | `GraphProjectionMeta.behind()` | 走 PG；不得拿旧图冒充当前结果 |
 | 图数据部分损坏（证据缺标题、节点缺失） | 适配器校验 | **抛错**并降级；由对账/重建修复，不跳过坏边 |
 | 重建进行中 | `generation` 不一致 / 运维标记 | 走 PG，直到核对通过并切换 |
+| 基线回填未完成（`RUNNING` / `FAILED` / 有失败成果 / 旧代）或断点行缺失（`MISSING`） | PostgreSQL `qry_graph_projection_checkpoint` + `GraphProjectionMeta` | 走 PG；`PROJECTION_NOT_INITIALIZED`。缺边会被读成「不合作」，因此不能等；先重跑/修复回填 |
+| 断点表不存在（V7 未部署）或断点/PG 不可读 | PostgreSQL `SQLState 42P01` / 其他数据库错误 | 表不存在：退化为水位元数据判定；其他错误：`PROJECTION_META_UNREADABLE` 并走 PG（不伪装成未初始化） |
 | 图规模超限 | 节点/边计数 | 明确失败 `GRAPH_SCOPE_TOO_LARGE`，**不降级**：降级会让同一请求在大图上悄悄变成慢查询，掩盖真实规模问题 |
 
 **健康端点必须是 UP，降级只写在 details**：`neo4jGraphHealthIndicator` 恒返回 `Health.up()`，

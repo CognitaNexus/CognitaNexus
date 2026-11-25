@@ -30,6 +30,15 @@ public record GraphProjectionMeta(
     String generation,
     Instant updatedAt) {
 
+  /**
+   * 「尚未初始化」的占位 generation。
+   *
+   * <p>回填在开始灌数据前会把水位节点写成这个占位值（版本 0、generation 占位）：此刻图里的
+   * 节点/边只是半成品。它<b>不是</b>一个真实的 PG 代数，任何以它为依据的「版本不比已发布修订落后
+   * 就算可用」的判断都是错的——{@code 0 >= 0} 在空库上永远成立。
+   */
+  public static final String UNINITIALIZED_GENERATION = "UNINITIALIZED";
+
   public GraphProjectionMeta {
     if (scope == null || scope.isBlank()) {
       throw new IllegalArgumentException("投影作用域不能为空");
@@ -43,6 +52,18 @@ public record GraphProjectionMeta(
 
   public static GraphProjectionMeta empty(String scope) {
     return new GraphProjectionMeta(scope, 0L, 0L, "gen0001", Instant.EPOCH);
+  }
+
+  /**
+   * 该代价值能否作为「投影已完成基线初始化」的证据。
+   *
+   * <p>空值与 {@link #UNINITIALIZED_GENERATION} 都是「不可判定」，不能当作一致来处理：
+   * 只要一侧不可判定，就无法证明图属于当前活动代，必须判为未初始化而不是放行。
+   */
+  public static boolean isPlaceholderGeneration(String generation) {
+    return generation == null
+        || generation.isBlank()
+        || UNINITIALIZED_GENERATION.equalsIgnoreCase(generation.trim());
   }
 
   /** 图投影是否落后于给定的 PG 已发布修订。落后时必须走 PG 降级路径。 */
