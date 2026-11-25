@@ -1,5 +1,20 @@
 # CI/CD 恢复说明（2026-10-23）
 
+> **2026-11-25 更新：CD 已与 CI 解耦，推送 dev 不再自动部署**
+>
+> 触发条件变了，部署步骤没变：
+>
+> | | 之前 | 现在 |
+> | --- | --- | --- |
+> | 触发器 | `push: branches: [dev]` + `workflow_dispatch` | **只有 `workflow_dispatch`**（手动） |
+> | 门禁 | 无（推上去就跑） | `confirm_deploy` 必须输入 `DEPLOY`；`deploy` job 绑定 `production` environment（可配 required reviewers） |
+> | 日常检查 | 同一个工作流（因此一次推送既检查又上线） | `.github/workflows/ci.yml`：7 个 job，push / PR 都跑，**不碰服务器** |
+> | 失败语义 | build 红 = 代码错；deploy 红 = 环境错（已拆，保留） | 同左 + CI 红与 CD 红彻底分开 |
+>
+> 部署流程：Actions → **cd-deploy** → Run workflow → `confirm_deploy=DEPLOY`（可选填 `deploy_ref` 指定 commit）。
+> 下面 2026-10-23 的部署细节（暂存目录、脚本来源、sudo 探测、前端 tree 判据、回滚方式）**全部仍然有效**。
+> 本文件下文提到的「推 dev 触发」「两轮真跑」等描述属于当时的事实记录，不再代表当前触发器。
+
 ## 一句话
 
 **后端自动部署已通并真跑两轮全绿；前端自动部署卡在「这台机器没有可用的 root」，不是脚本问题。**
@@ -58,7 +73,9 @@
 
 ### 第 2 步：仓库改动合到 dev（已完成）
 
-工作流只在 push dev 时触发。改动已推送，见第二节的两轮真跑。
+当时工作流只在 push dev 时触发，改动合并即上线。**2026-11-25 起改为手动触发**，
+合并到 dev 只代表「代码进了主干」，要上线必须在 Actions 里手动运行 `cd-deploy`
+并输入 `confirm_deploy=DEPLOY`（见文件开头的更新说明）。改动已推送，见第二节的两轮真跑。
 
 ### 第 3 步（建议做，需要 root）：让前端也能自动部署
 

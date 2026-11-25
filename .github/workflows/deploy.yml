@@ -1,42 +1,99 @@
-name: build-and-deploy
+name: cd-deploy
 
-# 推 dev 分支即构建三个服务与前端，构建通过后再传到目标机换产物。
+# =============================================================================
+# CD：把「已经在 CI 验过的某个 commit」送到目标服务器并换产物
+# =============================================================================
 #
-# ---------------------------------------------------------------------------
-# 2026-10-23 重构：CI 与 CD 拆成两个 job
+# 2026-11-25 变更：**CD 与 CI 解耦，push 不再触发部署**
 #
-# 原来是一个 job 从头走到尾。问题不在于慢，而在于**耦合**：目标机换掉之后，
-# 部署那一段必然失败，于是整个 job 报红，而「构建过、测试过、门禁过」这件事
-# 被同一个红叉吞掉了——看板上分不清是代码坏了还是机器没了。实际情况是后者，
-# 而且持续了两天没人发现（10-22 换机后 CI 一次都没跑过）。
+# 之前的触发器是 `push: branches: [dev]`：任何人（或任何智能体）往 dev 推一个提交，
+# 都会在生产机上换 jar、重启三个服务。这与「先评审、再发布」的流程是相反的，也与
+# AGENTS.md §4「推荐把 CI 与部署审批分离」冲突 —— 合并一次文档 PR 就能造成一次
+# 无评审的上线。
 #
-# 拆开之后语义明确：
-#   build   只判「这份代码能不能上」。失败 = 代码问题，必须修。
-#   deploy  只判「能不能送到机器上」。失败 = 环境问题，机器修好就能重跑。
-# deploy 通过 needs 依赖 build，build 红了 deploy 根本不启动。
+# 现在：
+#   · 本文件只有 workflow_dispatch 一个入口，**没有任何 push / pull_request 触发**；
+#   · 必须显式输入 confirm_deploy = DEPLOY 才会走出 guard；
+#   · deploy job 绑定 production environment：有配置环境审批时，还需要人工批准；
+#   · 日常的编译、单测、集成、契约、安全检查在 ci.yml（push/PR 都跑，不部署）。
 #
-# 顺带解掉三处与新机不匹配的东西（详见 ops/deploy/REBUILD-2026-10-22.md）：
-#   1. 暂存目录不再写死 /home/ubuntu/cn-incoming，改成连上之后用远端 $HOME 推导；
-#   2. 不再要求服务器上预先存在 ~/cn-deploy/deploy-update.sh —— 直接用本次产物里的
-#      那份，杜绝「仓库改了、服务器上是旧副本」；
-#   3. 需要 sudo 的三步（备份定时器、日志上限、nginx 路由）先探测远端能力，
-#      没 sudo 就跳过并留 ::warning:: 注解，而不是让整个部署红掉。
+# 保留的部分（没有删除任何部署脚本或步骤）：build 仍在这里，因为部署需要「本次要上
+# 的确切产物」；deploy 的全部步骤、诊断与回滚提示保持原样。
+#
+# 原有取舍的历史（2026-10-23 CI/CD 拆成两个 job、暂存目录/脚本来源/sudo 探测三处
+# 与新机不匹配的问题）仍然有效，见 ops/deploy/CI-CD-恢复说明.md 与
+# ops/deploy/REBUILD-2026-10-22.md。
 # ---------------------------------------------------------------------------
 on:
-  push:
-    branches: [dev]
   workflow_dispatch:
+    inputs:
+      confirm_deploy:
+        description: '确认部署到生产服务器：必须输入 DEPLOY（其他任何值都会让 job 直接失败）'
+        required: true
+        default: ''
+        type: string
+      deploy_ref:
+        description: '要部署的 commit SHA（留空 = 触发本次 workflow 的分支 HEAD）'
+        required: false
+        default: ''
+        type: string
 
-# 连续推送时只保留最新一次，避免两次部署交叉执行把产物换乱。
+# 最小权限：部署只通过 SSH + secrets 完成，不需要 GITHUB_TOKEN 的写权限。
+permissions:
+  contents: read
+
+# 连续触发时只保留最新一次，避免两次部署交叉执行把产物换乱。
 concurrency:
-  group: deploy-dev
-  cancel-in-progress: true
+  group: cd-deploy-production
+  cancel-in-progress: false
 
 jobs:
-  build:
+  # ---------------------------------------------------------------------------
+  # 门禁：没有 confirm_deploy=DEPLOY 就没有后面的一切
+  # ---------------------------------------------------------------------------
+  guard:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 核对手动确认参数
+        # 输入值通过 env 传入，不做字符串内插：workflow_dispatch 的输入是人工可控文本，
+        # 直接写进 run 脚本等于把输入当 shell 代码执行（`$(...)` / 引号都能逃逸）。
+        env:
+          CONFIRM_DEPLOY: ${{ inputs.confirm_deploy }}
+        run: |
+          if [ "${CONFIRM_DEPLOY}" != "DEPLOY" ]; then
+            echo "::error::confirm_deploy 必须是 DEPLOY，收到的值不匹配（长度 ${#CONFIRM_DEPLOY}）"
+            echo "::error::本次不会构建，也不会连服务器。"
+            exit 1
+          fi
+          echo "::notice title=CD 手动门禁::已确认部署（confirm_deploy=DEPLOY）"
+
+      - name: 记录部署意图
+        env:
+          ACTOR: ${{ github.actor }}
+          REQUESTED_REF: ${{ inputs.deploy_ref || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "### CD 手动触发"
+            echo ""
+            echo "| 项 | 值 |"
+            echo "| --- | --- |"
+            echo "| 触发者 | @${ACTOR} |"
+            echo "| 请求的 commit | \`${REQUESTED_REF}\` |"
+            echo "| 工作流运行 | ${RUN_URL} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 显式固定要部署的 commit：手动触发时「分支 HEAD」可能已经前进，
+          # 部署的必须是被确认过的那一个，而不是恰好此刻最新的那一个。
+          ref: ${{ inputs.deploy_ref || github.sha }}
 
       - name: 设置 JDK
         uses: actions/setup-java@v4
@@ -140,6 +197,11 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # production environment 是第二道门禁：若仓库在 Settings → Environments 里给
+    # production 配了 required reviewers，这里会停下来等人工批准；没配也不会更松，
+    # 因为前面还有 confirm_deploy=DEPLOY 与 guard。
+    environment: production
+    timeout-minutes: 45
     steps:
       - name: 下载构建产物
         uses: actions/download-artifact@v4
