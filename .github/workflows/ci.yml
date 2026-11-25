@@ -362,7 +362,7 @@ jobs:
               psql -U postgres -v ON_ERROR_STOP=1 "$@"
           }
           psql_super -d postgres <<'SQL'
-          DO $
+          DO $$
           BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_owner') THEN
               CREATE ROLE core_owner LOGIN PASSWORD 'core_owner_it';
@@ -377,7 +377,7 @@ jobs:
               CREATE ROLE query_app LOGIN PASSWORD 'query_app_it';
             END IF;
           END
-          $;
+          $$;
           SQL
           for spec in core_it:core_owner query_it:query_owner; do
             db="${spec%%:*}"
