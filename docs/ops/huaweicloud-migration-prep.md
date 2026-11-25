@@ -163,8 +163,9 @@ SHOW CONSTRAINTS YIELD name RETURN name;   -- 应包含 scholar_id_unique / work
 
 ### 4.3 清空并灌图
 
-`GraphProjectionStore.resetForRebuild(scope)` 会清空图库并重置水位（Community 单库单作用域，
-**独占实例**才可执行）。随后按成果分页：
+`GraphProjectionStore.resetAllForRebuild(scope)` 会清空**整库**并重置水位（Community 单库单作用域，
+**独占实例**才可执行）。实现会在删除前于同一事务内检查库内是否存在其他 `GraphProjectionMeta.scope`，
+有则抛 `IllegalStateException` 并回滚，不会误删其他作用域/环境的图数据。随后按成果分页：
 
 1. 从 `qry_contribution` 读取一批（≤500）成果的合格作者（`relation_state IN
    ('AUTO','SELF_CONFIRMED')`）；

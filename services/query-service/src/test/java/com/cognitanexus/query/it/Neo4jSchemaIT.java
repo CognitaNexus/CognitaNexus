@@ -32,7 +32,10 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.exceptions.ClientException;
 
@@ -54,7 +57,10 @@ import org.neo4j.driver.exceptions.ClientException;
  * </ul>
  *
  * <p>测试数据全部带本次运行的随机前缀，结束时按前缀清理，不删除实例上的其他数据。
+ * <b>唯一例外</b>是整库重建的正向用例（{@code resetAllForRebuild}）：它必须清空与实例，
+ * 因此先确认库内不存在其他投影作用域（存在则跳过并说明），并排在最后执行。
  */
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class Neo4jSchemaIT {
 
   private static final String URI =
@@ -94,7 +100,9 @@ class Neo4jSchemaIT {
             20_000,
             100_000,
             2_000L,
-            SCOPE);
+            SCOPE,
+            // 集成测试直接调 initialize()：不需要启动容错，失败就应立刻暴露。
+            true);
     try {
       driver = new Neo4jGraphConfiguration().neo4jDriver(properties);
       driver.verifyConnectivity();
@@ -110,8 +118,10 @@ class Neo4jSchemaIT {
     schemaStore = new Neo4jGraphSchemaStore(runner);
     Neo4jSchemaStatementSource source = new Neo4jSchemaStatementSource();
     // 连续初始化两次：验证启动幂等（生产每次重启都会执行一遍）。
-    new Neo4jSchemaInitializer(schemaStore, source).initialize();
-    new Neo4jSchemaInitializer(schemaStore, source).initialize();
+    Neo4jSchemaInitializer initializer = new Neo4jSchemaInitializer(schemaStore, source, true);
+    initializer.initialize();
+    initializer.initialize();
+    assertThat(initializer.isReady()).isTrue();
 
     graphRepository = new Neo4jCollaborationGraphRepository(runner, properties);
     projectionStore = new Neo4jGraphProjectionStore(runner, properties);
@@ -403,6 +413,89 @@ class Neo4jSchemaIT {
     assertThat(meta.generation()).isEqualTo("gen0002");
     assertThat(meta.behind(120L)).isFalse();
     assertThat(meta.behind(121L)).isTrue();
+  }
+
+  @Test
+  @DisplayName("整库重建拒绝跨作用域：库内存在其他 GraphProjectionMeta 时抛 IllegalStateException 且一行不删")
+  void resetAllForRebuildRefusesWhenForeignScopeExists() {
+    String foreignScope = PREFIX + "-foreign-scope";
+    String scholarId = PREFIX + "-reset-guard-s";
+    String workId = PREFIX + "-reset-guard-w";
+    writeScholars(scholarId);
+    replaceWork(
+        workId,
+        "REAL",
+        1L,
+        List.of(),
+        List.of(),
+        List.of(new GraphAuthorship(scholarId, "AUTO", 1)));
+    runner.write(
+        tx -> {
+          tx.run(
+                  "MERGE (m:GraphProjectionMeta {scope: $scope}) SET m.projected_version = 1",
+                  Map.of("scope", foreignScope))
+              .consume();
+          return null;
+        });
+    try {
+      assertThatThrownBy(() -> projectionStore.resetAllForRebuild(SCOPE))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("拒绝整库清空")
+          .hasMessageContaining(foreignScope);
+
+      // 关键：拒绝必须发生在删除之前。本测试的数据与其他测试的数据都还在。
+      assertThat(count("MATCH (w:Work {work_id: $id}) RETURN count(w) AS n", Map.of("id", workId)))
+          .isEqualTo(1L);
+      assertThat(
+              count(
+                  "MATCH (s:Scholar {scholar_id: $id}) RETURN count(s) AS n",
+                  Map.of("id", scholarId)))
+          .isEqualTo(1L);
+      assertThat(
+              count(
+                  "MATCH (m:GraphProjectionMeta {scope: $scope}) RETURN count(m) AS n",
+                  Map.of("scope", foreignScope)))
+          .isEqualTo(1L);
+    } finally {
+      runner.write(
+          tx -> {
+            tx.run(
+                    "MATCH (m:GraphProjectionMeta {scope: $scope}) DETACH DELETE m",
+                    Map.of("scope", foreignScope))
+                .consume();
+            return null;
+          });
+    }
+  }
+
+  @Test
+  @Order(Integer.MAX_VALUE)
+  @DisplayName("独占实例上的整库重建：清空图并重置水位；非独占实例跳过而不是删别人的数据")
+  void resetAllForRebuildWipesOnlyOnExclusiveInstance() {
+    long foreignScopes =
+        count(
+            "MATCH (m:GraphProjectionMeta) WHERE m.scope <> $scope RETURN count(m) AS n",
+            Map.of("scope", SCOPE));
+    Assumptions.assumeTrue(
+        foreignScopes == 0L, "测试实例存在其他投影作用域，跳过整库清空的正向用例：该实例不是独占实例，清空会删除其他作用域的数据");
+
+    String a = PREFIX + "-reset-a";
+    String b = PREFIX + "-reset-b";
+    writeScholars(a, b);
+    replaceWork(PREFIX + "-reset-w", "REAL", 1L, List.of(), List.of(), authors(a, b));
+    projectionStore.advanceMeta(new GraphProjectionMeta(SCOPE, 7L, 9L, "gen0042", Instant.now()));
+
+    projectionStore.resetAllForRebuild(SCOPE);
+
+    // 清空后再写回一个水位节点（advanceMeta），所以总数应为 1：只要那个 Meta。
+    assertThat(count("MATCH (s:Scholar) RETURN count(s) AS n", Map.of())).isZero();
+    assertThat(count("MATCH (w:Work) RETURN count(w) AS n", Map.of())).isZero();
+    assertThat(count("MATCH ()-[c:COOPERATED_WITH]->() RETURN count(c) AS n", Map.of())).isZero();
+    assertThat(count("MATCH (n) RETURN count(n) AS n", Map.of())).isEqualTo(1L);
+    GraphProjectionMeta meta = projectionStore.readMeta(SCOPE).orElseThrow();
+    assertThat(meta.projectedVersion()).isZero();
+    assertThat(meta.catalogRevision()).isZero();
+    assertThat(meta.generation()).isEqualTo("gen0001");
   }
 
   private static boolean replaceWork(

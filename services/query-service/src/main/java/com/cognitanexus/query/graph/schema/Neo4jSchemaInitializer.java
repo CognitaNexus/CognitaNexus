@@ -9,8 +9,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
 
 /**
  * 启动时建立图库约束与索引，并校验关键约束确实存在。
@@ -23,11 +21,16 @@ import org.springframework.stereotype.Component;
  * 初始化后仍会读一次库中的约束名做校验——「语句执行成功」不等于「约束存在」，
  * 例如权限不足时 DDL 可能被静默忽略（不同版本行为不同），必须核对结果而不是相信返回值。
  *
- * <p>仅在 {@code cn.query.graph.enabled=true} 时装配；默认关闭时本类不存在，现有测试与
- * 现有 PG 功能零影响。
+ * <p>仅在 {@code cn.query.graph.enabled=true} 时装配（由 {@link
+ * com.cognitanexus.query.graph.config.Neo4jGraphConfiguration} 以 {@code @Bean} 注册，便于把
+ * 「图库不可达是否拒绝启动」作为部署策略显式绑定）。
+ *
+ * <p><b>启动容错</b>：默认（{@code cn.query.graph.fail-fast-on-startup=false}）在图库不可达时
+ * 只记录 {@code log.error}、保持 {@link #isReady()} 为 {@code false}，让 query-service
+ * 照常启动并把合作网络查询降级回 PostgreSQL——这符合 ADR-005 §7 的承诺。图库只是派生读投影，
+ * 它不可用时如果整个公开查询服务进程崩溃重启，就把「可选组件故障」放大成了「全部公开功能不可用」。
+ * 打开该开关（或直接调用 {@link #initialize()}）时仍会抛异常，便于运维 CLI 与测试获得快速失败。
  */
-@Component
-@ConditionalOnProperty(prefix = "cn.query.graph", name = "enabled", havingValue = "true")
 public class Neo4jSchemaInitializer implements ApplicationRunner {
 
   private static final Logger log = LoggerFactory.getLogger(Neo4jSchemaInitializer.class);
@@ -43,19 +46,53 @@ public class Neo4jSchemaInitializer implements ApplicationRunner {
 
   private final GraphSchemaStore store;
   private final Neo4jSchemaStatementSource source;
+  private final boolean failFastOnStartup;
 
-  public Neo4jSchemaInitializer(GraphSchemaStore store, Neo4jSchemaStatementSource source) {
+  /** schema 是否已成功应用并校验通过。未就绪时因库查询必须降级回 PG（ADR-005 §7）。 */
+  private volatile boolean ready;
+
+  public Neo4jSchemaInitializer(
+      GraphSchemaStore store, Neo4jSchemaStatementSource source, boolean failFastOnStartup) {
     this.store = store;
     this.source = source;
+    this.failFastOnStartup = failFastOnStartup;
   }
 
+  /**
+   * 启动入口：默认不因图库不可达而让进程启动失败。
+   *
+   * <p>失败时保持未就绪并记录完整错误，由健康指示器暴露 {@code schemaReady=false}；
+   * {@code fail-fast-on-startup=true} 时才向上抛异常中止启动。
+   */
   @Override
   public void run(ApplicationArguments args) {
-    initialize();
+    try {
+      initialize();
+    } catch (RuntimeException ex) {
+      if (failFastOnStartup) {
+        throw ex;
+      }
+      log.error(
+          "图库 schema 初始化失败，query-service 继续启动并降级回 PostgreSQL"
+              + "（cn.query.graph.fail-fast-on-startup=false）。合作网络读取不得走图库；"
+              + "修复图库后用初始化器重试或重启。原因：{}",
+          ex.toString(),
+          ex);
+    }
   }
 
-  /** 应用 schema 并校验。返回实际结果，便于测试与运维端点直接展示。 */
+  /** schema 是否已就绪（约束与索引已确认存在）。供健康指示器与后续读路径开关使用。 */
+  public boolean isReady() {
+    return ready;
+  }
+
+  /**
+   * 应用 schema 并校验。返回实际结果，便于测试与运维端点直接展示。
+   *
+   * <p>本方法对图库不可达/DDL 权限不足一律抛异常（不吞）：调用方决定是降级启动还是失败。
+   */
   public SchemaApplication initialize() {
+    ready = false;
     List<String> statements = source.load();
     for (String statement : statements) {
       if (!statement.toUpperCase(java.util.Locale.ROOT).startsWith("CREATE")) {
@@ -76,6 +113,7 @@ public class Neo4jSchemaInitializer implements ApplicationRunner {
         statements.size(),
         objects.constraints().size(),
         objects.indexes().size());
+    ready = true;
     return new SchemaApplication(statements, objects.constraints(), objects.indexes());
   }
 

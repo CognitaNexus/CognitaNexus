@@ -125,6 +125,10 @@ cn:
       max-edges: 100000
       budget-millis: 1000
       scope: ${CN_NEO4J_SCOPE:query-public}
+      # 启动时 schema 初始化失败是否让进程启动失败。默认 false：图库是派生读投影，
+      # 它不可用时应降级回 PostgreSQL 而不是让整个公开查询服务被探针摘除；
+      # 生产首次上线或升级 schema 时可临时置 true 做一次快速失败检查。
+      fail-fast-on-startup: ${CN_NEO4J_FAIL_FAST_ON_STARTUP:false}
 
   projection:
     # 必须与 core 的 cn.outbox.consumer-endpoints.query 键一致，否则事件会以别的 consumerId 落库，

@@ -14,7 +14,10 @@ import java.time.Instant;
  * 已经下线的合作边重新出现，而调用方看不出来。
  *
  * @param scope 投影作用域，例如 {@code query-public}。同一 Neo4j 实例只应有一个公开作用域；
- *     多作用域共用实例时，重置/重建必须按作用域隔离，不能整库清空
+ *     多作用域共用实例时，重置/重建必须按作用域隔离，不能整库清空。
+ *     {@code GraphProjectionStore.resetAllForRebuild(scope)} 因此在删除前先读全部水位节点，
+ *     发现其他 scope 就抛 {@link IllegalStateException} 并回滚——宁可拒绝重建，
+ *     也不把别人的图数据一起删掉
  * @param projectedVersion 已投影到的 catalog revision（或成果聚合版本）；单调不减
  * @param catalogRevision 投影时看到的 core 目录修订
  * @param generation 投影对应的 PG generation（重建切换后图也要跟着换代）

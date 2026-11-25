@@ -13,7 +13,7 @@ class Neo4jGraphPropertiesTest {
 
   private static Neo4jGraphProperties minimal() {
     return new Neo4jGraphProperties(
-        false, null, null, null, null, null, null, 0, 0, 0, 0, 0L, null);
+        false, null, null, null, null, null, null, 0, 0, 0, 0, 0L, null, false);
   }
 
   @Test
@@ -34,6 +34,8 @@ class Neo4jGraphPropertiesTest {
     assertThat(properties.maxEdges()).isEqualTo(100_000);
     assertThat(properties.budgetMillis()).isEqualTo(1_000L);
     assertThat(properties.scope()).isEqualTo("query-public");
+    // 启动容错默认开启（fail-fast=false）：图库不可达时降级而不是让服务启动失败。
+    assertThat(properties.failFastOnStartup()).isFalse();
 
     // 关键：默认配置下 validate 不抛异常，服务不需要图库也能启动。
     assertThatCode(properties::validate).doesNotThrowAnyException();
@@ -56,7 +58,8 @@ class Neo4jGraphPropertiesTest {
             5_000,
             20_000,
             2_500L,
-            "query-public");
+            "query-public",
+            false);
 
     assertThat(properties.uri()).startsWith("neo4j+s://");
     assertThat(properties.connectTimeout()).isEqualTo(Duration.ofSeconds(7));
@@ -80,7 +83,8 @@ class Neo4jGraphPropertiesTest {
             -1,
             -1,
             -1L,
-            " ");
+            " ",
+            false);
     assertThat(negative.connectTimeout()).isEqualTo(Duration.ofSeconds(3));
     assertThat(negative.queryTimeout()).isEqualTo(Duration.ofSeconds(10));
     assertThat(negative.maxAuthorsPerWorkForMaterializedEdge()).isEqualTo(20);
@@ -105,7 +109,8 @@ class Neo4jGraphPropertiesTest {
             20_000,
             100_000,
             1_000L,
-            "query-public");
+            "query-public",
+            false);
 
     assertThatThrownBy(properties::validate)
         .isInstanceOf(IllegalStateException.class)
@@ -129,7 +134,8 @@ class Neo4jGraphPropertiesTest {
             20_000,
             100_000,
             1_000L,
-            "query-public");
+            "query-public",
+            false);
     assertThatThrownBy(httpUri::validate)
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("cn.query.graph.uri");
@@ -148,7 +154,8 @@ class Neo4jGraphPropertiesTest {
             20_000,
             100_000,
             1_000L,
-            "query-public");
+            "query-public",
+            false);
     assertThatThrownBy(tooManyAuthors::validate)
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("max-authors-per-work-for-materialized-edge");
@@ -167,7 +174,8 @@ class Neo4jGraphPropertiesTest {
             20_000,
             100_000,
             1_000L,
-            "query-public");
+            "query-public",
+            false);
     assertThatThrownBy(tooMuchEvidence::validate)
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("max-evidence-work-ids-per-edge");
@@ -188,6 +196,32 @@ class Neo4jGraphPropertiesTest {
   }
 
   @Test
+  @DisplayName("启动容错开关：默认不 fail-fast；显式打开时才在启动期失败（供首次上线检查）")
+  void failFastOnStartupIsExplicit() {
+    Neo4jGraphProperties strict =
+        new Neo4jGraphProperties(
+            true,
+            "bolt://127.0.0.1:7687",
+            "neo4j",
+            "secret",
+            "neo4j",
+            Duration.ofSeconds(3),
+            Duration.ofSeconds(10),
+            20,
+            50,
+            20_000,
+            100_000,
+            1_000L,
+            "query-public",
+            true);
+
+    assertThat(strict.failFastOnStartup()).isTrue();
+    // 日志/健康描述里也要能看出这个部署策略，否则降级事件难以归因。
+    assertThat(strict.describe()).contains("failFastOnStartup=true");
+    assertThat(minimal().describe()).contains("failFastOnStartup=false");
+  }
+
+  @Test
   @DisplayName("describe() 不泄露口令")
   void describeNeverLeaksPassword() {
     Neo4jGraphProperties properties =
@@ -204,7 +238,8 @@ class Neo4jGraphPropertiesTest {
             20_000,
             100_000,
             1_000L,
-            "query-public");
+            "query-public",
+            false);
 
     assertThat(properties.describe()).doesNotContain("top-secret-password");
     assertThat(properties.describe()).contains("enabled=true", "query-public");

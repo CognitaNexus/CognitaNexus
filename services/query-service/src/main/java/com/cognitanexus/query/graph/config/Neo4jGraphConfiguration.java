@@ -8,6 +8,8 @@ import com.cognitanexus.query.graph.infrastructure.Neo4jCollaborationGraphReposi
 import com.cognitanexus.query.graph.infrastructure.Neo4jGraphProjectionStore;
 import com.cognitanexus.query.graph.infrastructure.Neo4jGraphSchemaStore;
 import com.cognitanexus.query.graph.infrastructure.Neo4jSessionRunner;
+import com.cognitanexus.query.graph.schema.Neo4jSchemaInitializer;
+import com.cognitanexus.query.graph.schema.Neo4jSchemaStatementSource;
 import java.net.URI;
 import org.neo4j.driver.AuthTokens;
 import org.neo4j.driver.Config;
@@ -67,6 +69,19 @@ public class Neo4jGraphConfiguration {
     return new Neo4jGraphSchemaStore(runner);
   }
 
+  /**
+   * 启动时幂等执行 schema 的初始化器。
+   *
+   * <p>刻意用显式 {@code @Bean} 而不是给类加 {@code @Component}：是否「图库不可达就拒绝启动」是部署
+   * 策略，不是领域规则，由 {@code cn.query.graph.fail-fast-on-startup}（默认 false）决定，
+   * 在这里一次性绑定，避免有人给类加一个无参构造后又一次变成「启用即崩」。
+   */
+  @Bean
+  public Neo4jSchemaInitializer neo4jSchemaInitializer(
+      GraphSchemaStore store, Neo4jSchemaStatementSource source, Neo4jGraphProperties properties) {
+    return new Neo4jSchemaInitializer(store, source, properties.failFastOnStartup());
+  }
+
   @Bean
   public CollaborationGraphRepository collaborationGraphRepository(
       Neo4jSessionRunner runner, Neo4jGraphProperties properties) {
@@ -89,20 +104,60 @@ public class Neo4jGraphConfiguration {
   /**
    * 图库健康指示器。
    *
-   * <p>只做连通性探测，不判断水位：水位落后是「降级到 PG」而不是「服务不健康」，
-   * 把它算进健康检查会导致图库轻微滞后就让整个实例被摘除，反而扩大故障面。
+   * <p><b>永远返回 UP</b>：图库只是派生读投影，ADR-005 §7 承诺「图库故障时降级回 PostgreSQL，
+   * 公开查询服务整体仍可用」。如果这里返回 {@code Health.down()}，`/actuator/health` 聚合就会给
+   * 出 HTTP 503，部署探针会把整个 query-service 判为不健康并摘除——一个可选图库的故障就此
+   * 扩大成全部公开查询不可用，与降级承诺相反。因此降级状态放进 details
+   * （{@code graphAvailable=false}、{@code degradedToPostgres=true}），而不是放在整体状态里。
+   *
+   * <p>探针本身抛异常（连接池耗尽、驱动内部错误）同样按「图库不可用」处理，不允许健康端点
+   * 因此变成 500：健康检查不应当成为另一个故障点。
    */
   @Bean
   public HealthIndicator neo4jGraphHealthIndicator(
-      CollaborationGraphRepository repository, Neo4jGraphProperties properties) {
-    return () -> {
-      boolean available = repository.isAvailable();
-      Health.Builder builder = available ? Health.up() : Health.down();
-      return builder
-          .withDetail("scope", properties.scope())
-          .withDetail("database", properties.database())
-          .withDetail("degradedToPostgres", !available)
-          .build();
-    };
+      CollaborationGraphRepository repository,
+      Neo4jSchemaInitializer schemaInitializer,
+      Neo4jGraphProperties properties) {
+    return () -> graphHealth(repository, properties, schemaInitializer.isReady());
+  }
+
+  /**
+   * 构造图库健康信息。整体状态恒为 UP，降级与否只看 details（ADR-005 §7）。
+   *
+   * @param schemaReady schema 是否已成功应用到图库；未就绪时同样必须降级到 PG，
+   *     因为缺唯一约束的图在并发写入下会悄悄产生重复节点
+   */
+  static Health graphHealth(
+      CollaborationGraphRepository repository,
+      Neo4jGraphProperties properties,
+      boolean schemaReady) {
+    boolean available;
+    String probeError = null;
+    try {
+      available = repository.isAvailable();
+    } catch (RuntimeException ex) {
+      // 探针失败等同于不可用；只记录异常类型，不把主机名/凭据写进公开健康响应。
+      available = false;
+      probeError = ex.getClass().getSimpleName();
+    }
+    boolean degraded = !available || !schemaReady;
+    Health.Builder builder =
+        Health.up()
+            .withDetail("scope", properties.scope())
+            .withDetail("database", properties.database())
+            .withDetail("graphAvailable", available)
+            .withDetail("schemaReady", schemaReady)
+            .withDetail("degradedToPostgres", degraded);
+    if (degraded) {
+      builder.withDetail(
+          "degradedReason",
+          !available
+              ? "图库不可达或认证失败，合作网络查询走 PostgreSQL（ADR-005 §7）"
+              : "图库 schema 未就绪（启动时初始化失败或尚未执行），合作网络查询走 PostgreSQL");
+    }
+    if (probeError != null) {
+      builder.withDetail("probeError", probeError);
+    }
+    return builder.build();
   }
 }

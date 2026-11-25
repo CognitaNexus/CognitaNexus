@@ -82,7 +82,8 @@ achievement_id)` 聚合」这一事实。代码注释里记录的真实规模是
 图库自身没有业务写入入口。
 
 **允许的图内写入**：只有投影（Backfill / Outbox 消费者）写 `Scholar`/`Work`/关系/水位。
-运维 `resetForRebuild` 只用于全量重建，且必须先把查询切到 PG 降级路径（§7、§8）。
+运维 `resetAllForRebuild(scope)` 会清空**整库**，只用于独占实例上的全量重建，且必须先把查询切到
+PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误读成「按作用域局部重建」。
 
 ---
 
@@ -202,6 +203,15 @@ achievement_id)` 聚合」这一事实。代码注释里记录的真实规模是
 事件被守卫拒绝（`replaceWork` 返回 `false`，无副作用）。因此「重复、乱序、迟到」都不会把新值
 改回旧值；同一事件重放两次的结果与一次相同。
 
+**同一成果必须串行消费**：`replaceWork` 是「先删后建」的读改写序列（删 `AUTHORED`/`COOPERATED_WITH`
+→ 按当前作者集合重建）。同一 `workId` 的两个版本如果被两个消费者并发应用，即使各自通过版本守卫，
+也可能交错成「版本 v2 删边 → v1 写入 → v2 重新写入」的中间态，出现重复边或残留旧作者。因此：
+
+- 增量路径按 `workId` 分区/串行（同一成果同时只有一个消费者在应用），这是投影端的**前置条件**，
+  不由 `source_version` 守卫替你完成；
+- Backfill 与增量消费者不得并发写同一 `workId`：重建期间读路径已在 PG（§7、§8），先完成回填再切回；
+- 版本守卫是「迟到/重放」的兜底，不承担「并发写同一成果」的互斥职责。
+
 **海量作者成果的事件**：`max-authors-per-achievement-for-edges=200` 的既有隔离逻辑保持不变
 （超限事件隔离并记录，不静默截断）。图投影对超阈值成果仍写 `AUTHORED` 与二部图证据，不因
 「不物化边」而丢作者。
@@ -218,7 +228,7 @@ achievement_id)` 聚合」这一事实。代码注释里记录的真实规模是
   把公开读路径切到图库；切换前图查询一律走 PG（§7）。
 
 > 现状：本分支提供 `GraphProjectionStore` 的幂等写、版本守卫与 `advanceMeta` 原语，
-> 以及 `resetForRebuild`。Backfill 调度器与 Outbox 接线属于后续 Issue（需与 Inbox 重放和
+> 以及 `resetAllForRebuild(scope)`。Backfill 调度器与 Outbox 接线属于后续 Issue（需与 Inbox 重放和
 > 隔离事件处理一起评审），本文只固定契约，不声称已完成。
 
 ### 5.3 水位与 generation
@@ -260,6 +270,15 @@ achievement_id)` 聚合」这一事实。代码注释里记录的真实规模是
 数据性质归一复用 `DataNatureScope`（一处实现）；领域/机构筛选是**成果级**条件，不允许改成
 学者级。
 
+**筛选等价的写入前提**：上表「领域/机构」两行之所以能在两条路径上给出同一结果，是因为投影写入
+时 `Work.topic_ids` **必须等于** PG 中该成果的 `qry_achievement_topic` 集合，
+`Work.organizations` **必须等于** `qry_contribution_org` 集合（同一成果的全部机构，不是「第一作者
+机构」也不是学者档案的当前机构）。这两个属性不是「可选的展示字段」，而是筛选下推的唯一依据：
+少一个主题、多一个机构，带筛选的查询就会在图上比 PG 少/多出一批成果，边强度随之偏离，而响应
+里没有任何字段能提示这种偏差。因此 Backfill/投影写入与 `qry_achievement_topic`、
+`qry_contribution_org` 的对账属于验收项（ADR §10、对账工具后续 Issue），映射规则变化需要显式
+提升 `rule_version` 并重建投影。
+
 **带领域/机构筛选的边强度必须重新聚合**：物化边的强度是「全部合格成果数」，筛选后只应统计
 命中筛选的成果。适配器在 `hasWorkLevelFilter()` 为真时不用物化边，改走二部图按筛选条件聚合，
 避免「边看起来比实际更强」——那等于凭空制造合作证据。
@@ -299,17 +318,36 @@ achievement_id)` 聚合」这一事实。代码注释里记录的真实规模是
 
 | 情形 | 检测 | 行为 |
 | --- | --- | --- |
-| 图库不可达 / 认证失败 | `CollaborationGraphRepository.isAvailable()`、驱动异常 | 本次查询走 PG；健康指示器 `degradedToPostgres=true`；不返回空图 |
+| 启动时图库不可达 | `Neo4jSchemaInitializer` 启动执行失败 | 默认 `cn.query.graph.fail-fast-on-startup=false`：记 `log.error`、`isReady()=false`，**进程照常启动**并把合作网络查询降级回 PG；置 `true` 时启动失败（仅用于首次上线/升级 schema 的一次性检查） |
+| 图库不可达 / 认证失败 | `CollaborationGraphRepository.isAvailable()`、驱动异常 | 本次查询走 PG；健康指示器 `graphAvailable=false`、`degradedToPostgres=true`；不返回空图 |
+| schema 未就绪（缺唯一约束） | `Neo4jSchemaInitializer.isReady()` | 走 PG；不允许在缺唯一约束的图上服务查询（合并/重放会产生重复节点） |
 | 单条 Cypher 超时 | 驱动 `queryTimeout` | 本次查询走 PG；记录告警（含 scope、耗时） |
 | 投影水位落后 `published_revision` | `GraphProjectionMeta.behind()` | 走 PG；不得拿旧图冒充当前结果 |
 | 图数据部分损坏（证据缺标题、节点缺失） | 适配器校验 | **抛错**并降级；由对账/重建修复，不跳过坏边 |
 | 重建进行中 | `generation` 不一致 / 运维标记 | 走 PG，直到核对通过并切换 |
 | 图规模超限 | 节点/边计数 | 明确失败 `GRAPH_SCOPE_TOO_LARGE`，**不降级**：降级会让同一请求在大图上悄悄变成慢查询，掩盖真实规模问题 |
 
-「降级」只发生在**基础设施/版本**问题；**业务规模**问题必须明确失败，二者不能混为一谈。
+**健康端点必须是 UP，降级只写在 details**：`neo4jGraphHealthIndicator` 恒返回 `Health.up()`，
+用 `graphAvailable` / `schemaReady` / `degradedToPostgres` 表达图库状态。如果它在图库故障时返回
+`DOWN`，Spring Boot 的 `/actuator/health` 聚合会给 HTTP 503，部署探针随即把**整个 query-service**
+判为不健康并摘除——一个可选图库的故障就此变成全部公开查询不可用，恰好与本节的降级承诺相反。
+探针自身抛异常同样按「图库不可用」处理，健康检查不得成为新的故障点。
 
-可观测性：健康端点暴露 `scope/database/degradedToPostgres`；投影水位、边数、证据截断计数
-（后续对账工具）进入运维指标。禁止用「重启好了」结束故障（AGENTS.md §5）。
+**启动期不得拒绝降级**：图库是派生读投影，启动瞬间连不上属于预期故障。默认只记 `log.error`
+并保持 `schemaReady=false`，公开查询继续走 PG；运维可用 `CN_NEO4J_FAIL_FAST_ON_STARTUP=true`
+临时要求快速失败（例如 schema 升级窗口只想在确认健康后才接流量）。`initialize()` 始终对异常
+向上抛，测试与 CLI 不被启动容错掩埋。
+
+**物化合作边的一致性由 `retireWork` 与水位守卫共同保证**：成果下线/不再公开时 `retireWork`
+清墓碑并删除该成果的全部 `COOPERATED_WITH`（保留 `AUTHORED` 作为追溯与二部图分支的基础）；仅靠
+版本守卫不够——守卫只拒绝旧版本，不会删除已经写下的边。两者缺一：缺 `retireWork` 会留下「成果
+已不公开、合作边仍在」的幽灵边；缺水位守卫则会在回填落后时拿旧图冒充当前结果。对账时二者都
+要比（`(work_id, pair)` 数量与 `projected_version` vs `published_revision`，§8.2）。
+
+「降级」只发生在**基础设施/版本/就绪**问题；**业务规模**问题必须明确失败，二者不能混为一谈。
+
+可观测性：健康端点暴露 `scope/database/graphAvailable/schemaReady/degradedToPostgres`；投影水位、
+边数、证据截断计数（后续对账工具）进入运维指标。禁止用「重启好了」结束故障（AGENTS.md §5）。
 
 ---
 
@@ -328,8 +366,10 @@ CN_QUERY_GRAPH_ENABLED=false   # 重启 query-service
 ### 8.2 从 PG 全量重建图
 
 1. 确认查询已在 PG 路径（开关关闭或图水位未达标）；
-2. `GraphProjectionStore.resetForRebuild(scope)`：清空图并重置水位（Community 单库单作用域；
-   **只能在独占实例、已确认无其他作用域时执行**）；
+2. `GraphProjectionStore.resetAllForRebuild(scope)`：清空**整库**并重置水位。实现会在同一事务里
+   先读库内的全部 `GraphProjectionMeta.scope`，只要存在本次重建之外的作用域就抛
+   `IllegalStateException` 并回滚（Community 单库单作用域；**只能在独占实例、已确认无其他作用域时
+   执行**）；
 3. 按 §5.2 分批 Backfill（后续 Issue 提供调度器；当前可用 `Neo4jSchemaIT` / 手写脚本验证流程）；
 4. 对账：比较 PG `qry_coauthor_edge` 与图中 `COOPERATED_WITH` 的 `(work_id, pair)` 数量、
    `qry_achievement` 与 `Work` 的公开数、`GraphProjectionMeta.projected_version` 与 PG
@@ -391,8 +431,8 @@ CN_QUERY_GRAPH_ENABLED=false   # 重启 query-service
 
 | 层级 | 内容 | 当前状态 |
 | --- | --- | --- |
-| 单元 | 配置默认值/自检、schema 解析与初始化幂等、领域模型不变量、路径规则、PG↔图逐例对比 | 已实现并通过（`Neo4jGraphPropertiesTest`、`Neo4jSchemaStatementSourceTest`、`Neo4jSchemaInitializerTest`、`GraphDomainModelTest`、`CollaborationGraphServiceTest`、`NetworkGraphParityTest`） |
-| 集成 | 真实 Neo4j 5.26：约束/索引幂等、唯一约束拒绝重复、节点/关系写读、证据、REAL/SIMULATED 隔离、高作者数不物化、版本守卫、成果下线、水位单调 | `Neo4jSchemaIT`，连接本机 `bolt://127.0.0.1:17687` 通过 |
+| 单元 | 配置默认值/自检、schema 解析与初始化幂等、启动期降级与 fail-fast 开关、健康指示器恒 UP、整库重建独占性、领域模型不变量、路径规则（单一来源常量）、PG↔图逐例对比 | 已实现并通过（`Neo4jGraphPropertiesTest`、`Neo4jSchemaStatementSourceTest`、`Neo4jSchemaInitializerTest`、`Neo4jGraphConfigurationTest`、`Neo4jGraphProjectionStoreTest`、`GraphDomainModelTest`、`CollaborationGraphServiceTest`、`NetworkGraphParityTest`） |
+| 集成 | 真实 Neo4j 5.26：约束/索引幂等、唯一约束拒绝重复、节点/关系写读、证据、REAL/SIMULATED 隔离、高作者数不物化、版本守卫、成果下线、水位单调、跨作用域拒绝整库清空 | `Neo4jSchemaIT`（11 用例），连接本机 `bolt://127.0.0.1:17687` 通过 |
 | 性能 | 固定硬件/数据分布的 P50/P95/P99、错误率、资源；与 PG 基线对比 | **未执行**，不得声称图库更快 |
 | 一致性 | 真实数据抽样对账、故障注入、重建演练 | **未执行**（对账工具与调度器为后续 Issue） |
 | 迁移 | 华为云 RDS+ECS / GES 演练 | **未执行** |
@@ -411,6 +451,7 @@ CN_QUERY_GRAPH_ENABLED=false   # 重启 query-service
 | Community 无多库/无集群 | 多作用域与高可用受限 | 一实例一作用域；高可用用 ECS 主备或评估 GES/Enterprise |
 | GES 能力差异（事务/唯一约束/Cypher） | 适配器重写成本 | 先做能力验证清单，再决定是否迁移；端口层已隔离 |
 | 公开端点尚未切换 | 本 ADR 的收益尚未体现 | 独立 Issue：接线 + 屏障 + 压测 + 灰度；未完成前不宣称 FR12 由 Neo4j 满足 |
+| 启动降级可能掩盖长期不可用 | 图库一直没就绪但服务「看起来很健康」 | 健康 details 恒带 `schemaReady/graphAvailable/degradedToPostgres`，并对 `degradedToPostgres=true` 持续告警；首次上线用 `fail-fast-on-startup=true` 做一次性检查 |
 
 ---
 

@@ -5,6 +5,7 @@ import com.cognitanexus.query.graph.domain.GraphFilterCriteria;
 import com.cognitanexus.query.graph.domain.GraphPathResult;
 import com.cognitanexus.query.graph.domain.GraphScholarNode;
 import com.cognitanexus.query.graph.domain.GraphSubgraphResult;
+import com.cognitanexus.query.network.domain.NetworkRules;
 import com.cognitanexus.sharedkernel.BusinessException;
 import com.cognitanexus.sharedkernel.ErrorCode;
 import java.util.ArrayList;
@@ -26,7 +27,8 @@ import java.util.TreeSet;
  * <ul>
  *   <li>自我网络按种子逐层扩边，不把筛选范围内全图读进内存；节点/边超上限返回
  *       {@code GRAPH_SCOPE_TOO_LARGE}，不截断后冒充完整子图；
- *   <li>路径按跳数 BFS，深度上限 6，超时间预算返回 {@code GRAPH_TIMEOUT}；
+ *   <li>路径按跳数 BFS，深度上限取 {@link NetworkRules#MAX_PATH_DEPTH}，超时间预算返回
+ *       {@code GRAPH_TIMEOUT}；
  *   <li>等长最短路径取规范 ID 序列字典序最小的一条，只返回一条；邻居按 ID 升序访问，
  *       结果与遍历顺序、存储实现无关；
  *   <li>起点与终点相同（0 跳）只有在范围内确实存在合格合作边时才返回可达，不把任何 ID
@@ -40,11 +42,11 @@ import java.util.TreeSet;
  */
 public final class CollaborationGraphService {
 
-  /** 自我网络最大深度，与 {@code NetworkService} 一致。 */
-  public static final int MAX_NEIGHBORHOOD_DEPTH = 3;
-
-  /** 最短路径搜索深度上限，与 {@code NetworkService} 一致。 */
-  public static final int MAX_PATH_DEPTH = 6;
+  /*
+   * 深度上限不在本类重复声明：常量只来自 NetworkRules，PG 实现（NetworkService）与本类引用
+   * 同一处定义。若这里再写一份 `3` / `6`，调规则的人只改一边就能让两条实现给出不同结果，
+   * 而响应里的 ruleVersion 仍然相同——调用方无法察觉。
+   */
 
   private final CollaborationGraphRepository repository;
   private final int maxNodes;
@@ -66,7 +68,7 @@ public final class CollaborationGraphService {
       throw BusinessException.invalidArgument("scholarId 不能为空");
     }
     GraphFilterCriteria effective = criteria == null ? GraphFilterCriteria.realOnly() : criteria;
-    int depthValue = Math.min(Math.max(depth, 1), MAX_NEIGHBORHOOD_DEPTH);
+    int depthValue = Math.min(Math.max(depth, 1), NetworkRules.MAX_NEIGHBORHOOD_DEPTH);
     int nodeLimit = Math.min(maxNodesRequested <= 0 ? maxNodes : maxNodesRequested, maxNodes);
 
     Snapshot snapshot = new Snapshot(effective, maxEdges, nodeLimit);
@@ -134,13 +136,13 @@ public final class CollaborationGraphService {
     Snapshot fromSide = new Snapshot(effective, maxEdges, maxNodes);
     fromSide.visited.add(from);
     Map<String, Integer> fromSource =
-        breadthFirst(fromSide, from, MAX_PATH_DEPTH, startedAt, budget, to);
+        breadthFirst(fromSide, from, NetworkRules.MAX_PATH_DEPTH, startedAt, budget, to);
     if (!fromSource.containsKey(to)) {
       return GraphPathResult.unreachable(
           "在 "
-              + MAX_PATH_DEPTH
+              + NetworkRules.MAX_PATH_DEPTH
               + " 跳范围内未找到合作路径；这不等于全图不连通，只说明最短距离超过 "
-              + MAX_PATH_DEPTH
+              + NetworkRules.MAX_PATH_DEPTH
               + " 跳。起点或终点若在范围内没有合格合作边，也会得到这个结果。");
     }
 

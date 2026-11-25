@@ -6,8 +6,9 @@ import java.util.List;
  * 最短合作路径的结果。
  *
  * <p>规则与 {@code NetworkService} 的 PG 实现逐字一致：跳数最少；等长时取规范 ID 序列字典序
- * 最小的一条；只返回一条，不枚举全部等长路径；深度上限 {@code MAX_PATH_DEPTH}=6，超出时如实
- * 说明「N 跳内不连通」而不是「全图不连通」。
+ * 最小的一条；只返回一条，不枚举全部等长路径；深度上限取
+ * {@link com.cognitanexus.query.network.domain.NetworkRules#MAX_PATH_DEPTH}（常量单一来源，
+ * 本类不复制数值），超出时如实说明「N 跳内不连通」而不是「全图不连通」。
  *
  * <p>{@link #hopEdges()} 给出每一跳的边与共同成果证据，满足 IN01「逐跳有证据」。它按路径顺序
  * 排列，长度等于 {@code path.size()-1}；零跳路径没有边。

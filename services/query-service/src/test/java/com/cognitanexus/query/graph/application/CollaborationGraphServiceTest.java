@@ -9,6 +9,7 @@ import com.cognitanexus.query.graph.domain.GraphPathResult;
 import com.cognitanexus.query.graph.domain.GraphScholarNode;
 import com.cognitanexus.query.graph.domain.GraphSubgraphResult;
 import com.cognitanexus.query.graph.domain.GraphWorkEvidence;
+import com.cognitanexus.query.network.domain.NetworkRules;
 import com.cognitanexus.sharedkernel.BusinessException;
 import com.cognitanexus.sharedkernel.ErrorCode;
 import java.util.ArrayList;
@@ -60,9 +61,54 @@ class CollaborationGraphServiceTest {
     assertThat(oneHop.visitedNodes()).isEqualTo(3);
 
     GraphSubgraphResult deep = service.neighborhood("b", 9, 0, GraphFilterCriteria.realOnly());
-    // 深度上限与 PG 一致：请求 9 跳按 3 跳处理，不会无界展开。
-    assertThat(deep.depth()).isEqualTo(CollaborationGraphService.MAX_NEIGHBORHOOD_DEPTH);
+    // 深度上限与 PG 一致：请求 9 跳按 NetworkRules 上限处理，不会无界展开。
+    assertThat(deep.depth()).isEqualTo(NetworkRules.MAX_NEIGHBORHOOD_DEPTH);
     assertThat(nodeIds(deep)).containsExactlyInAnyOrder("a", "b", "c", "d");
+  }
+
+  @Test
+  @DisplayName("深度上限只有 NetworkRules 一处定义：图实现不复制数值，行为与常量严格一致")
+  void depthLimitsComeFromNetworkRulesOnly() {
+    // 数值契约：两个实现引用同一常量。改动规则时只改 NetworkRules；若有人在这里重新
+    // 声明 `3`/`6`，结构与行为断言会同时失败。
+    assertThat(NetworkRules.MAX_NEIGHBORHOOD_DEPTH).isEqualTo(3);
+    assertThat(NetworkRules.MAX_PATH_DEPTH).isEqualTo(6);
+
+    // 结构契约：本类不得再声明自己的深度常量（F20-1 的根因就是两份字面量）。
+    assertThat(
+            java.util.Arrays.stream(CollaborationGraphService.class.getDeclaredFields())
+                .map(java.lang.reflect.Field::getName)
+                .toList())
+        .doesNotContain("MAX_NEIGHBORHOOD_DEPTH", "MAX_PATH_DEPTH", "MAX_DEPTH");
+
+    // 行为契约：请求深度截断到常量上限；路径在 MAX_PATH_DEPTH 内可达，再多一跳即不可达。
+    repository.add(chain(NetworkRules.MAX_PATH_DEPTH + 2).toArray(GraphCollaborationEdge[]::new));
+    GraphSubgraphResult deep = service.neighborhood("n0", 99, 0, GraphFilterCriteria.realOnly());
+    assertThat(deep.depth()).isEqualTo(NetworkRules.MAX_NEIGHBORHOOD_DEPTH);
+    assertThat(
+            service
+                .shortestPath(
+                    "n0", "n" + NetworkRules.MAX_PATH_DEPTH, GraphFilterCriteria.realOnly(), 1_000L)
+                .path())
+        .hasSize(NetworkRules.MAX_PATH_DEPTH + 1);
+    assertThat(
+            service
+                .shortestPath(
+                    "n0",
+                    "n" + (NetworkRules.MAX_PATH_DEPTH + 1),
+                    GraphFilterCriteria.realOnly(),
+                    1_000L)
+                .reachable())
+        .isFalse();
+  }
+
+  /** 生成一条 n0-n1-... 的链，用于把「深度上限」变成可执行断言。 */
+  private static List<GraphCollaborationEdge> chain(int hops) {
+    List<GraphCollaborationEdge> edges = new ArrayList<>();
+    for (int i = 1; i <= hops; i++) {
+      edges.add(edge("n" + (i - 1), "n" + i, "w" + i));
+    }
+    return edges;
   }
 
   @Test
@@ -163,7 +209,7 @@ class CollaborationGraphServiceTest {
 
     assertThat(result.reachable()).isFalse();
     assertThat(result.path()).isEmpty();
-    assertThat(result.note()).contains("6 跳范围内未找到合作路径");
+    assertThat(result.note()).contains(NetworkRules.MAX_PATH_DEPTH + " 跳范围内未找到合作路径");
   }
 
   @Test

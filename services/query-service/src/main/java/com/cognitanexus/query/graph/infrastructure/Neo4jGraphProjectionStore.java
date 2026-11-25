@@ -191,16 +191,64 @@ public class Neo4jGraphProjectionStore implements GraphProjectionStore {
         tx -> tx.run(ADVANCE_META, parameters).single().get("projectedVersion").asLong());
   }
 
+  /**
+   * <b>运维专用</b>：清空整库并重建单一作用域的水位。
+   *
+   * <p>方法名里的 <b>All</b> 是故意的：它清的是整个图库，不是某个作用域的子集，把名字写成
+   * {@code resetForRebuild(scope)} 会让人以为可以安全地在共享实例上按作用域重建。
+   *
+   * <p>安全前置：执行前先在同一事务里读出库内全部 {@code GraphProjectionMeta.scope}，
+   * 只要存在本次作用域之外的水位节点就抛 {@link IllegalStateException} 并回滚——
+   * 多个作用域共用实例时整库清空会删掉别人的数据，而重建方看不出来。
+   *
+   * <p>仍必须在图查询已切到 PG 降级路径、且已确认本实例只服务这一个作用域时才调用（ADR-005 §8.2）。
+   *
+   * @param initialScope 本次重建的作用域；空值时使用配置的 {@code cn.query.graph.scope}
+   */
   @Override
-  public void resetForRebuild(String scope) {
-    String effectiveScope = scope == null || scope.isBlank() ? this.scope : scope;
+  public void resetAllForRebuild(String initialScope) {
+    String effectiveScope =
+        initialScope == null || initialScope.isBlank() ? this.scope : initialScope;
     runner.write(
         tx -> {
-          // Community 版单库单作用域：全量重建从 PG 重新灌图，不存在「部分保留」的正确子集。
-          tx.run("MATCH (n) DETACH DELETE n").consume();
+          // 与清空同一事务：先确认独占再删。若存在其他作用域，异常会让整个事务回滚，一行都不删。
+          List<String> existingScopes =
+              tx.run(READ_ALL_SCOPES).list(record -> record.get("scope").asString());
+          requireExclusiveScope(effectiveScope, existingScopes);
+          tx.run(DELETE_ALL_NODES).consume();
           return null;
         });
     advanceMeta(GraphProjectionMeta.empty(effectiveScope));
+  }
+
+  /**
+   * 整库重建的独占性校验：库内只允许存在本次重建的作用域水位。
+   *
+   * <p>抽成包内静态方法是为了能单独锁住“不要误删别人的作用域”这条规则——它不依赖真实图库，
+   * 而一旦写错就是跨环境数据丢失。
+   *
+   * @param effectiveScope 本次重建作用域
+   * @param existingScopes 库内已有的全部 {@code GraphProjectionMeta.scope}
+   * @throws IllegalStateException 存在其他作用域时
+   */
+  static void requireExclusiveScope(String effectiveScope, Collection<String> existingScopes) {
+    List<String> foreign = new ArrayList<>();
+    if (existingScopes != null) {
+      for (String scope : existingScopes) {
+        if (scope != null && !scope.equals(effectiveScope)) {
+          foreign.add(scope);
+        }
+      }
+    }
+    if (!foreign.isEmpty()) {
+      foreign.sort(String::compareTo);
+      throw new IllegalStateException(
+          "拒绝整库清空：图库中存在其他投影作用域 "
+              + foreign
+              + "（本次重建作用域 "
+              + effectiveScope
+              + "）。整库重建只能在独占实例上执行；请改用独立实例，或先用对账脚本确认这些作用域已废弃并显式清理。");
+    }
   }
 
   /**
@@ -331,6 +379,16 @@ public class Neo4jGraphProjectionStore implements GraphProjectionStore {
              m.generation AS generation,
              coalesce(m.updated_at_epoch_ms, 0) AS updatedAtEpochMs
       """;
+
+  /** 读出库内全部投影作用域；整库重建前用它确认独占性。 */
+  private static final String READ_ALL_SCOPES =
+      """
+      MATCH (m:GraphProjectionMeta)
+      RETURN m.scope AS scope
+      """;
+
+  /** 只有 {@link #resetAllForRebuild(String)} 使用；不在其他地方暴露整库删除。 */
+  private static final String DELETE_ALL_NODES = "MATCH (n) DETACH DELETE n";
 
   private static final String ADVANCE_META =
       """

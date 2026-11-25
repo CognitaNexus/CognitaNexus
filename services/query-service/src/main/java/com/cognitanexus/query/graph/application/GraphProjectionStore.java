@@ -60,8 +60,15 @@ public interface GraphProjectionStore {
   long advanceMeta(GraphProjectionMeta meta);
 
   /**
-   * <b>运维专用</b>：清空图库并重建水位。仅在一次「从 PG 全量重建图投影」开始前调用，
-   * 且必须在图查询已切到 PG 降级路径、作用域独占实例的前提下执行。
+   * <b>运维专用</b>：清空<b>整库</b>并重建指定作用域的水位。
+   *
+   * <p>方法名保留 {@code All} 是有意的：它不是一个「按作用域局部重建」接口，而是独占实例上的
+   * 整库清空。实现必须先用同一事务确认库内不存在其他 {@code GraphProjectionMeta.scope}，
+   * 否则抛 {@link IllegalStateException} 并回滚，不得默默删掉其他作用域/环境的图数据。
+   *
+   * <p>调用前图查询必须已切到 PG 降级路径（ADR-005 §7、§8.2）。
+   *
+   * @param initialScope 本次重建作用域；空值时使用配置的 {@code cn.query.graph.scope}
    */
-  void resetForRebuild(String scope);
+  void resetAllForRebuild(String initialScope);
 }

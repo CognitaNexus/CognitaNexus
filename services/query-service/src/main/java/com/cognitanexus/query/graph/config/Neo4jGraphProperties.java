@@ -33,6 +33,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param maxEdges 单次子图边上限，缺省 100000（与 PG 侧一致）
  * @param budgetMillis 单次路径计算时间预算，缺省 1000 毫秒（与 PG 侧一致）
  * @param scope 投影作用域标识，缺省 {@code query-public}
+ * @param failFastOnStartup 启动时图库 schema 初始化失败是否中止进程，缺省 {@code false}。
+ *     默认为 false 是因为图库只是派生读投影：它不可用时整个公开查询服务应降级回 PostgreSQL，
+ *     而不是被启动失败/探针摘除放大成全部公开功能不可用（ADR-005 §7）。置 true 仅用于
+ *     首次上线或升级 schema 时的一次性快速失败检查
  */
 @ConfigurationProperties(prefix = "cn.query.graph")
 public record Neo4jGraphProperties(
@@ -48,7 +52,8 @@ public record Neo4jGraphProperties(
     int maxNodes,
     int maxEdges,
     long budgetMillis,
-    String scope) {
+    String scope,
+    boolean failFastOnStartup) {
 
   /** 物化边作者数阈值的硬上限，与 PG 侧单成果建边上限保持一致。 */
   public static final int MAX_MATERIALIZED_AUTHOR_THRESHOLD = 200;
@@ -111,12 +116,14 @@ public record Neo4jGraphProperties(
   public String describe() {
     return String.format(
         Locale.ROOT,
-        "graph[enabled=%s, uri=%s, database=%s, scope=%s, materializedAuthorThreshold=%d]",
+        "graph[enabled=%s, uri=%s, database=%s, scope=%s, materializedAuthorThreshold=%d, "
+            + "failFastOnStartup=%s]",
         enabled,
         uri,
         database,
         scope,
-        maxAuthorsPerWorkForMaterializedEdge);
+        maxAuthorsPerWorkForMaterializedEdge,
+        failFastOnStartup);
   }
 
   private static String blankToDefault(String value, String fallback) {

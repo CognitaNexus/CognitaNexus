@@ -236,6 +236,8 @@ services:
       CN_NEO4J_PASSWORD: ${CN_NEO4J_PASSWORD:-cn_neo4j_dev}
       CN_NEO4J_DATABASE: ${CN_NEO4J_DATABASE:-neo4j}
       CN_NEO4J_SCOPE: ${CN_NEO4J_SCOPE:-query-public}
+      # 默认 false：图库不可达时降级回 PostgreSQL，而不是让 query-service 启动失败被探针摘除。
+      CN_NEO4J_FAIL_FAST_ON_STARTUP: ${CN_NEO4J_FAIL_FAST_ON_STARTUP:-false}
     ports:
       - '127.0.0.1:${CN_QUERY_PORT:-8083}:8083'
     # 公开查询以读为主，堆需求低于 core。1024m 折算堆上限约 716m。
