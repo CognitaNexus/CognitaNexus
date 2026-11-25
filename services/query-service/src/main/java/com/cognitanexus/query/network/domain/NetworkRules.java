@@ -10,6 +10,11 @@ package com.cognitanexus.query.network.domain;
  *
  * <p>规则本身（建边口径、路径选择）不因存储变化：仅真实、公开、生效、关系合格的共同成果建边；
  * 跳数最少；等长取规范 ID 序列字典序最小的一条；只返回一条。
+ *
+ * <p><b>响应文案也在这里</b>：PG 实现与图实现共用同一组 {@code note}/{@code pathRule}/{@code scope}
+ * 文本（{@link #PATH_RULE}、{@link #NOTE_SEED_OUT_OF_SCOPE} 等）。文案看似只是「说明」，实际是
+ * 契约的一部分：同一请求在两条路径上必须给出同样的说明，否则调用方无法判断差异来自存储还是规则；
+ * 而且「空图」与「不连通」的区分依赖这些句子，各写一份迟早有一处漏改。
  */
 public final class NetworkRules {
 
@@ -31,5 +36,45 @@ public final class NetworkRules {
   public static final String EDGE_RULE =
       "仅真实、公开、生效、关系合格（AUTO / SELF_CONFIRMED）的共同论文建边；" + "待核验/争议/已排除关系不参与确定合作；边强度为不同合格论文数";
 
+  /** 路径选择规则。 */
+  public static final String PATH_RULE = "跳数最少；等长时取规范 ID 序列字典序最小的一条；只返回一条，不枚举全部等长路径";
+
+  /** 起点与终点相同时的路径选择规则（0 跳也要先确认在范围内）。 */
+  public static final String PATH_RULE_ZERO_HOP = "起点与终点相同时，只有在当前范围内存在合格合作边才返回 0 跳路径。";
+
+  /** 种子在当前范围内没有合格合作边时的说明。 */
+  public static final String NOTE_SEED_OUT_OF_SCOPE =
+      "该学者在当前范围内没有合格合作边，可能原因：成果未公开或未生效、关系非 AUTO/SELF_CONFIRMED、" + "或当前筛选条件将其排除。";
+
+  /** 起点与终点相同且确实在范围内时的说明。 */
+  public static final String NOTE_ZERO_HOP_REACHABLE = "起点与终点相同，按 0 跳返回。";
+
+  /** 起点与终点相同但不在范围内时的说明。 */
+  public static final String NOTE_ZERO_HOP_OUT_OF_SCOPE =
+      "起点在当前范围内没有合格公开合作边（可能成果未公开或未生效、关系非 AUTO/SELF_CONFIRMED、" + "或当前筛选条件将其排除），不按 0 跳可达处理。";
+
   private NetworkRules() {}
+
+  /**
+   * 超过搜索深度时的说明。
+   *
+   * <p>必须点明「N 跳内未找到」与「全图不连通」的差别：把后者当前者会给出错误的拓扑结论。
+   */
+  public static String noteUnreachable(int maxPathDepth) {
+    return "在 "
+        + maxPathDepth
+        + " 跳范围内未找到合作路径；这不等于全图不连通，只说明最短距离超过 "
+        + maxPathDepth
+        + " 跳。起点或终点若在范围内没有合格合作边，也会得到这个结果。";
+  }
+
+  /** 自我网络的 {@code scope} 说明：强调是种子邻域，不是筛选范围的全图。 */
+  public static String neighborhoodScope(int depth) {
+    return "按种子 " + depth + " 跳内实际载入的子图，不是筛选范围的全图";
+  }
+
+  /** 最短路径的 {@code scope} 说明。 */
+  public static String pathScope(int distance) {
+    return "双侧按需扩边至第 " + distance + " 跳，不是筛选范围的全图";
+  }
 }

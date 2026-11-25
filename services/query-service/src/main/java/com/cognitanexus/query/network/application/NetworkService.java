@@ -9,14 +9,10 @@ import com.cognitanexus.query.platform.scope.DataNatureScope;
 import com.cognitanexus.query.projection.application.ProjectionProperties;
 import com.cognitanexus.sharedkernel.BusinessException;
 import com.cognitanexus.sharedkernel.ErrorCode;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
@@ -40,8 +36,6 @@ import org.springframework.stereotype.Service;
 @Service
 public class NetworkService {
 
-  private static final Logger log = LoggerFactory.getLogger(NetworkService.class);
-
   /**
    * 图规则版本。建边口径或路径选择规则变化时提升。
    *
@@ -50,7 +44,6 @@ public class NetworkService {
    */
   public static final String RULE_VERSION = NetworkRules.RULE_VERSION;
 
-  private static final String NATURE_ALL = "ALL";
   private static final int MAX_DEPTH = NetworkRules.MAX_NEIGHBORHOOD_DEPTH;
   private static final int MAX_PATH_DEPTH = NetworkRules.MAX_PATH_DEPTH;
 
@@ -65,7 +58,13 @@ public class NetworkService {
     this.properties = properties;
   }
 
-  /** 自我网络：某学者限定深度内的合作子图。 */
+  /**
+   * 自我网络：某学者限定深度内的合作子图。
+   *
+   * <p>本方法是 PostgreSQL 权威路径的公开入口，自己完成公开资格屏障校验。{@link
+   * NetworkQueryRouter} 另有一个接收屏障快照的重载：路由必须在同一次请求里用同一个快照同时服务
+   * 两条实现（否则对照模式下的 {@code publishedRevision} 可能来自不同时刻，比较结果没有意义）。
+   */
   public Map<String, Object> neighborhood(
       String scholarId,
       int depth,
@@ -73,7 +72,25 @@ public class NetworkService {
       String dataNature,
       String topicId,
       String organization) {
-    PublicBarrierGuard.BarrierSnapshot barrier = guard.assertPubliclyServed();
+    return neighborhood(
+        guard.assertPubliclyServed(),
+        scholarId,
+        depth,
+        maxNodesRequested,
+        dataNature,
+        topicId,
+        organization);
+  }
+
+  /** 以已校验的屏障快照执行自我网络查询（供路由在同一请求内复用同一个版本）。 */
+  public Map<String, Object> neighborhood(
+      PublicBarrierGuard.BarrierSnapshot barrier,
+      String scholarId,
+      int depth,
+      int maxNodesRequested,
+      String dataNature,
+      String topicId,
+      String organization) {
     String generation = barrier.activeGeneration();
     String nature = normalizeNature(dataNature);
     int depthValue = Math.min(Math.max(depth, 1), MAX_DEPTH);
@@ -102,7 +119,7 @@ public class NetworkService {
       Map<String, Object> data = emptyGraph(barrier, nature, topicId, organization);
       data.put("seed", scholarId);
       data.put("seedInScope", false);
-      data.put("note", "该学者在当前范围内没有合格合作边，可能原因：成果未公开或未生效、关系非 AUTO/SELF_CONFIRMED、" + "或当前筛选条件将其排除。");
+      data.put("note", NetworkRules.NOTE_SEED_OUT_OF_SCOPE);
       return data;
     }
     // 收尾：把「两端都在深度边界上」的边补进来。边界节点不再向外扩展，否则子图会越过声明的深度。
@@ -124,11 +141,13 @@ public class NetworkService {
     data.put("nodes", nodeViews(generation, ids));
     List<Map<String, Object>> edges = new ArrayList<>();
     for (CooperationEdge edge : subGraph.edges()) {
-      edges.add(edgeView(edge));
+      edges.add(NetworkResponseBuilder.edgeView(edge));
     }
     data.put("edges", edges);
-    data.put("withinLimits", Map.of("nodes", loader.nodeCount(), "edges", loader.edgeCount()));
-    data.put("scope", "按种子 " + depthValue + " 跳内实际载入的子图，不是筛选范围的全图");
+    data.put(
+        "withinLimits",
+        NetworkResponseBuilder.withinLimits(loader.nodeCount(), loader.edgeCount()));
+    data.put("scope", NetworkRules.neighborhoodScope(depthValue));
     return data;
   }
 
@@ -142,7 +161,17 @@ public class NetworkService {
    */
   public Map<String, Object> shortestPath(
       String from, String to, String dataNature, String topicId, String organization) {
-    PublicBarrierGuard.BarrierSnapshot barrier = guard.assertPubliclyServed();
+    return shortestPath(guard.assertPubliclyServed(), from, to, dataNature, topicId, organization);
+  }
+
+  /** 以已校验的屏障快照执行最短合作路径查询（供路由在同一请求内复用同一个版本）。 */
+  public Map<String, Object> shortestPath(
+      PublicBarrierGuard.BarrierSnapshot barrier,
+      String from,
+      String to,
+      String dataNature,
+      String topicId,
+      String organization) {
     long startedAt = System.currentTimeMillis();
     String generation = barrier.activeGeneration();
     String nature = normalizeNature(dataNature);
@@ -172,14 +201,12 @@ public class NetworkService {
       // 与正常路径保持同一 DTO 形状：调用方不需要为零跳单独判空。
       data.put("pathNodes", inScope ? nodeViews(generation, List.of(from)) : List.of());
       data.put(
-          "withinLimits", Map.of("nodes", selfLoader.nodeCount(), "edges", selfLoader.edgeCount()));
+          "withinLimits",
+          NetworkResponseBuilder.withinLimits(selfLoader.nodeCount(), selfLoader.edgeCount()));
       data.put(
           "note",
-          inScope
-              ? "起点与终点相同，按 0 跳返回。"
-              : "起点在当前范围内没有合格公开合作边（可能成果未公开或未生效、关系非 AUTO/SELF_CONFIRMED、"
-                  + "或当前筛选条件将其排除），不按 0 跳可达处理。");
-      data.put("pathRule", "起点与终点相同时，只有在当前范围内存在合格合作边才返回 0 跳路径。");
+          inScope ? NetworkRules.NOTE_ZERO_HOP_REACHABLE : NetworkRules.NOTE_ZERO_HOP_OUT_OF_SCOPE);
+      data.put("pathRule", NetworkRules.PATH_RULE_ZERO_HOP);
       return data;
     }
 
@@ -198,15 +225,10 @@ public class NetworkService {
       data.put("reachable", false);
       data.put("hops", null);
       data.put("path", List.of());
+      data.put("note", NetworkRules.noteUnreachable(MAX_PATH_DEPTH));
       data.put(
-          "note",
-          "在 "
-              + MAX_PATH_DEPTH
-              + " 跳范围内未找到合作路径；这不等于全图不连通，只说明最短距离超过 "
-              + MAX_PATH_DEPTH
-              + " 跳。起点或终点若在范围内没有合格合作边，也会得到这个结果。");
-      data.put(
-          "withinLimits", Map.of("nodes", fromLoader.nodeCount(), "edges", fromLoader.edgeCount()));
+          "withinLimits",
+          NetworkResponseBuilder.withinLimits(fromLoader.nodeCount(), fromLoader.edgeCount()));
       return data;
     }
 
@@ -261,13 +283,11 @@ public class NetworkService {
     data.put("pathNodes", nodeViews(generation, path));
     data.put(
         "withinLimits",
-        Map.of(
-            "nodes",
+        NetworkResponseBuilder.withinLimits(
             Math.max(fromLoader.nodeCount(), toLoader.nodeCount()),
-            "edges",
             fromLoader.edgeCount() + toLoader.edgeCount()));
-    data.put("pathRule", "跳数最少；等长时取规范 ID 序列字典序最小的一条；只返回一条，不枚举全部等长路径");
-    data.put("scope", "双侧按需扩边至第 " + distance + " 跳，不是筛选范围的全图");
+    data.put("pathRule", NetworkRules.PATH_RULE);
+    data.put("scope", NetworkRules.pathScope(distance));
     return data;
   }
 
@@ -306,32 +326,9 @@ public class NetworkService {
     return distance;
   }
 
+  /** 节点视图与响应公共前缀由 {@link NetworkResponseBuilder} 统一构造，两个实现共用。 */
   private List<Map<String, Object>> nodeViews(String generation, List<String> ids) {
-    List<Map<String, Object>> nodes = new ArrayList<>();
-    if (ids.isEmpty()) {
-      return nodes;
-    }
-    Map<String, NetworkMapper.ScholarNameRow> names = new LinkedHashMap<>();
-    for (NetworkMapper.ScholarNameRow row : mapper.listScholarNames(generation, ids)) {
-      names.put(row.scholarId(), row);
-    }
-    for (String id : ids) {
-      Map<String, Object> view = new LinkedHashMap<>();
-      view.put("scholarId", id);
-      NetworkMapper.ScholarNameRow row = names.get(id);
-      view.put("scholarName", row == null ? null : row.scholarName());
-      view.put("qualifiedAchievementCount", row == null ? 0L : row.achievementCount());
-      nodes.add(view);
-    }
-    return nodes;
-  }
-
-  private static Map<String, Object> edgeView(CooperationEdge edge) {
-    Map<String, Object> view = new LinkedHashMap<>();
-    view.put("source", edge.scholarA());
-    view.put("target", edge.scholarB());
-    view.put("strength", edge.strength());
-    return view;
+    return NetworkResponseBuilder.nodeViews(mapper, generation, ids);
   }
 
   private Map<String, Object> emptyGraph(
@@ -350,25 +347,7 @@ public class NetworkService {
       String nature,
       String topicId,
       String organization) {
-    Map<String, Object> data = new LinkedHashMap<>();
-    data.put("graphVersion", "g" + barrier.activeGeneration() + "-r" + barrier.publishedRevision());
-    data.put("ruleVersion", RULE_VERSION);
-    data.put("publishedRevision", barrier.publishedRevision());
-    data.put("generatedAt", Instant.now());
-    data.put("dataNatureScope", nature == null ? NATURE_ALL : nature);
-    data.put("topicId", topicId);
-    data.put("organization", organization);
-    data.put(
-        "limits",
-        Map.of(
-            "maxNodes",
-            properties.graphMaxNodes(),
-            "maxEdges",
-            properties.graphMaxEdges(),
-            "budgetMillis",
-            properties.graphBudgetMillis()));
-    data.put("edgeRule", NetworkRules.EDGE_RULE);
-    return data;
+    return NetworkResponseBuilder.base(barrier, nature, topicId, organization, properties);
   }
 
   /** 委托共享规则，不在此另立一份：同一判据写两遍，迟早会有一处被改反。 */
