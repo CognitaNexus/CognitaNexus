@@ -346,9 +346,7 @@ jobs:
         run: bash ops/verify/neo4j-ci-smoke.sh
 
       - name: 图集成测试（-Dtest=*Graph*IT,*Neo4j*IT）
-        # 仓库当前还没有图 IT（Neo4j 尚未接入业务，见 docs/ops/phase1-environment-report.md）。
-        # 这一步先把「有图 IT 时能被 CI 跑到」的通道打通：按类名过滤 failsafe，
-        # 当前 0 个用例时以 notice 说明而不是红；将来新增 *Graph*IT / *Neo4j*IT 会自动执行。
+        # 图 IT 由本 job 独立执行并核对报告，不与 Cross-Service 的 IT 混算。
         run: |
           set -o pipefail
           chmod +x mvnw
@@ -358,9 +356,12 @@ jobs:
             -Dfailsafe.failIfNoSpecifiedTests=false \
             -Dspotless.check.skip=true -Djacoco.skip=true \
             verify 2>&1 | tee /tmp/graph-it.log | tail -40
-          if grep -q 'No tests to run' /tmp/graph-it.log; then
-            echo "::notice title=图集成测试::当前没有 *Graph*IT / *Neo4j*IT 用例（通道已打通，新增即自动执行）"
-          fi
+
+      - name: 图集成测试证据核对（所选 IT 必须全部执行）
+        if: always()
+        run: |
+          bash ops/verify/ci-test-report-gate.sh --modules services/query-service \
+            --it --it-select '*Graph*IT,*Neo4j*IT'
 
       - name: 上传诊断日志
         if: failure()
@@ -471,7 +472,10 @@ jobs:
 
       - name: 跨服务测试证据核对
         if: always()
-        run: bash ops/verify/ci-test-report-gate.sh --modules services/query-service --unit --it --coverage
+        run: |
+          bash ops/verify/ci-test-report-gate.sh --modules services/query-service \
+            --unit --it --it-select 'ProjectionRecoveryIT,SearchSnapshotIT' \
+            --require ProjectionRecoveryIT,SearchSnapshotIT --coverage
 
       - name: 上传 JUnit / JaCoCo 报告
         if: always()
