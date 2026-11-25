@@ -398,11 +398,16 @@ public class GraphProjectionReconciler {
    * <ol>
    *   <li><b>只有真正改了图的动作才算「已修复」</b>：{@code STALE_IGNORED} 意味着版本守卫拒绝了
    *       本次写入（图里已是同样或更新的版本），把它计入修复数会让「修了 200 条」变成一句空话；
+   *   <li><b>退场前必须重新读 PG 当前状态</b>：对账报告是快照，{@code reconcile} 与 {@code repair}
+   *       之间成果可能在 PG 中重新恢复公开资格。按旧报告无条件 {@code retireWork} 会下线一个
+   *       <b>当前公开</b>的成果（图上消失、合作边被删），下一轮对账再把它们当缺口重新同步，
+   *       于是同一批成果在「退场/恢复」之间来回抖动；
    *   <li><b>退场不能用哨兵版本号</b>：曾经用 {@link Long#MAX_VALUE} 退场孤立成果，结果是
    *       {@code Work.source_version} 被抬到最大值，该成果日后在 PG 中重新合格公开时，正常版本的
    *       {@code replaceWork} 被版本守卫永久拒绝（返回 {@code STALE_IGNORED}），图上再也恢复不了。
    *       正确做法是：PG 里还有该行 → 用它真实的 {@code aggregate_version} 退场（留墓碑）；
-   *       PG 里根本没有这一行 → 直接删除节点与边（无版本的墓碑没有意义）。
+   *       PG 里根本没有这一行 → 直接删除节点与边（无版本的墓碑没有意义）；
+   *       PG 里该行仍合格公开 → 正向同步而不是退场。
    * </ol>
    */
   public GraphRepairResult repair(GraphReconciliationReport report) {
@@ -452,6 +457,7 @@ public class GraphProjectionReconciler {
       for (String workId : report.orphanedWorks()) {
         switch (retireOrphan(report.generation(), workId, notes)) {
           case RETIRED -> retired++;
+          case RESYNCED -> repaired++;
           case SKIPPED -> notes.add(workId + " 未被退场（无写入）");
           case FAILED -> failed++;
         }
@@ -468,23 +474,28 @@ public class GraphProjectionReconciler {
     return result;
   }
 
-  /** 单条孤立成果的处理结局；只有 RETIRED 才能计入「已退场」。 */
+  /** 单条孤立成果的处理结局；只有 RETIRED（退场/删除）与 RESYNCED（正向同步）才算动了图。 */
   private enum OrphanOutcome {
+    /** 退场（留墓碑）或删除（PG 无此行）。 */
     RETIRED,
+    /** 报告已过期：PG 里该成果仍合格公开，改为正向同步。 */
+    RESYNCED,
     SKIPPED,
     FAILED
   }
 
   /**
-   * 退场一条孤立成果（图里有、PG 合格集合里没有）。
+   * 退场一条孤立成果（图里有、对账时 PG 合格集合里没有）。
    *
-   * <p>分两种情形，<b>都不用哨兵版本号</b>（见 {@link #repair} 的类注释）：
+   * <p><b>必须重读 PG 当前状态再决定动作</b>：报告是扫描那一刻的快照。若期间该成果在 PG 中恢复了
+   * 公开资格（隐私恢复、状态纠正、上一轮误判修复），按旧报告退场会下线一个<b>当前公开</b>的成果。
+   * 因此处理每条孤立成果前重新 {@code loadWork}：
    *
    * <ul>
-   *   <li>PG 仍有这一行（例如公开资格被收紧、成果转非公开）→ 用 PG 的真实 {@code aggregate_version}
-   *       调 {@code retireWork}，留下墓碑；日后重新公开时该版本之后的写入能正常应用；
-   *   <li>PG 完全没有这一行（被合并删除、旧环境残留）→ {@code deleteWork} 删除节点与边。
-   *       维持一个「无版本的墓碑」只会让该节点在图上永久占位，且日后重新出现时容易被旧值挡住。
+   *   <li>PG 里存在且仍合格（{@code eligible()}）→ <b>不退场</b>，改为 {@code syncWork} 正向同步
+   *       （图里可能只是缺边/旧版），让图与 PG 一致；
+   *   <li>PG 里存在但不合格 → 用 PG 真实的 {@code aggregate_version} 退场（留墓碑）；
+   *   <li>PG 里没有这一行（被合并删除、旧环境残留）→ {@code deleteWork} 删除节点与边。
    * </ul>
    *
    * <p>PG 读取失败时按 FAILED 计入并记录异常类型：对账工具不能因为一条读失败而谎报「已退场」。
@@ -492,11 +503,31 @@ public class GraphProjectionReconciler {
   private OrphanOutcome retireOrphan(String generation, String workId, List<String> notes) {
     try {
       Optional<GraphProjectedWork> inPg = source.loadWork(generation, workId);
-      if (inPg.isPresent()) {
-        long pgVersion = inPg.get().sourceVersion();
-        return store.retireWork(workId, pgVersion) ? OrphanOutcome.RETIRED : OrphanOutcome.SKIPPED;
+      if (inPg.isEmpty()) {
+        return store.deleteWork(workId) ? OrphanOutcome.RETIRED : OrphanOutcome.SKIPPED;
       }
-      return store.deleteWork(workId) ? OrphanOutcome.RETIRED : OrphanOutcome.SKIPPED;
+      GraphProjectedWork current = inPg.get();
+      if (current.eligible()) {
+        // 报告已过期：该成果在 PG 中仍是合格公开成果。退场会把它从合作网络里抺掉。
+        Optional<GraphSyncOutcome> outcome = synchronizer.syncWork(generation, workId);
+        if (outcome.isEmpty()) {
+          notes.add(workId + " 在修复时已不在 PG 投影中，本次不退场（下一轮对账重新判定）");
+          return OrphanOutcome.SKIPPED;
+        }
+        GraphSyncOutcome value = outcome.get();
+        if (value.failed()) {
+          notes.add(workId + " 重新同步失败：" + value.describe());
+          return OrphanOutcome.FAILED;
+        }
+        if (value.applied()) {
+          notes.add(workId + " 在 PG 中仍合格公开（对账报告已过期），已正向同步而不是退场");
+          return OrphanOutcome.RESYNCED;
+        }
+        notes.add(workId + " 在 PG 中仍合格公开，且图内已是同样或更新的版本（" + value.action() + "），未退场");
+        return OrphanOutcome.SKIPPED;
+      }
+      long pgVersion = current.sourceVersion();
+      return store.retireWork(workId, pgVersion) ? OrphanOutcome.RETIRED : OrphanOutcome.SKIPPED;
     } catch (RuntimeException ex) {
       notes.add(workId + " 退场失败：" + ex.getClass().getSimpleName());
       return OrphanOutcome.FAILED;

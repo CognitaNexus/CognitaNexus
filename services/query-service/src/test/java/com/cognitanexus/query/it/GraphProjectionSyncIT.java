@@ -3,8 +3,12 @@ package com.cognitanexus.query.it;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.cognitanexus.query.graph.application.GraphProjectionStore;
 import com.cognitanexus.query.graph.config.Neo4jGraphProperties;
+import com.cognitanexus.query.graph.domain.GraphAuthorship;
 import com.cognitanexus.query.graph.domain.GraphProjectionMeta;
+import com.cognitanexus.query.graph.domain.GraphScholarNode;
+import com.cognitanexus.query.graph.domain.GraphWorkNode;
 import com.cognitanexus.query.graph.infrastructure.Neo4jGraphProjectionStore;
 import com.cognitanexus.query.graph.infrastructure.Neo4jSessionRunner;
 import com.cognitanexus.query.graph.projection.application.GraphBackfillResult;
@@ -112,6 +116,7 @@ class GraphProjectionSyncIT {
   private static GraphProjectionSourceMapper sourceMapper;
   private static GraphProjectionCheckpointMapper checkpointMapper;
   private static GraphProjectionInspector inspector;
+  private static GraphProjectionCheckpointStore checkpoints;
   private static GraphProjectionSynchronizer synchronizer;
   private static GraphProjectionProperties properties;
   private static GraphBackfillService backfillService;
@@ -160,8 +165,7 @@ class GraphProjectionSyncIT {
     sourceMapper = template.getMapper(GraphProjectionSourceMapper.class);
     checkpointMapper = template.getMapper(GraphProjectionCheckpointMapper.class);
     source = new GraphProjectionSourceAdapter(sourceMapper);
-    GraphProjectionCheckpointStore checkpoints =
-        new GraphProjectionCheckpointAdapter(checkpointMapper);
+    checkpoints = new GraphProjectionCheckpointAdapter(checkpointMapper);
 
     // ---- 装配被测服务 ----
     properties =
@@ -173,7 +177,7 @@ class GraphProjectionSyncIT {
         new GraphBackfillService(source, synchronizer, store, checkpoints, properties, CONSUMER);
     projector =
         new GraphEventProjector(
-            source, synchronizer, store, new JsonCodec(new ObjectMapper()), CONSUMER);
+            source, synchronizer, store, checkpoints, new JsonCodec(new ObjectMapper()), CONSUMER);
     reconciler =
         new GraphProjectionReconciler(source, inspector, synchronizer, store, 20, CONSUMER);
 
@@ -711,6 +715,128 @@ class GraphProjectionSyncIT {
   }
 
   // ---------------------------------------------------------------------------
+  // P1 回归：回填失败、合并清理、初始化前置条件、过期对账报告
+  // ---------------------------------------------------------------------------
+
+  @Test
+  @Order(11)
+  @DisplayName("P1-1 回填存在失败成果：断点 FAILED、图水位不推进（真实 PG 断点表 + 真实图库）")
+  void backfillWithFailedWorkKeepsCheckpointFailedAndWatermarkUnadvanced() throws SQLException {
+    seedWork("w-0901", "PAPER", "正常论文", 2, "AUTO", "AUTO");
+    seedWork("w-0902", "PAPER", "注入失败的论文", 2, "AUTO", "AUTO");
+    GraphProjectionStore faulty = new FailingWorkStore(store, "w-0902");
+    GraphProjectionSynchronizer faultySynchronizer =
+        new GraphProjectionSynchronizer(
+            source, faulty, GraphProjectionRetryPolicy.noRetry(), millis -> {});
+    GraphBackfillService faultyBackfill =
+        new GraphBackfillService(
+            source,
+            faultySynchronizer,
+            faulty,
+            new GraphProjectionCheckpointAdapter(checkpointMapper),
+            properties,
+            CONSUMER);
+
+    GraphBackfillResult result = faultyBackfill.backfill(SCOPE);
+
+    assertThat(result.status()).isEqualTo(GraphBackfillStatus.FAILED);
+    assertThat(result.failedWorks()).isEqualTo(1);
+    assertThat(checkpointMapper.find(SCOPE).status()).isEqualTo("FAILED");
+    assertThat(checkpointMapper.find(SCOPE).failedWorks()).isEqualTo(1);
+    // 失败成果没有进图，正常成果进了图
+    assertThat(workNodeCount("w-0901")).isEqualTo(1);
+    assertThat(workNodeCount("w-0902")).isZero();
+    // 关键：水位不得推进（absent → 0），图不能被读路径当成「已追平」
+    assertThat(store.readMeta(SCOPE).map(GraphProjectionMeta::projectedVersion).orElse(0L))
+        .isZero();
+  }
+
+  @Test
+  @Order(12)
+  @DisplayName("P1-2 成果合并：PG 删除被合并者后，增量同步删除图内残留节点与合作边并推水位")
+  void achievementMergedDeletesGraphRemnantOfMergedWork() throws SQLException {
+    seedWork("w-1001", "PAPER", "幸存论文", 2, "AUTO", "AUTO");
+    seedWork("w-1002", "PAPER", "被合并论文", 2, "AUTO", "AUTO");
+    backfillService.backfill(SCOPE);
+    assertThat(workNodeCount("w-1002")).isEqualTo(1);
+    assertThat(cooperatedEdges("w-1002")).isEqualTo(1);
+
+    // ProjectionApplier 处理 AchievementMerged 时的真实效果：被合并者的读投影行被删除。
+    execute(
+        "DELETE FROM qry_contribution WHERE generation = ? AND achievement_id = ?", GEN, "w-1002");
+    execute(
+        "DELETE FROM qry_achievement WHERE generation = ? AND achievement_id = ?", GEN, "w-1002");
+    appendAppliedEvent(
+        "evt-" + PREFIX + "-merge",
+        "AchievementMerged",
+        45,
+        "{\"survivorId\":\"w-1001\",\"survivorTitle\":\"幸存论文\","
+            + "\"mergedId\":\"w-1002\",\"changeKind\":\"MERGE\"}");
+
+    GraphEventProjectionResult result = projector.applyPending(SCOPE, 50);
+
+    assertThat(result.worksDeleted()).isEqualTo(1);
+    assertThat(result.projectedRevision()).isEqualTo(45L);
+    assertThat(workNodeCount("w-1002")).as("被合并成果不得留在图上").isZero();
+    assertThat(cooperatedEdges("w-1002")).as("不得留下幽灵合作边").isZero();
+    assertThat(workNodeCount("w-1001")).isEqualTo(1);
+    assertThat(store.readMeta(SCOPE).orElseThrow().projectedVersion()).isEqualTo(45L);
+  }
+
+  @Test
+  @Order(13)
+  @DisplayName("P1-3 没有完成的回填断点：增量拒绝消费，图水位与图内容都不变")
+  void incrementalWithoutCompletedBackfillIsRefused() throws SQLException {
+    seedWork("w-1101", "PAPER", "未回填论文", 2, "AUTO", "AUTO");
+    appendAppliedEvent(
+        "evt-" + PREFIX + "-nogate",
+        "CatalogChangeCommitted",
+        41,
+        "{\"changeKind\":\"UPSERT\",\"achievementId\":\"w-1101\"}");
+    // 从未回填：V7 断点表里没有本作用域的行
+    assertThat(checkpointMapper.find(SCOPE)).isNull();
+
+    GraphEventProjectionResult result = projector.applyPending(SCOPE, 50);
+
+    assertThat(result.eventsRead()).isZero();
+    assertThat(result.watermarkAdvanced()).isFalse();
+    assertThat(store.readMeta(SCOPE).map(GraphProjectionMeta::projectedVersion).orElse(0L))
+        .isZero();
+    assertThat(workNodeCount("w-1101")).as("拒绝消费就不得写图").isZero();
+    assertThat(String.join("\n", result.notes())).contains("断点");
+  }
+
+  @Test
+  @Order(14)
+  @DisplayName("P1-4 对账报告过期：成果在 repair 前恢复公开合格 → 正向同步而不是误下线")
+  void repairResyncsOrphanRestoredInPgInsteadOfRetiringIt() throws SQLException {
+    seedWork("w-1201", "PAPER", "基线论文", 2, "AUTO", "AUTO");
+    backfillService.backfill(SCOPE);
+    runner.write(
+        tx -> {
+          tx.run(
+                  "CREATE (:Work {work_id: 'w-1202', title: '恢复的论文', is_public: true, "
+                      + "data_origin: 'REAL', source_version: 1, edges_materialized: false})",
+                  Map.of())
+              .consume();
+          return null;
+        });
+
+    GraphReconciliationReport report = reconciler.reconcile(SCOPE, ReconcileOptions.defaults());
+    assertThat(report.orphanedWorks()).contains("w-1202");
+
+    // 报告生成之后、修复之前：PG 中该成果恢复为合格公开成果（aggregate_version = 10）。
+    seedWork("w-1202", "PAPER", "恢复的论文", 2, "AUTO", "AUTO");
+
+    GraphRepairResult repair = reconciler.repair(report);
+
+    assertThat(repair.retiredWorks()).isZero();
+    assertThat(repair.repairedWorks()).isEqualTo(1);
+    assertThat(isPublic("w-1202")).as("当前公开的成果不得被退场").isTrue();
+    assertThat(cooperatedEdges("w-1202")).as("正向同步应重建合作边").isEqualTo(1);
+  }
+
+  // ---------------------------------------------------------------------------
   // 数据准备与清理
   // ---------------------------------------------------------------------------
 
@@ -942,6 +1068,61 @@ class GraphProjectionSyncIT {
     configuration.addMapper(GraphProjectionSourceMapper.class);
     configuration.addMapper(GraphProjectionCheckpointMapper.class);
     return new SqlSessionFactoryBuilder().build(configuration);
+  }
+
+  /**
+   * 让某个成果的写入必定失败（其余可靠透传），用来构造「回填扫描到底但有成果没进图」。
+   *
+   * <p>失败必须发生在真实图库写入路径上而不是替换掉整个存储：其余成果仍要真的进图，才能断言
+   * 「一部分进了、一部分没进、水位不推进」这三件事同时成立。
+   */
+  private static final class FailingWorkStore implements GraphProjectionStore {
+
+    private final GraphProjectionStore delegate;
+    private final String failingWorkId;
+
+    private FailingWorkStore(GraphProjectionStore delegate, String failingWorkId) {
+      this.delegate = delegate;
+      this.failingWorkId = failingWorkId;
+    }
+
+    @Override
+    public int upsertScholars(Collection<GraphScholarNode> scholars) {
+      return delegate.upsertScholars(scholars);
+    }
+
+    @Override
+    public boolean replaceWork(GraphWorkNode work, List<GraphAuthorship> authorships) {
+      if (failingWorkId.equals(work.workId())) {
+        throw new IllegalArgumentException("测试注入：成果写入不可重试失败 " + work.workId());
+      }
+      return delegate.replaceWork(work, authorships);
+    }
+
+    @Override
+    public boolean retireWork(String workId, long sourceVersion) {
+      return delegate.retireWork(workId, sourceVersion);
+    }
+
+    @Override
+    public boolean deleteWork(String workId) {
+      return delegate.deleteWork(workId);
+    }
+
+    @Override
+    public Optional<GraphProjectionMeta> readMeta(String scope) {
+      return delegate.readMeta(scope);
+    }
+
+    @Override
+    public long advanceMeta(GraphProjectionMeta meta) {
+      return delegate.advanceMeta(meta);
+    }
+
+    @Override
+    public void resetAllForRebuild(String initialScope) {
+      delegate.resetAllForRebuild(initialScope);
+    }
   }
 
   /** 在第 N 页读取时抛错，用来构造「回填中断」而不是靠杀进程。 */

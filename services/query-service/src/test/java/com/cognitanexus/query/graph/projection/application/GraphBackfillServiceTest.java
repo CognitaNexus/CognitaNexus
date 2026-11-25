@@ -178,21 +178,40 @@ class GraphBackfillServiceTest {
   }
 
   @Test
-  @DisplayName("processed_works 只计成功成果：失败数单记在 failed_works，游标继续推进")
-  void processedWorksExcludesFailedWorks() {
+  @DisplayName("P1-1 部分成果失败：断点转 FAILED、不推进图水位（扫描到底不等于都进图了）")
+  void partialFailuresKeepCheckpointFailedAndWatermarkUnadvanced() {
     seed(4);
     store.permanentFailures.add("w-01");
 
     GraphBackfillResult result = service().backfill(SCOPE);
 
-    assertThat(result.status()).isEqualTo(GraphBackfillStatus.COMPLETED);
-    // 4 条中 1 条永久失败：processed_works 只能是 3（与 V7 表注释同口径）。
+    // 任何一条成果失败就绝不能标 COMPLETED：扫描到底但图里少了一条。
+    assertThat(result.status()).isEqualTo(GraphBackfillStatus.FAILED);
     assertThat(result.processedWorks()).isEqualTo(3);
     assertThat(result.failedWorks()).isEqualTo(1);
     // 游标不因单条失败而停在原地：漏掉的那条由对账 repair() 单点补齐。
     assertThat(result.cursorWorkId()).isEqualTo("w-04");
     assertThat(store.works).doesNotContainKey("w-01");
-    assertThat(checkpoints.saved.get(SCOPE).lastError()).contains("w-01");
+    assertThat(checkpoints.saved.get(SCOPE).status()).isEqualTo(GraphBackfillStatus.FAILED);
+    assertThat(checkpoints.saved.get(SCOPE).lastError()).contains("w-01").contains("FAILED");
+    // 关键断言：图水位不能被推进（它回答「图能不能用于公开查询」）。
+    assertThat(result.projectedVersion()).isZero();
+    assertThat(store.meta.projectedVersion()).isZero();
+    assertThat(store.calls).noneMatch(call -> call.startsWith("advanceMeta"));
+    assertThat(result.note()).contains("不推进图水位");
+  }
+
+  @Test
+  @DisplayName("P1-1 零失败：只有全部成果成功入图时才 COMPLETED 并推进水位")
+  void zeroFailuresCompletesAndAdvancesWatermark() {
+    seed(4);
+
+    GraphBackfillResult result = service().backfill(SCOPE);
+
+    assertThat(result.status()).isEqualTo(GraphBackfillStatus.COMPLETED);
+    assertThat(result.failedWorks()).isZero();
+    assertThat(store.meta.projectedVersion()).isEqualTo(42L);
+    assertThat(store.calls).contains("advanceMeta:v42");
   }
 
   @Test

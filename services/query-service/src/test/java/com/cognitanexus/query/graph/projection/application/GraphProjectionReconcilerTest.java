@@ -172,6 +172,34 @@ class GraphProjectionReconcilerTest {
   }
 
   @Test
+  @DisplayName("P1-4 报告过期：成果在 reconcile 与 repair 之间恢复公开合格时，绝不退场而是正向同步")
+  void orphanRestoredInPgBeforeRepairIsResyncedNotRetired() {
+    seedConsistentProjection();
+    // 图里有 w-ghost，但 PG 里暂时没有该行（例如合并过程中的中间态）→ 对账判为孤立。
+    var ghost = FakeGraphProjectionEnv.work("w-ghost", 5L, "s-x", "s-y");
+    store.works.put(
+        "w-ghost", new FakeGraphProjectionEnv.StoredWork(ghost.toWorkNode(), ghost.authorships()));
+
+    GraphReconciliationReport report = reconciler.reconcile(SCOPE, ReconcileOptions.defaults());
+    assertThat(report.orphanedWorks()).contains("w-ghost");
+
+    // 报告生成之后、修复之前：PG 中该成果恢复为公开合格（版本 7）。
+    source.add(FakeGraphProjectionEnv.work("w-ghost", 7L, "s-x", "s-y"));
+
+    GraphRepairResult repair = reconciler.repair(report);
+
+    // 关键断言：不得退场、不得删除；改为正向同步，图里仍是公开成果。
+    assertThat(repair.retiredWorks()).isZero();
+    assertThat(repair.repairedWorks()).isEqualTo(1);
+    assertThat(store.calls).noneMatch(call -> call.startsWith("deleteWork"));
+    assertThat(store.calls).noneMatch(call -> call.startsWith("retireWork"));
+    assertThat(store.works.get("w-ghost").work().isPublic()).isTrue();
+    assertThat(store.works.get("w-ghost").work().sourceVersion()).isEqualTo(7L);
+    assertThat(store.works.get("w-ghost").authorships()).hasSize(2);
+    assertThat(String.join("\n", repair.notes())).contains("已过期");
+  }
+
+  @Test
   @DisplayName("STALE_IGNORED 不计入已修复：只有真正写入/退场才算修复")
   void staleOutcomeIsNotCountedAsRepaired() {
     seedConsistentProjection();

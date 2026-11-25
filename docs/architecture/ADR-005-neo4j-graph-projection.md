@@ -203,6 +203,15 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
 事件被守卫拒绝（`replaceWork` 返回 `false`，无副作用）。因此「重复、乱序、迟到」都不会把新值
 改回旧值；同一事件重放两次的结果与一次相同。
 
+**事件对应的成果已不在 PG 投影中时必须清理图内残留**：`AchievementMerged` 的 payload 为
+`{survivorId, survivorTitle, mergedId, changeKind=MERGE}`，`ProjectionApplier` 会删除被合并者
+（`mergedId`）的读投影行。增量同步该 `workId` 时 `loadWork` 返回空，若只记一句「留待对账」，旧成果
+节点与它的 `AUTHORED`/`COOPERATED_WITH` 会永久留在合作网络里（幽灵边）——对账要等下一次人工执行才会
+发现。因此这种情况直接 `deleteWork(workId)`（PG 里连行都没有，没有可信版本可写，见 §7）。
+
+**失败即停，水位一步都不推**：任何一条成果的写入或清理失败都让本轮 `projected_version` 保持原值，
+即使失败之前的若干事件已经成功应用。把水位推进到最后一个成功事件，等于把失败那条永久跳过。
+
 **同一成果必须串行消费**：`replaceWork` 是「先删后建」的读改写序列（删 `AUTHORED`/`COOPERATED_WITH`
 → 按当前作者集合重建）。同一 `workId` 的两个版本如果被两个消费者并发应用，即使各自通过版本守卫，
 也可能交错成「版本 v2 删边 → v1 写入 → v2 重新写入」的中间态，出现重复边或残留旧作者。因此：
@@ -239,6 +248,14 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
 - 失败语义：单条成果的永久失败**不**中止整批（否则真正的问题数据永远轮不到修复），其标识与原因进
   `failed_works`/`last_error`，游标继续前进；漏掉的点由对账后的定向修复（§6.2 `repair`）单点补齐。
   失败数超过 `max-failed-works`（默认 100）时整次运行转 `FAILED`——「跑完了但有几万条没进图」不算成功。
+- **完成与推进水位的前提是零失败**：扫描到底但 `failed_works > 0` 时，断点一律记 `FAILED`
+  （保留 `cursor_work_id` 与 `last_error`），且**不**调用 `advanceMeta`。理由：「扫完了」与「都进图了」
+  是两件事；把带缺口的一次回填标成 `COMPLETED`，增量就会从快照修订之后接上并推进水位，读路径从此
+  信任一张缺了几条成果的图，而缺口再也不会被重试（游标已越过它们）。处置路径是修复失败成果后执行
+  `repair()`（对账的 `WORK_MISSING_IN_GRAPH` 指名具体成果）或 `rebuild()`，再让水位前进。
+- **增量消费的初始化前置条件**（`GraphProjectionReadiness`，调度器与投影器共用同一份规则）：必须有
+  该作用域的断点、`status=COMPLETED`、`failed_works=0`、且断点 `generation` 等于 PG 活动代。缺任何一条
+  都拒绝消费事件并保持水位不动——「没有断点」不等于「不需要回填」，它等于图几乎是空的。
 - 重建使用**新 generation**（`GraphProjectionMeta.generation`）。全部灌完并核对行数后，才允许
   把公开读路径切到图库；切换前图查询一律走 PG（§7）。generation 变化时拒绝在旧代游标上续跑，
   正确动作是 `rebuild()`。
@@ -361,6 +378,11 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
 已不公开、合作边仍在」的幽灵边；缺水位守卫则会在回填落后时拿旧图冒充当前结果。对账时二者都
 要比（`(work_id, pair)` 数量与 `projected_version` vs `published_revision`，§8.2）。
 
+**修复前必须重读 PG 当前状态**：对账报告是扫描那一刻的快照。`repair()` 处理每条孤立成果前重新
+`loadWork(generation, workId)`：PG 里存在且仍合格 → **不退场**，改为正向同步（报告已过期，退场会下线
+一个当前公开的成果，下一轮对账再把它当缺口补回来，形成抖动）；存在但不合格 → 用 PG 真实
+`aggregate_version` 退场（留墓碑）；不存在 → `deleteWork`。
+
 「降级」只发生在**基础设施/版本/就绪**问题；**业务规模**问题必须明确失败，二者不能混为一谈。
 
 可观测性：健康端点暴露 `scope/database/graphAvailable/schemaReady/degradedToPostgres`；投影水位、
@@ -456,10 +478,10 @@ CN_QUERY_GRAPH_ENABLED=false   # 重启 query-service
 
 | 层级 | 内容 | 当前状态 |
 | --- | --- | --- |
-| 单元 | 配置默认值/自检、schema 解析与初始化幂等、启动期降级与 fail-fast 开关、健康指示器恒 UP、整库重建独占性、领域模型不变量、路径规则（单一来源常量）、PG↔图逐例对比 | 已实现并通过（`Neo4jGraphPropertiesTest`、`Neo4jSchemaStatementSourceTest`、`Neo4jSchemaInitializerTest`、`Neo4jGraphConfigurationTest`、`Neo4jGraphProjectionStoreTest`、`GraphDomainModelTest`、`CollaborationGraphServiceTest`、`NetworkGraphParityTest`） |
+| 单元 | 配置默认值/自检、schema 解析与初始化幂等、启动期降级与 fail-fast 开关、健康指示器恒 UP、整库重建独占性、领域模型不变量、路径规则（单一来源常量）、PG↔图逐例对比；回填/增量/对账的失败与过期报告路径（P1-1..P1-4） | 已实现并通过（`Neo4jGraphPropertiesTest`、`Neo4jSchemaStatementSourceTest`、`Neo4jSchemaInitializerTest`、`Neo4jGraphConfigurationTest`、`Neo4jGraphProjectionStoreTest`、`GraphDomainModelTest`、`CollaborationGraphServiceTest`、`NetworkGraphParityTest`、`GraphBackfillServiceTest`、`GraphEventProjectorTest`、`GraphProjectionWorkerTest`、`GraphProjectionReconcilerTest`、`GraphProjectionReadinessTest`） |
 | 集成 | 真实 Neo4j 5.26：约束/索引幂等、唯一约束拒绝重复、节点/关系写读、证据、REAL/SIMULATED 隔离、高作者数不物化、版本守卫、成果下线、水位单调、跨作用域拒绝整库清空 | `Neo4jSchemaIT`（11 用例），连接本机 `bolt://127.0.0.1:17687` 通过 |
 | 性能 | 固定硬件/数据分布的 P50/P95/P99、错误率、资源；与 PG 基线对比 | **未执行**，不得声称图库更快 |
-| 一致性 | 真实 Neo4j + 真实 `query_db`：回填一致性、幂等/迟到/收紧、断点续跑、受控重建、四层对账与定向修复、水位不伪造追平；真实数据抽样与故障注入演练仍待补 | `GraphProjectionSyncIT`（9 用例）已通过；百万级与故障注入**未执行** |
+| 一致性 | 真实 Neo4j + 真实 `query_db`：回填一致性、幂等/迟到/收紧、断点续跑、受控重建、四层对账与定向修复、水位不伪造追平、回填存在失败成果时断点转 FAILED 且水位不动、合并删除后的图内残留清理、无断点时拒绝增量消费、过期对账报告不得误下线成果；真实数据抽样与故障注入演练仍待补 | `GraphProjectionSyncIT`（14 用例）已通过；百万级与故障注入**未执行** |
 | 迁移 | 华为云 RDS+ECS / GES 演练 | **未执行** |
 
 结论边界：本 ADR 证明「图模型与规则可落地、可测、可回滚」，不证明「性能已达标」。

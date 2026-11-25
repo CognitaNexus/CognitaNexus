@@ -32,9 +32,11 @@ import org.junit.jupiter.api.Test;
  * <ol>
  *   <li><b>调度确实委托给投影器</b>：调度器本身不写图，只把「已应用事件」交给
  *       {@link GraphEventProjector}；否则「调度开着」会变成一句无法核实的话；
- *   <li><b>回填未完成时不得追赶</b>：增量会把 {@code GraphProjectionMeta.projected_version} 推进到
- *       {@code published_revision}，而回填只灌了一半成果。水位看上去追平、图却缺一大段，
- *       公开读路径会把半张图当完整图用（ADR-005 §5.2）。这条守卫就是「水位不越界」的可执行版本。
+ *   <li><b>初始化前置条件不满足时不得追赶</b>（P1-3）：增量会把
+ *       {@code GraphProjectionMeta.projected_version} 推进到 {@code published_revision}，而回填
+ *       只灌了一半（或根本没跑/留下失败成果/跨代）。水位看上去追平、图却缺一大段，公开读路径会把
+ *       残缺图当完整图用（ADR-005 §5.2）。四条条件：断点存在、COMPLETED、failed_works=0、
+ *       generation 与 PG 活动代一致；缺一条就跳过本轮。
  * </ol>
  */
 class GraphProjectionWorkerTest {
@@ -66,7 +68,12 @@ class GraphProjectionWorkerTest {
             source, store, GraphProjectionRetryPolicy.noRetry(), millis -> {});
     GraphEventProjector projector =
         new GraphEventProjector(
-            source, synchronizer, store, new JsonCodec(new ObjectMapper()), "query");
+            source,
+            synchronizer,
+            store,
+            checkpointStore,
+            new JsonCodec(new ObjectMapper()),
+            "query");
     return new GraphProjectionWorker(
         projector, store, source, checkpointStore, properties, SCOPE, "query");
   }
@@ -86,14 +93,60 @@ class GraphProjectionWorkerTest {
   }
 
   @Test
-  @DisplayName("没有回填断点：本轮把事件追进图，水位推进到事件修订")
+  @DisplayName("回填已完成且零失败：本轮把事件追进图，水位推进到事件修订")
   void catchUpDelegatesToProjector() {
     seedEvent();
+    checkpoints.saved.put(
+        SCOPE, checkpoint().advanced("w-1", 1, 0, Instant.now()).completed(Instant.now()));
 
     worker.catchUp();
 
     assertThat(store.works.get("w-1").work().isPublic()).isTrue();
     assertThat(store.meta.projectedVersion()).isEqualTo(11L);
+  }
+
+  @Test
+  @DisplayName("P1-3 从未回填（无断点）：拒绝追赶，水位一动不动")
+  void missingCheckpointBlocksCatchUp() {
+    seedEvent();
+
+    worker.catchUp();
+
+    assertThat(store.meta.projectedVersion()).isEqualTo(10L);
+    assertThat(store.works).isEmpty();
+    assertThat(store.calls).isEmpty();
+  }
+
+  @Test
+  @DisplayName("P1-3 断点 COMPLETED 但存在失败成果：拒绝追赶（失败成果会造成缺口）")
+  void completedCheckpointWithFailedWorksBlocksCatchUp() {
+    seedEvent();
+    checkpoints.saved.put(
+        SCOPE,
+        checkpoint()
+            .advanced("w-1", 1, 3, "w-1:FAILED_PERMANENT:测试注入", Instant.now())
+            .completed(Instant.now()));
+
+    worker.catchUp();
+
+    assertThat(store.meta.projectedVersion()).isEqualTo(10L);
+    assertThat(store.calls).isEmpty();
+  }
+
+  @Test
+  @DisplayName("P1-3 断点 generation 与 PG 活动代不一致：拒绝追赶，需整库重建")
+  void crossGenerationCheckpointBlocksCatchUp() {
+    seedEvent();
+    GraphProjectionCheckpoint stale =
+        GraphProjectionCheckpoint.started(SCOPE, "gen0000", 20L, Instant.now())
+            .advanced("w-1", 1, 0, Instant.now())
+            .completed(Instant.now());
+    checkpoints.saved.put(SCOPE, stale);
+
+    worker.catchUp();
+
+    assertThat(store.meta.projectedVersion()).isEqualTo(10L);
+    assertThat(store.calls).isEmpty();
   }
 
   @Test
@@ -127,7 +180,8 @@ class GraphProjectionWorkerTest {
   @DisplayName("回填已完成（断点 COMPLETED）：恢复正常追赶")
   void completedBackfillAllowsCatchUp() {
     seedEvent();
-    checkpoints.saved.put(SCOPE, checkpoint().completed(Instant.now()));
+    checkpoints.saved.put(
+        SCOPE, checkpoint().advanced("w-1", 1, 0, Instant.now()).completed(Instant.now()));
 
     worker.catchUp();
 
@@ -174,17 +228,26 @@ class GraphProjectionWorkerTest {
   }
 
   @Test
-  @DisplayName("断点状态判定：只有 COMPLETED 才允许增量追赶")
-  void backfillInProgressOnlyWhenNotCompleted() {
-    assertThat(worker.backfillInProgress()).as("没有断点=没有回填在跑").isFalse();
-
-    checkpoints.saved.put(SCOPE, checkpoint().completed(Instant.now()));
-    assertThat(worker.backfillInProgress()).isFalse();
+  @DisplayName("初始化前置条件：无断点、未完成、有失败成果、跨代都必须拦住增量追赶")
+  void incrementalBlockerRequiresCompletedCleanSameGenerationCheckpoint() {
+    assertThat(worker.incrementalBlocker(GEN)).as("没有断点 = 从未回填，不能追赶").isPresent();
 
     checkpoints.saved.put(SCOPE, checkpoint());
-    assertThat(worker.backfillInProgress()).isTrue();
+    assertThat(worker.incrementalBlocker(GEN)).as("RUNNING 未完成").isPresent();
 
     checkpoints.saved.put(SCOPE, checkpoint().failed("中断", Instant.now()));
-    assertThat(worker.backfillInProgress()).as("FAILED 仍保留游标等待续跑").isTrue();
+    assertThat(worker.incrementalBlocker(GEN)).as("FAILED 仍保留游标等待续跑").isPresent();
+
+    checkpoints.saved.put(
+        SCOPE,
+        checkpoint()
+            .advanced("w-1", 1, 2, "w-1:FAILED_PERMANENT:测试注入", Instant.now())
+            .completed(Instant.now()));
+    assertThat(worker.incrementalBlocker(GEN)).as("COMPLETED 但有失败成果仍是缺口").isPresent();
+
+    checkpoints.saved.put(
+        SCOPE, checkpoint().advanced("w-1", 1, 0, Instant.now()).completed(Instant.now()));
+    assertThat(worker.incrementalBlocker(GEN)).as("COMPLETED + 零失败 + 同代").isEmpty();
+    assertThat(worker.incrementalBlocker("gen0002")).as("跨代必须重建").isPresent();
   }
 }

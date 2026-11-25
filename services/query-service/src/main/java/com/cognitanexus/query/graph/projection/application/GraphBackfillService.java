@@ -32,8 +32,14 @@ import org.slf4j.LoggerFactory;
  * STALE_IGNORED），失败数单独落在 {@code failed_works} 与 {@code last_error}。
  * 单条永久失败不会让整次回填停摆（否则真正的问题成果永远轮不到修复：回填会在同一条上反复卡住），
  * 游标继续前进；这些漏格的点由 {@link GraphProjectionReconciler#repair} 在对账后单点补齐
- * （对账的 {@code WORK_MISSING_IN_GRAPH} 会指名它们）。但失败数超过
- * {@code max-failed-works} 时整次运行转 FAILED——不能被当成跑完了。
+ * （对账的 {@code WORK_MISSING_IN_GRAPH} 会指名它们）。
+ *
+ * <p><b>完成与水位的前提是零失败</b>（这是本类最硬的一条）：扫描到底但存在任何失败成果时，断点
+ * 一律记 {@code FAILED}（保留 cursor 与 {@code last_error}）且<b>不</b>调用 {@code advanceMeta}。
+ * 理由：水位回答的是「图能不能用于公开查询」，而「扫完了」与「都进图了」是两件事。把带缺口的一次
+ * 回填标成 COMPLETED，增量就会从快照修订之后接上并推进水位，读路径从此信任一张缺了几条成果的图，
+ * 且缺口再也不会被重试（游标已越过了它们）。正确处置是：修好失败成果后 {@link #rebuild(String)}
+ * 或 {@link GraphProjectionReconciler#repair} 补齐，再让水位前进。
  *
  * <p>并发：同进程内用 {@link AtomicBoolean} 互斥，避免调度器与人工触发同时写同一批成果——
  * ADR-005 §5.1 明确「同一 workId 必须串行消费」，版本守卫只兜底迟到/重放，不承担并发互斥。
@@ -186,6 +192,30 @@ public class GraphBackfillService {
       }
 
       Instant finishedAt = clock.instant();
+      if (checkpoint.failedWorks() > 0) {
+        // 扫描到底但存在失败成果：绝不能标 COMPLETED、绝不能推进图水位（ADR-005 §5.2）。
+        // 保留 cursor 与 last_error：失败成果的标识与原因仍可定位，修复后可用 repair 单点补齐，
+        // 或直接 rebuild 全量重建。
+        String error =
+            "回填扫描到底但存在 "
+                + checkpoint.failedWorks()
+                + " 条失败成果（最后失败样例："
+                + (checkpoint.lastError() == null ? "未记录" : checkpoint.lastError())
+                + "），断点保持 FAILED：图不完整，不得标为完成、也不推进图水位；"
+                + "修复后执行 repair 或 rebuild";
+        checkpoint = checkpoint.failed(error, finishedAt);
+        checkpoints.save(checkpoint);
+        log.error(
+            "图投影回填未能完成（存在失败成果） scope={} generation={} works={} batches={} failed={} revision={}",
+            effectiveScope,
+            stage.generation(),
+            checkpoint.processedWorks(),
+            checkpoint.processedBatches(),
+            checkpoint.failedWorks(),
+            readProjectedVersion(effectiveScope));
+        return toResult(
+            checkpoint, readProjectedVersion(effectiveScope), worksThisRun, batchesThisRun, error);
+      }
       checkpoint = checkpoint.completed(finishedAt);
       checkpoints.save(checkpoint);
       long projected = advanceWatermark(effectiveScope, checkpoint, stage);

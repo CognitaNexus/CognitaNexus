@@ -3,13 +3,16 @@ package com.cognitanexus.query.graph.projection.application;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.cognitanexus.query.graph.projection.FakeGraphProjectionEnv;
+import com.cognitanexus.query.graph.projection.FakeGraphProjectionEnv.FakeCheckpointStore;
 import com.cognitanexus.query.graph.projection.FakeGraphProjectionEnv.FakeSource;
 import com.cognitanexus.query.graph.projection.FakeGraphProjectionEnv.FakeStore;
 import com.cognitanexus.query.graph.projection.application.GraphProjectionSource.AppliedEvent;
 import com.cognitanexus.query.graph.projection.domain.GraphProjectedWork;
+import com.cognitanexus.query.graph.projection.domain.GraphProjectionCheckpoint;
 import com.cognitanexus.query.platform.persistence.JsonCodec;
 import com.cognitanexus.query.projection.application.QueryEventTypes;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,8 +27,11 @@ import org.junit.jupiter.api.Test;
  * <ul>
  *   <li>水位只前进，且只在「水位之前的每条事件都已成功应用」后前进；失败即停，缺口可见；
  *   <li>重复/迟到事件不会再次生效（水位过滤 + 成果版本守卫两层）；
- *   <li>不同事件类型到成果的正确映射：收紧 → 退场；合并 → 两边成果都重写；
- *   <li>generation 不一致时拒绝写入，避免把新代数据补到旧代图上。
+ *   <li>不同事件类型到成果的正确映射：收紧 → 退场；合并 → 幸存者重写、被合并者在 PG 中已无行
+ *       时删除图内残留节点与边（P1-2）；
+ *   <li>generation 不一致时拒绝写入，避免把新代数据补到旧代图上；
+ *   <li>初始化前置条件：断点缺失/未完成/有失败成果/跨代时拒绝消费且不推水位（P1-3）；
+ *   <li>任何成果同步或清理失败都不推水位（P1-2）。
  * </ul>
  */
 class GraphEventProjectorTest {
@@ -35,6 +41,7 @@ class GraphEventProjectorTest {
 
   private FakeStore store;
   private FakeSource source;
+  private FakeCheckpointStore checkpoints;
   private GraphProjectionSynchronizer synchronizer;
   private GraphEventProjector projector;
 
@@ -42,12 +49,35 @@ class GraphEventProjectorTest {
   void setUp() {
     store = new FakeStore(SCOPE, 0L, GEN);
     source = new FakeSource(GEN, 0L);
+    checkpoints = new FakeCheckpointStore();
+    // 增量消费的初始化前置条件：初始回填已真正完成且没有失败成果。
+    checkpoints.saved.put(SCOPE, completedCheckpoint(GEN, 0L));
     synchronizer =
         new GraphProjectionSynchronizer(
             source, store, GraphProjectionRetryPolicy.noRetry(), millis -> {});
-    projector =
-        new GraphEventProjector(
-            source, synchronizer, store, new JsonCodec(new ObjectMapper()), "query");
+    projector = newProjector(store, source);
+  }
+
+  private GraphEventProjector newProjector(FakeStore targetStore, FakeSource targetSource) {
+    return new GraphEventProjector(
+        targetSource,
+        new GraphProjectionSynchronizer(
+            targetSource, targetStore, GraphProjectionRetryPolicy.noRetry(), millis -> {}),
+        targetStore,
+        checkpoints,
+        new JsonCodec(new ObjectMapper()),
+        "query");
+  }
+
+  /** 一份「回填已成功完成」的断点：COMPLETED、零失败、同一代。 */
+  private static GraphProjectionCheckpoint completedCheckpoint(
+      String generation, long failedWorks) {
+    Instant now = Instant.now();
+    GraphProjectionCheckpoint advanced =
+        GraphProjectionCheckpoint.started(SCOPE, generation, 0L, now)
+            .advanced(
+                "w-9", 1, failedWorks, failedWorks > 0 ? "w-9:FAILED_PERMANENT:测试注入" : null, now);
+    return advanced.completed(now);
   }
 
   private static AppliedEvent event(
@@ -174,12 +204,8 @@ class GraphEventProjectorTest {
   void generationMismatchRefusesToWrite() {
     store = new FakeStore(SCOPE, 3L, "gen0001");
     source = new FakeSource("gen0002", 3L);
-    synchronizer =
-        new GraphProjectionSynchronizer(
-            source, store, GraphProjectionRetryPolicy.noRetry(), millis -> {});
-    projector =
-        new GraphEventProjector(
-            source, synchronizer, store, new JsonCodec(new ObjectMapper()), "query");
+    checkpoints.saved.put(SCOPE, completedCheckpoint("gen0002", 0L));
+    projector = newProjector(store, source);
     source.add(FakeGraphProjectionEnv.work("w-1", 3L, "s-1", "s-2"));
     source.addEvent(
         event(
@@ -194,6 +220,118 @@ class GraphEventProjectorTest {
     assertThat(result.projectedRevision()).isEqualTo(3L);
     assertThat(result.notes()).anyMatch(note -> note.contains("不一致"));
     assertThat(store.works).isEmpty();
+  }
+
+  @Test
+  @DisplayName("P1-2 成果合并：PG 中已删除的被合并成果必须从图里删掉节点与合作边")
+  void achievementMergedDeletesGraphRemnantOfMergedWork() {
+    GraphProjectedWork survivor = FakeGraphProjectionEnv.work("w-survivor", 3L, "s-1", "s-2");
+    GraphProjectedWork merged = FakeGraphProjectionEnv.work("w-merged", 3L, "s-1", "s-3");
+    for (GraphProjectedWork work : List.of(survivor, merged)) {
+      source.add(work);
+      store.replaceWork(work.toWorkNode(), work.authorships());
+    }
+    // ProjectionApplier 处理 AchievementMerged 时会从 PG 读投影里连同参与关系一起删掉被合并者，
+    // 因此图侧的 syncWork 会拿到 empty——这不是「跳过」，而是「必须清理」。
+    source.works.remove("w-merged");
+    source.addEvent(
+        event(
+            "e-merge",
+            QueryEventTypes.ACHIEVEMENT_MERGED,
+            12L,
+            Map.of("survivorId", "w-survivor", "survivorTitle", "幸存", "mergedId", "w-merged")));
+
+    GraphEventProjectionResult result = projector.applyPending(SCOPE, 10);
+
+    assertThat(result.worksApplied()).isEqualTo(1);
+    assertThat(result.worksDeleted()).isEqualTo(1);
+    assertThat(store.works).doesNotContainKey("w-merged");
+    assertThat(store.calls).contains("deleteWork:w-merged");
+    // 图上不再有任何引用被合并成果的合作边（stub 存储以节点删除体现，这里显式断言节点已消失）
+    assertThat(store.works.keySet()).containsExactly("w-survivor");
+    assertThat(result.projectedRevision()).isEqualTo(12L);
+    assertThat(store.meta.projectedVersion()).isEqualTo(12L);
+  }
+
+  @Test
+  @DisplayName("P1-2 清理失败：任何成果同步/清理失败都不得推进图水位（哪怕之前的事件已成功）")
+  void cleanupFailureBlocksWatermarkEvenAfterSuccessfulEvents() {
+    source.add(FakeGraphProjectionEnv.work("w-1", 3L, "s-1", "s-2"));
+    source.addEvent(
+        event(
+            "e-1",
+            QueryEventTypes.CATALOG_CHANGE_COMMITTED,
+            4L,
+            Map.of("changeKind", QueryEventTypes.CHANGE_UPSERT, "achievementId", "w-1")));
+    // 第二条事件的被合并者已不在 PG 中 → 走 deleteWork；注入图库故障让清理失败。
+    store.transientFailures.put("w-gone", 1);
+    source.addEvent(
+        event(
+            "e-2",
+            QueryEventTypes.ACHIEVEMENT_MERGED,
+            6L,
+            Map.of("survivorId", "w-1", "mergedId", "w-gone")));
+
+    GraphEventProjectionResult result = projector.applyPending(SCOPE, 10);
+
+    assertThat(result.failedWorks()).isEqualTo(1);
+    assertThat(result.stopped()).isTrue();
+    // 关键：即使 e-1 已成功应用（图里确实写了 w-1），水位也停在 0，不推到 4 或 6。
+    assertThat(store.works).containsKey("w-1");
+    assertThat(result.projectedRevision()).isZero();
+    assertThat(store.meta.projectedVersion()).isZero();
+    assertThat(String.join("\n", result.notes())).contains("不推进");
+  }
+
+  @Test
+  @DisplayName("P1-3 没有回填断点：拒绝增量消费且不推进水位")
+  void missingCheckpointRefusesIncrementalConsumption() {
+    checkpoints.saved.clear();
+    source.add(FakeGraphProjectionEnv.work("w-1", 3L, "s-1", "s-2"));
+    source.addEvent(
+        event(
+            "e-1",
+            QueryEventTypes.CATALOG_CHANGE_COMMITTED,
+            7L,
+            Map.of("changeKind", QueryEventTypes.CHANGE_UPSERT, "achievementId", "w-1")));
+
+    GraphEventProjectionResult result = projector.applyPending(SCOPE, 10);
+
+    assertThat(result.eventsRead()).isZero();
+    assertThat(result.projectedRevision()).isZero();
+    assertThat(store.meta.projectedVersion()).isZero();
+    assertThat(store.works).isEmpty();
+    assertThat(String.join("\n", result.notes())).contains("断点");
+  }
+
+  @Test
+  @DisplayName("P1-3 断点未完成/有失败成果/跨代：都不允许消费，更不允许推水位")
+  void unfinishedOrFailedOrCrossGenerationCheckpointRefusesConsumption() {
+    source.add(FakeGraphProjectionEnv.work("w-1", 3L, "s-1", "s-2"));
+    source.addEvent(
+        event(
+            "e-1",
+            QueryEventTypes.CATALOG_CHANGE_COMMITTED,
+            7L,
+            Map.of("changeKind", QueryEventTypes.CHANGE_UPSERT, "achievementId", "w-1")));
+
+    for (GraphProjectionCheckpoint blocked :
+        List.of(
+            completedCheckpoint(GEN, 0L).failed("回填中断", Instant.now()),
+            completedCheckpoint(GEN, 2L),
+            completedCheckpoint("gen0000", 0L))) {
+      checkpoints.saved.put(SCOPE, blocked);
+      store.works.clear();
+      store.calls.clear();
+      store.meta =
+          new com.cognitanexus.query.graph.domain.GraphProjectionMeta(SCOPE, 0L, 0L, GEN, null);
+
+      GraphEventProjectionResult result = projector.applyPending(SCOPE, 10);
+
+      assertThat(result.eventsRead()).as("断点 %s 必须拒绝消费", blocked.status()).isZero();
+      assertThat(store.meta.projectedVersion()).isZero();
+      assertThat(store.works).isEmpty();
+    }
   }
 
   @Test

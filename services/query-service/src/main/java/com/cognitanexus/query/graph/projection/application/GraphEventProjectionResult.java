@@ -12,9 +12,11 @@ import java.util.List;
  *
  * @param eventsRead 本次读到的事件数
  * @param eventsIgnored 不影响图投影的事件数（门户授权、认领结论、未知但已由 PG 应用的类型）
- * @param failedWorks 写入失败的成果数
+ * @param worksDeleted 因 PG 当前代已无该成果行（合并删除、旧代残留）而删除的图内残留成果数
+ * @param failedWorks 写入或清理失败的成果数
  * @param fromRevision 消费前的水位
- * @param projectedRevision 消费后的水位（只前进；失败时为最后一条完整应用的事件修订）
+ * @param projectedRevision 消费后的水位（只有事件全部成功应用才前进；存在任何失败时与
+ *     {@code fromRevision} 相同）
  * @param stoppedEventId 因失败而停止时的事件标识；未停止为 null
  */
 public record GraphEventProjectionResult(
@@ -22,6 +24,7 @@ public record GraphEventProjectionResult(
     int eventsIgnored,
     long worksApplied,
     long worksRetired,
+    long worksDeleted,
     long worksStale,
     long failedWorks,
     long fromRevision,
@@ -43,12 +46,13 @@ public record GraphEventProjectionResult(
 
   public String summary() {
     return String.format(
-        "graph-events[read=%d, ignored=%d, applied=%d, retired=%d, stale=%d, failed=%d, "
-            + "revision %d→%d%s]",
+        "graph-events[read=%d, ignored=%d, applied=%d, retired=%d, deleted=%d, stale=%d, "
+            + "failed=%d, revision %d→%d%s]",
         eventsRead,
         eventsIgnored,
         worksApplied,
         worksRetired,
+        worksDeleted,
         worksStale,
         failedWorks,
         fromRevision,

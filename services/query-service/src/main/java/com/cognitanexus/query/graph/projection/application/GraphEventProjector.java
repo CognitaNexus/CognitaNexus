@@ -35,14 +35,23 @@ import org.slf4j.LoggerFactory;
  *   <tr><td>{@code CatalogChangeCommitted} UPSERT</td><td>重同步该成果（含不合格时退场）</td></tr>
  *   <tr><td>{@code PublicVisibilityTightened} / {@code Restored}</td><td>逐条重同步列出的成果：
  *       收紧后 PG 中不再是 PUBLIC，同步时自动走 {@code retireWork}</td></tr>
- *   <tr><td>{@code AchievementMerged}</td><td>重同步幸存者；被合并者已从 PG 投影删除，留待对账退场</td></tr>
+ *   <tr><td>{@code AchievementMerged}</td><td>重同步幸存者 {@code survivorId}；被合并者
+ *       {@code mergedId} 已从 PG 投影删除，此时图内残留的成果节点与它的
+ *       {@code AUTHORED}/{@code COOPERATED_WITH} 必须用 {@code deleteWork} 一并清掉</td></tr>
  *   <tr><td>{@code ScholarMerged}</td><td>重同步幸存者与合并者名下的全部成果</td></tr>
  *   <tr><td>门户授权 / 认领结论</td><td>无图效果，只推进水位</td></tr>
  *   <tr><td>其它类型</td><td>无图效果并记录（PG 侧已 APPLIED，不在此重判）</td></tr>
  * </table>
  *
  * <p>水位只在水位之前的每条事件都已成功应用后前进：失败即停，下一次从同一修订重来。这样
- * 「图落后多少」是一个可回答的数字，而不是「大概追上了」。
+ * 「图落后多少」是一个可回答的数字，而不是「大概追上了」。<b>任何</b>一条成果同步/清理失败都
+ * 让本轮水位原地不动（即使失败之前已有若干事件成功）：水位是「此前每条事件都已完整应用」的
+ * 结论，推进到最后一个成功事件同样会把失败那条永久跳过。
+ *
+ * <p><b>初始化前置条件</b>：本轮消费前先过 {@link GraphProjectionReadiness}——断点存在、
+ * {@code COMPLETED}、{@code failed_works=0}、且与 PG 活动代一致。缺任何一条都拒绝消费并且不推进
+ * 水位：从未回填的图里只有零星几条成果，把水位推到 {@code published_revision} 会让读路径把
+ * 「几乎空的图」当成当前结果。
  */
 public class GraphEventProjector {
 
@@ -58,6 +67,7 @@ public class GraphEventProjector {
   private final GraphProjectionSource source;
   private final GraphProjectionSynchronizer synchronizer;
   private final GraphProjectionStore store;
+  private final GraphProjectionCheckpointStore checkpoints;
   private final JsonCodec json;
   private final String consumerId;
 
@@ -65,11 +75,16 @@ public class GraphEventProjector {
       GraphProjectionSource source,
       GraphProjectionSynchronizer synchronizer,
       GraphProjectionStore store,
+      GraphProjectionCheckpointStore checkpoints,
       JsonCodec json,
       String consumerId) {
+    if (checkpoints == null) {
+      throw new IllegalArgumentException("图增量投影必须能读取回填断点（初始化前置条件）");
+    }
     this.source = source;
     this.synchronizer = synchronizer;
     this.store = store;
+    this.checkpoints = checkpoints;
     this.json =
         json == null ? new JsonCodec(new com.fasterxml.jackson.databind.ObjectMapper()) : json;
     this.consumerId = consumerId == null || consumerId.isBlank() ? "query" : consumerId;
@@ -90,13 +105,22 @@ public class GraphEventProjector {
     Optional<GraphProjectionSource.Stage> stage = source.readStage(consumerId);
     if (stage.isEmpty()) {
       return new GraphEventProjectionResult(
-          0, 0, 0, 0, 0, 0, fromRevision, fromRevision, null, List.of("PG 尚未初始化水位，暂不消费事件"));
+          0, 0, 0, 0, 0, 0, 0, fromRevision, fromRevision, null, List.of("PG 尚未初始化水位，暂不消费事件"));
     }
     String generation = stage.get().generation();
+    // 初始化前置条件先于一切写入：断点缺失/未完成/有失败成果/跨代时，本轮既不消费事件也不推水位。
+    Optional<String> blocked =
+        GraphProjectionReadiness.blocker(checkpoints.find(effectiveScope), generation);
+    if (blocked.isPresent()) {
+      log.warn("图增量投影拒绝消费 scope={} consumer={}：{}", effectiveScope, consumerId, blocked.get());
+      return new GraphEventProjectionResult(
+          0, 0, 0, 0, 0, 0, 0, fromRevision, fromRevision, null, List.of(blocked.get()));
+    }
     if (!meta.generation().equals(generation)) {
       // 水位的 generation 与 PG 活动代不同：图里是旧代成果。此时继续写新代事件会让图变成
       // 「旧代 + 新代补丁」的混合视图，且水位看起来在前进。必须整库重建（ADR-005 §5.3）。
       return new GraphEventProjectionResult(
+          0,
           0,
           0,
           0,
@@ -118,7 +142,7 @@ public class GraphEventProjector {
         source.listAppliedEventsAfter(consumerId, fromRevision, Math.max(maxEvents, 1));
     if (events.isEmpty()) {
       return new GraphEventProjectionResult(
-          0, 0, 0, 0, 0, 0, fromRevision, fromRevision, null, List.of());
+          0, 0, 0, 0, 0, 0, 0, fromRevision, fromRevision, null, List.of());
     }
 
     List<String> notes = new ArrayList<>();
@@ -126,6 +150,7 @@ public class GraphEventProjector {
     int ignored = 0;
     long applied = 0;
     long retired = 0;
+    long deleted = 0;
     long stale = 0;
     long failed = 0;
     String stoppedAt = null;
@@ -141,8 +166,30 @@ public class GraphEventProjector {
       for (String workId : workIds) {
         Optional<GraphSyncOutcome> outcome = synchronizer.syncWork(generation, workId);
         if (outcome.isEmpty()) {
-          // PG 里已无该成果（被合并删除等）：图侧墓碑由对账的定向修复退场，不在此凭猜测删数据。
-          notes.add(event.eventId() + ":" + workId + " 已不在 PG 投影中，留待对账处理");
+          // PG 当前代已无该成果行（AchievementMerged 删除了被合并者、或旧代残留）：图里那一份必须
+          // 一起消失。只记一句「留待对账」会让旧成果节点和它的 AUTHORED/COOPERATED_WITH 永久留在
+          // 合作网络里——对账的孤立扫描要等下一次人工对账才可能发现，而增量路径当场就知道它没了。
+          // 用 deleteWork 而不是退场墓碑：PG 里连行都没有，没有任何可信版本号可写（ADR-005 §7）。
+          try {
+            if (store.deleteWork(workId)) {
+              deleted++;
+              notes.add(event.eventId() + ":" + workId + " 已不在 PG 投影中，已删除图内成果节点与合作边");
+            } else {
+              notes.add(event.eventId() + ":" + workId + " 已不在 PG 投影中，图内无残留（无需删除）");
+            }
+          } catch (RuntimeException ex) {
+            failed++;
+            eventFailed = true;
+            notes.add(
+                "事件 "
+                    + event.eventId()
+                    + " 的成果 "
+                    + workId
+                    + " 图内清理失败："
+                    + ex.getClass().getSimpleName()
+                    + ": "
+                    + safeMessage(ex));
+          }
           continue;
         }
         GraphSyncOutcome value = outcome.get();
@@ -164,7 +211,12 @@ public class GraphEventProjector {
       revision = event.catalogRevision();
     }
 
-    if (revision > fromRevision) {
+    if (failed > 0) {
+      // 失败即停：即使失败之前的若干事件已经成功应用，也不推水位。水位是「此前每条事件都已完整
+      // 应用」的结论，推进到最后一个成功事件等于把失败那条永久跳过（下一次从更后面开始读）。
+      notes.add("本轮存在 " + failed + " 条成果同步/清理失败：图水位保持 " + fromRevision + "，不推进（缺口必须可见）");
+      revision = fromRevision;
+    } else if (revision > fromRevision) {
       GraphProjectionMeta advanced =
           new GraphProjectionMeta(
               effectiveScope,
@@ -185,6 +237,7 @@ public class GraphEventProjector {
             ignored,
             applied,
             retired,
+            deleted,
             stale,
             failed,
             fromRevision,
@@ -253,6 +306,15 @@ public class GraphEventProjector {
     if (value != null && !value.isBlank()) {
       workIds.add(value.trim());
     }
+  }
+
+  private static String safeMessage(RuntimeException ex) {
+    String message = ex.getMessage();
+    if (message == null || message.isBlank()) {
+      return "无消息";
+    }
+    String firstLine = message.split("\\R", 2)[0].trim();
+    return firstLine.length() > 200 ? firstLine.substring(0, 200) + "…" : firstLine;
   }
 
   private static String stringOf(Object value) {

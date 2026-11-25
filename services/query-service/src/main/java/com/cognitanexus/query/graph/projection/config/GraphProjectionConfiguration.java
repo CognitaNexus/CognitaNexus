@@ -86,10 +86,11 @@ public class GraphProjectionConfiguration {
         GraphProjectionSource source,
         GraphProjectionSynchronizer synchronizer,
         GraphProjectionStore store,
+        GraphProjectionCheckpointStore checkpoints,
         JsonCodec json,
         ProjectionProperties projectionProperties) {
       return new GraphEventProjector(
-          source, synchronizer, store, json, projectionProperties.consumerId());
+          source, synchronizer, store, checkpoints, json, projectionProperties.consumerId());
     }
 
     @Bean
