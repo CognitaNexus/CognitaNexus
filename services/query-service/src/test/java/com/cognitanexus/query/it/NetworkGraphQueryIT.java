@@ -538,6 +538,49 @@ class NetworkGraphQueryIT {
     }
   }
 
+  @Test
+  @Order(9)
+  @DisplayName("SHADOW_COMPARE：真实双库返回 PG 权威结果，并精确计入一次一致的对照")
+  void shadowCompareAgainstRealGraph() {
+    NetworkGraphQueryMetrics shadowMetrics = new NetworkGraphQueryMetrics();
+    // shadow-compare-async=false：对照在请求线程内同步完成，测试可以直接观察指标，不用轮询。
+    NetworkQueryRouter shadow =
+        new NetworkQueryRouter(
+            networkService,
+            barrierGuard,
+            new NetworkGraphQueryProperties(GraphQueryMode.SHADOW_COMPARE.name(), false, 8),
+            shadowMetrics,
+            comparator,
+            graphBackend,
+            Runnable::run);
+    assertThat(shadow.effectiveMode()).isEqualTo(GraphQueryMode.SHADOW_COMPARE);
+
+    // 自我网络：A 的 2 跳子图包含强度>1 的边与多作者成果推导出来的边。
+    Map<String, Object> pgView = networkService.neighborhood(A, 2, 0, "REAL", null, null);
+    Map<String, Object> view = shadow.neighborhood(A, 2, 0, "REAL", null, null);
+    assertSameResponse("shadow-neighborhood", pgView, view);
+    assertThat(view.get("graphVersion")).isEqualTo("g" + GENERATION + "-r" + REVISION);
+    assertThat(shadowMetrics.snapshot())
+        .containsEntry("parityComparedCount", 1L)
+        .containsEntry("parityMatchedCount", 1L)
+        .containsEntry("parityMismatchedCount", 0L)
+        .containsEntry("paritySkippedCount", 0L)
+        .as("对照模式不得由图库提供服务")
+        .containsEntry("graphServedQueries", 0L);
+
+    // 最短路径：A→E 有两条等长路径（经 B 或经 C），两侧必须选中同一条。
+    Map<String, Object> pgPath = networkService.shortestPath(A, E, "REAL", null, null);
+    Map<String, Object> pathView = shadow.shortestPath(A, E, "REAL", null, null);
+    assertSameResponse("shadow-path", pgPath, pathView);
+    assertThat(pathView.get("path")).isEqualTo(pgPath.get("path"));
+    assertThat(shadowMetrics.snapshot())
+        .containsEntry("parityComparedCount", 2L)
+        .containsEntry("parityMatchedCount", 2L)
+        .containsEntry("parityMismatchedCount", 0L)
+        .containsEntry("paritySkippedCount", 0L)
+        .containsEntry("parityDroppedCount", 0L);
+  }
+
   // ===========================================================================
   // 辅助
   // ===========================================================================

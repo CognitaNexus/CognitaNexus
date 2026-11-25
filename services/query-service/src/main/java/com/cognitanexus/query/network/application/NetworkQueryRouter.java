@@ -44,7 +44,8 @@ import org.slf4j.LoggerFactory;
  * <h2>对照模式</h2>
  *
  * <p>{@link GraphQueryMode#SHADOW_COMPARE} 返回 PG 结果，同时在<b>同一屏障快照</b>下执行图查询并
- * 逐字段比较；跳过（图不可用/水位落后）与不一致分别计数，不把跳过计入一致。
+ * 逐字段比较；跳过（图不可用/水位落后）与不一致分别计数，不把跳过计入一致。对照默认异步执行，
+ * {@code cn.query.graph.query.shadow-compare-async=false} 时在调用线程内同步执行。
  */
 public class NetworkQueryRouter {
 
@@ -79,6 +80,20 @@ public class NetworkQueryRouter {
     this.graphBackend = graphBackend;
     this.shadowExecutor = shadowExecutor;
     GraphQueryMode configured = properties.queryMode();
+    if (graphBackend == null && configured.requiresGraph()) {
+      // 严格模式的契约是「必须由图库返回」：缺图库 Bean 时构造即失败，而不是静默退化为 PG 后对
+      // 每个请求返回 200。否则一次漏配 cn.query.graph.enabled=true 就能让验收在没走图库的路径上
+      // 「通过」，这与 GraphQueryMode#requiresGraph() 的注释直接矛盾。
+      throw new IllegalStateException(
+          "cn.query.graph.query.mode="
+              + configured
+              + " 要求图库，但图库客户端未装配（缺 cn.query.graph.enabled=true 或连接配置）："
+              + "请打开 cn.query.graph.enabled 并配置图库连接，或把模式改为"
+              + GraphQueryMode.NEO4J_WITH_PG_FALLBACK
+              + " / "
+              + GraphQueryMode.POSTGRES_ONLY
+              + "。");
+    }
     if (graphBackend == null && configured != GraphQueryMode.POSTGRES_ONLY) {
       // 缺图库 Bean（cn.query.graph.enabled=false）但配置要求图模式：显式退化为 PG，并在启动日志
       // 中说明，而不是让每个请求都去尝试一个不存在的后端。
@@ -153,7 +168,10 @@ public class NetworkQueryRouter {
     return serveFromGraph(mode, barrier, "shortestPath", requestKey, graphQuery, postgresQuery);
   }
 
-  /** 当前生效的路由模式。图库 Bean 不存在时强制 PG（配置值保留在日志里以便排查）。 */
+  /**
+   * 当前生效的路由模式。图库 Bean 不存在时强制 PG（配置值保留在日志里以便排查）：
+   * {@code NEO4J_STRICT} 不会走到这里——它在构造阶段就被拒绝。
+   */
   public GraphQueryMode effectiveMode() {
     if (graphBackend == null) {
       return GraphQueryMode.POSTGRES_ONLY;
@@ -344,6 +362,21 @@ public class NetworkQueryRouter {
                 ex.getClass().getSimpleName());
           }
         };
+    if (!properties.shadowCompareAsyncEnabled()) {
+      // 显式配置 shadow-compare-async=false：在当前线程同步执行对照，便于本地核对与测试直接观察。
+      // 对照仍然绝不影响用户拿到的权威结果——同步执行的意外失败也只计数丢弃，不向外抛。
+      try {
+        task.run();
+      } catch (RuntimeException ex) {
+        metrics.recordParityDropped();
+        log.warn(
+            "同步对照任务执行失败，已计数丢弃：operation={}, request={}, error={}。",
+            operation,
+            requestKey,
+            ex.getClass().getSimpleName());
+      }
+      return;
+    }
     try {
       shadowExecutor.execute(task);
     } catch (RuntimeException ex) {

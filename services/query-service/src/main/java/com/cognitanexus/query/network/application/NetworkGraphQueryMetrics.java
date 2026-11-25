@@ -106,7 +106,7 @@ public class NetworkGraphQueryMetrics {
     }
   }
 
-  /** 对照任务因执行器队列已满被丢弃（异步模式）。丢弃必须可见，否则对照覆盖率会悄悄下降。 */
+  /** 对照任务因执行器队列已满被丢弃，或同步模式下执行失败（异步/同步两路都必须可见）。 */
   public void recordParityDropped() {
     parityDroppedCount.incrementAndGet();
   }

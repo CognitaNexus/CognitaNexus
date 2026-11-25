@@ -9,6 +9,7 @@ import com.cognitanexus.query.consistency.PublicBarrierGuard;
 import com.cognitanexus.query.graph.domain.GraphFilterCriteria;
 import com.cognitanexus.query.graph.domain.GraphProjectionMeta;
 import com.cognitanexus.query.network.config.NetworkGraphQueryProperties;
+import com.cognitanexus.query.network.domain.GraphParityComparisonResult;
 import com.cognitanexus.query.network.domain.GraphProjectionStatus;
 import com.cognitanexus.query.network.domain.GraphQueryMode;
 import com.cognitanexus.query.network.domain.ParityDiffReport;
@@ -76,10 +77,18 @@ class NetworkQueryRouterTest {
       GraphQueryMode mode,
       GraphNetworkBackend graphBackend,
       java.util.concurrent.Executor executor) {
+    return router(mode, graphBackend, executor, false);
+  }
+
+  private NetworkQueryRouter router(
+      GraphQueryMode mode,
+      GraphNetworkBackend graphBackend,
+      java.util.concurrent.Executor executor,
+      boolean shadowCompareAsync) {
     return new NetworkQueryRouter(
         postgres,
         barrierGuard,
-        new NetworkGraphQueryProperties(mode.name(), false, 8),
+        new NetworkGraphQueryProperties(mode.name(), shadowCompareAsync, 8),
         metrics,
         new NetworkParityComparator(),
         graphBackend,
@@ -130,6 +139,21 @@ class NetworkQueryRouterTest {
     assertThat(router.metricsSnapshot())
         .containsEntry("configuredMode", "NEO4J_WITH_PG_FALLBACK")
         .containsEntry("graphBackendPresent", false);
+  }
+
+  @Test
+  @DisplayName("图库 Bean 缺失时 NEO4J_STRICT 构造即失败：不允许静默走 PG 返回 200")
+  void strictModeWithoutGraphBackendFailsFast() {
+    assertThatThrownBy(() -> router(GraphQueryMode.NEO4J_STRICT, null))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("NEO4J_STRICT")
+        .hasMessageContaining("cn.query.graph.enabled");
+    // 失败发生在构造阶段：一条请求都没被执行，图后端调用数为零，指标也没有任何记录。
+    assertThat(backend.neighborhoodCalls).isZero();
+    assertThat(backend.pathCalls).isZero();
+    assertThat(metrics.snapshot())
+        .containsEntry("postgresOnlyQueries", 0L)
+        .containsEntry("graphServedQueries", 0L);
   }
 
   @Test
@@ -209,7 +233,7 @@ class NetworkQueryRouterTest {
         };
 
     Map<String, Object> view =
-        router(GraphQueryMode.SHADOW_COMPARE, backend, rejecting)
+        router(GraphQueryMode.SHADOW_COMPARE, backend, rejecting, true)
             .neighborhood("s", 1, 0, "REAL", null, null);
 
     assertSameResponse(
@@ -222,7 +246,7 @@ class NetworkQueryRouterTest {
   void shadowCompareRunsAsynchronously() throws Exception {
     ExecutorService executor = Executors.newSingleThreadExecutor();
     try {
-      NetworkQueryRouter router = router(GraphQueryMode.SHADOW_COMPARE, backend, executor);
+      NetworkQueryRouter router = router(GraphQueryMode.SHADOW_COMPARE, backend, executor, true);
       router.neighborhood("s", 2, 0, "REAL", null, null);
 
       long deadline = System.currentTimeMillis() + 5_000L;
@@ -231,9 +255,129 @@ class NetworkQueryRouterTest {
         Thread.sleep(10L);
       }
       assertThat(metrics.snapshot()).containsEntry("parityComparedCount", 1L);
+      assertThat(backend.lastCallThread).isNotSameAs(Thread.currentThread());
     } finally {
       executor.shutdownNow();
     }
+  }
+
+  @Test
+  @DisplayName("shadow-compare-async=false：对照在调用线程同步完成，不提交到异步执行器")
+  void shadowCompareRunsSynchronouslyWhenAsyncDisabled() {
+    java.util.concurrent.Executor mustNotBeUsed =
+        command -> {
+          throw new AssertionError("shadow-compare-async=false 时不得提交到异步执行器");
+        };
+
+    NetworkQueryRouter router =
+        router(GraphQueryMode.SHADOW_COMPARE, backend, mustNotBeUsed, false);
+    Thread caller = Thread.currentThread();
+
+    Map<String, Object> view = router.neighborhood("s", 2, 0, "REAL", null, null);
+
+    assertSameResponse("shadow-sync", pgNeighborhood(), view);
+    // 同步语义：请求一返回对照就已经完成，无需等待；且确实执行在调用线程上。
+    assertThat(metrics.snapshot())
+        .containsEntry("parityComparedCount", 1L)
+        .containsEntry("parityMatchedCount", 1L)
+        .containsEntry("parityMismatchedCount", 0L)
+        .containsEntry("parityDroppedCount", 0L);
+    assertThat(backend.lastCallThread).isSameAs(caller);
+  }
+
+  @Test
+  @DisplayName("shadow-compare-async=false 也覆盖路径查询，且图查询仍在调用线程同步执行")
+  void shadowComparePathRunsSynchronouslyWhenAsyncDisabled() {
+    java.util.concurrent.Executor mustNotBeUsed =
+        command -> {
+          throw new AssertionError("shadow-compare-async=false 时不得提交到异步执行器");
+        };
+
+    NetworkQueryRouter router =
+        router(GraphQueryMode.SHADOW_COMPARE, backend, mustNotBeUsed, false);
+    Thread caller = Thread.currentThread();
+
+    Map<String, Object> view = router.shortestPath("s", "t", "REAL", null, null);
+
+    assertSameResponse("shadow-path-sync", pgPath(), view);
+    assertThat(metrics.snapshot())
+        .containsEntry("parityComparedCount", 1L)
+        .containsEntry("parityMatchedCount", 1L)
+        .containsEntry("parityDroppedCount", 0L);
+    assertThat(backend.lastCallThread).isSameAs(caller);
+  }
+
+  @Test
+  @DisplayName("shadow-compare-async=false 且对照器异常：用户仍拿到 PG 结果，异常只计入跳过")
+  void synchronousShadowCompareFailureDoesNotAffectResponse() {
+    java.util.concurrent.Executor syncExecutor = Runnable::run;
+
+    // 让对照阶段（响应逐字段比较）炸掉：模拟对照器内部意外异常。
+    NetworkParityComparator brokenComparator =
+        new NetworkParityComparator() {
+          @Override
+          public ParityDiffReport compare(
+              String operation,
+              String requestKey,
+              Map<String, Object> postgres,
+              Map<String, Object> graph) {
+            throw new IllegalStateException("comparator broken");
+          }
+        };
+    NetworkQueryRouter brokenRouter =
+        new NetworkQueryRouter(
+            postgres,
+            barrierGuard,
+            new NetworkGraphQueryProperties(GraphQueryMode.SHADOW_COMPARE.name(), false, 8),
+            metrics,
+            brokenComparator,
+            backend,
+            syncExecutor);
+
+    Map<String, Object> view = brokenRouter.neighborhood("s", 1, 0, "REAL", null, null);
+
+    assertSameResponse(
+        "shadow-sync-broken", postgres.neighborhood("s", 1, 0, "REAL", null, null), view);
+    // 对照本身的失败绝不能改变权威响应，也不能被记成「一致」。
+    assertThat(metrics.snapshot())
+        .containsEntry("parityComparedCount", 0L)
+        .containsEntry("parityMatchedCount", 0L)
+        .containsEntry("paritySkippedCount", 1L);
+    assertThat(metrics.lastParityComparison().skipReason()).isEqualTo("GRAPH_ERROR");
+  }
+
+  @Test
+  @DisplayName("shadow-compare-async=false 且对照记录本身抛异常：请求仍返回 PG 结果，只计数丢弃")
+  void synchronousShadowCompareRecordingFailureDoesNotAffectResponse() {
+    // 覆盖同步执行的外层防护：跳过分支的指标记录不在 try/catch 内部，若它抛异常，
+    // 绝不能让一个诊断旁路把公开请求变成 500。
+    NetworkGraphQueryMetrics brokenMetrics =
+        new NetworkGraphQueryMetrics() {
+          @Override
+          public void recordParityComparison(GraphParityComparisonResult result) {
+            throw new IllegalStateException("metrics sink broken");
+          }
+        };
+    backend.status =
+        GraphProjectionStatus.stale(
+            new GraphProjectionMeta("query-public", 119L, 119L, "42", Instant.now()), 120L);
+    NetworkQueryRouter brokenRouter =
+        new NetworkQueryRouter(
+            postgres,
+            barrierGuard,
+            new NetworkGraphQueryProperties(GraphQueryMode.SHADOW_COMPARE.name(), false, 8),
+            brokenMetrics,
+            new NetworkParityComparator(),
+            backend,
+            Runnable::run);
+
+    Map<String, Object> view = brokenRouter.neighborhood("s", 1, 0, "REAL", null, null);
+
+    assertSameResponse(
+        "shadow-sync-metrics-broken", postgres.neighborhood("s", 1, 0, "REAL", null, null), view);
+    assertThat(brokenMetrics.snapshot())
+        .containsEntry("parityComparedCount", 0L)
+        .containsEntry("parityDroppedCount", 1L);
   }
 
   @Test
@@ -496,6 +640,7 @@ class NetworkQueryRouterTest {
     private RuntimeException failure;
     private RuntimeException statusFailure;
     private UnaryOperator<Map<String, Object>> mutator = UnaryOperator.identity();
+    private volatile Thread lastCallThread;
     private int neighborhoodCalls;
     private int pathCalls;
 
@@ -520,6 +665,7 @@ class NetworkQueryRouterTest {
         int maxNodesRequested,
         GraphFilterCriteria criteria) {
       neighborhoodCalls++;
+      lastCallThread = Thread.currentThread();
       if (failure != null) {
         throw failure;
       }
@@ -534,6 +680,7 @@ class NetworkQueryRouterTest {
         String to,
         GraphFilterCriteria criteria) {
       pathCalls++;
+      lastCallThread = Thread.currentThread();
       if (failure != null) {
         throw failure;
       }
