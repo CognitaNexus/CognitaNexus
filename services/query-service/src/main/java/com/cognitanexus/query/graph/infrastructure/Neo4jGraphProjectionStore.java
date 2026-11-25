@@ -162,6 +162,31 @@ public class Neo4jGraphProjectionStore implements GraphProjectionStore {
         });
   }
 
+  /**
+   * 删除图内孤立成果节点与它的边（PG 中已无该行）。
+   *
+   * <p>为什么不用 {@code retireWork(workId, Long.MAX_VALUE)} 代替：那会把 {@code source_version}
+   * 抬成哨兵值，该成果日后在 PG 中重新合格时，正常版本的 {@code replaceWork} 会被版本守卫永久
+   * 拒绝（{@code STALE_IGNORED}），图上就再也恢复不出这篇成果。删除则让节点回到「从未投影」，
+   * 任何版本都能重新写入。
+   *
+   * <p>{@code AUTHORED} 由 {@code DETACH DELETE} 一并清理；{@code COOPERATED_WITH} 是学者之间的
+   * 直接边、只带 {@code work_id} 属性，不会被 DETACH DELETE 带走，必须按 {@code work_id} 显式删除，
+   * 否则会留下幽灵合作边。
+   */
+  @Override
+  public boolean deleteWork(String workId) {
+    if (workId == null || workId.isBlank()) {
+      throw new IllegalArgumentException("workId 不能为空");
+    }
+    return runner.write(
+        tx -> {
+          tx.run(DELETE_COOPERATED, Map.of("workId", workId)).consume();
+          var summary = tx.run(DELETE_WORK, Map.of("workId", workId)).consume();
+          return summary.counters().nodesDeleted() > 0;
+        });
+  }
+
   @Override
   public Optional<GraphProjectionMeta> readMeta(String scope) {
     String effectiveScope = scope == null || scope.isBlank() ? this.scope : scope;
@@ -369,6 +394,13 @@ public class Neo4jGraphProjectionStore implements GraphProjectionStore {
           w.source_version = $sourceVersion,
           w.updated_at_epoch_ms = timestamp()
       RETURN w.work_id AS workId
+      """;
+
+  /** 对账专用：删除 PG 中已不存在的孤立成果节点（{@link #deleteWork}）。 */
+  private static final String DELETE_WORK =
+      """
+      MATCH (w:Work {work_id: $workId})
+      DETACH DELETE w
       """;
 
   private static final String READ_META =
