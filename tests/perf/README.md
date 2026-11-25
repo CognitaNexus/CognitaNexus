@@ -1,16 +1,30 @@
 # tests/perf —— 容量与并发测试资产
 
-第三批（容量与恢复）新增。目的不是「跑一次好看的数」，而是让每次都留下可比对的数据量、环境、查询集与原始结果。
+第三批（容量与恢复）建立，阶段六（性能与容量准备）扩展为分级套件。目的不是「跑一次好看的数」，而是让每次都留下可比对的数据量、环境、查询集与原始结果。
+
+阶段六的方案、容量精算表、门禁阻断证据与执行清单见
+**`docs/ops/phase6-performance-capacity-plan.md`**；手动触发的压测工作流见
+**`.github/workflows/perf-scale.yml`**（只有 `workflow_dispatch`，不随 push/PR 跑）。
 
 | 文件 | 作用 |
 | --- | --- |
+| `capacity-model.mjs` | 四档规模（1 万/10 万/100 万/500 万）容量精算：实体数、PG 表+索引+WAL、Neo4j store+索引+tx、内存；`--avail-gb=auto --mem-gb=auto` 读主机真实值；`--require-scale` 是前置安全门禁（退出码 4 = 资源不足）；内置标定自检，模型与实测基线漂移时退出码 3 |
+| `load.mjs` | 活跃用户混合负载生成器：31 场景 / 13 接口、分接口与分场景 P50/P95/P99、RPS、错误分类、业务断言 |
+| `perf-summary.mjs` | 把一个阶段目录汇总成人读报告 + 验收判定（关键接口 P95 ≤ 2s、错误率 ≤ 1%，缺并发档即判未通过） |
+| `explain-graph-and-search.sh` | 采集 PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)` 与 Neo4j `PROFILE`（算子树 + dbHits），输出摘要 |
+| `neo4j-project-load.mjs` | PG 导出 TSV → Neo4j 批量装载，记录行/秒、store 体积、实测节点/关系数，并可只跑 `--only=profile` |
+| `scale/seed-scale-query.sql` | 造 n 条成果 + 参与关系 + 全景投影（全部 `SIMULATED`，`-v n= -v pool= -v gen= -v seed=`） |
+| `scale/fixtures-graph.sql` | 环 / 链 / 等长路径 / 树 / 孤立点 / 枢纽 / 高作者数成果的结构夹具（`SIMULATED`） |
+| `scale/pg-index-toggle.sql` | 导入前摘索引、导入后重建，两者分别计时（带快照与回滚） |
+| `scale/counts-scale.sql` | 分层计数与逐表体积（`pg_total_relation_size`） |
+| `scale/explain-plans.sql` | 与检索/统计/网络实际发出的 SQL 同形的固定查询集 |
+| `scale/export-graph-source.sql` | PG → TSV 导出；`data_origin` 直接取自 `data_nature`，故图中不可能出现 `REAL` 节点 |
 | `seed-core.sql` | 往 core 造合成规范实体（固定种子）。`psql -v n=1000000 -v seed=0.42 -1 -f` |
 | `seed-query.sql` | 往 query 投影造同一批成果、参与关系、领域、机构、合作边（同一 id、同一分布） |
-| `counts.core.sql` / `counts.query.sql` | 分层计数与表体积：把「100 万条」拆成实体数、类型、公开资格、数据性质、关系与边 |
-| `explain.sql` | 与检索／统计／网络实际发出的 SQL 形状一致的固定查询集，含 `EXPLAIN ANALYZE` |
-| `load.mjs` | 活跃用户混合负载生成器（50/20/15/10/5 场景比例、声明思考时间、分位统计） |
+| `counts.core.sql` / `counts.query.sql` | 分层计数与表体积（第三批版本，按 `generation` 全库口径） |
+| `explain.sql` | 第三批的固定查询集（含 `EXPLAIN ANALYZE`），供历史对照 |
 
-编排脚本在 `ops/perf/`：`stage-b.sh`（独立部署 + 建库 + 造数 + 计数 + 计划）、`restore-drill.sh`（备份恢复演练）。
+编排脚本在 `ops/perf/`：`run-scale-benchmark.sh`（预检 → 建库 → 造数 → 索引 → 计数 → 计划 → 图投影 → 压测 → 汇总，支持 `--dry-run` 干跑）、`stage-b.sh`（第三批的独立部署流程）、`restore-drill.sh`（备份恢复演练）。
 
 ## 几个不能省的口径
 
@@ -22,6 +36,11 @@
 
 ## 跑之前
 
+- 先干跑：`node tests/perf/capacity-model.mjs --avail-gb=auto --mem-gb=auto --require-scale=10k`
+  与 `bash ops/perf/run-scale-benchmark.sh --dry-run --stage=10k`，两者都不连数据库。
 - 独立实例：`bash ops/local/test-db.sh start`（端口 55432）。
 - 服务需要 Redis：`bash ops/local/start-infra.sh`（沙箱下必须以后台任务承载，否则进程组被回收）。
 - `ops/perf/stage-b.sh up` 是前台阻塞的，调用方要用后台任务承载。
+- 不要与本机其他测试抢 55432/17687：压测会造数、重建索引、清空作用域内的图节点。
+- 跑完用 `node tests/perf/perf-summary.mjs --dir=<阶段目录> --enforce` 出结论；
+  缺并发档或关键接口超阈时它以非零码退出，不要手工挑好看的数写报告。
