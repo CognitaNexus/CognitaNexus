@@ -32,6 +32,8 @@
 #   --subset             只要求「有 N 个用例」，不要求源码里每个测试类都有报告
 #                        （用于按 -Dtest 只跑子集的 job）
 #   --require A,B        额外要求这些类（简单名或全限定名）出现在报告里
+#   --it-select P,Q      只核对匹配的 IT 源码类（简单类名或全限定名，支持 * 通配）
+#                        精确类名必须存在；多个通配模式合计至少命中一个 IT 类
 # =============================================================================
 
 set -euo pipefail
@@ -45,6 +47,7 @@ if [ -z "$PYTHON" ]; then
 fi
 
 exec "$PYTHON" - "$@" <<'PY'
+import fnmatch
 import os
 import re
 import sys
@@ -58,7 +61,7 @@ def usage(msg=None):
         print("参数错误：%s" % msg, file=sys.stderr)
     print(
         "用法：ci-test-report-gate.sh [--modules a,b] [--unit] [--it] [--coverage] "
-        "[--min-tests N] [--subset] [--require A,B]",
+        "[--min-tests N] [--subset] [--require A,B] [--it-select P,Q]",
         file=sys.stderr,
     )
     raise SystemExit(2)
@@ -70,6 +73,7 @@ want_unit = want_it = want_cov = False
 subset = False
 min_tests = 1
 require = []
+it_select = []
 
 i = 0
 while i < len(args):
@@ -100,6 +104,11 @@ while i < len(args):
         if i >= len(args):
             usage("--require 缺少取值")
         require.extend(c.strip() for c in args[i].split(",") if c.strip())
+    elif a == "--it-select":
+        i += 1
+        if i >= len(args):
+            usage("--it-select 缺少取值")
+        it_select.extend(c.strip() for c in args[i].split(",") if c.strip())
     elif a in ("-h", "--help"):
         usage()
     else:
@@ -108,6 +117,8 @@ while i < len(args):
 
 if not (want_unit or want_it or want_cov):
     want_unit = want_it = want_cov = True
+if it_select and not want_it:
+    usage("--it-select 需要同时指定 --it")
 
 if modules is None:
     # 默认模块列表来自根 pom 的 <module>，避免脚本与 pom 各自维护一份清单。
@@ -171,7 +182,14 @@ def read_suite(path):
     return tuple(totals)
 
 
+def matches_it_pattern(fqcn, pattern):
+    return fnmatch.fnmatchcase(fqcn.rsplit(".", 1)[-1], pattern) or fnmatch.fnmatchcase(
+        fqcn, pattern
+    )
+
+
 collected = {"unit": {}, "it": {}}
+matched_it_patterns = set()
 totals = {"unit": [0, 0, 0, 0], "it": [0, 0, 0, 0]}
 
 for module in modules:
@@ -182,6 +200,14 @@ for module in modules:
             continue
         report_dir = os.path.join(ROOT, module, "target", REPORT_DIR[kind])
         classes = java_test_classes(module, SUFFIX[kind])
+        if kind == "it" and it_select:
+            selected = {}
+            for fqcn, path in classes.items():
+                matching = [p for p in it_select if matches_it_pattern(fqcn, p)]
+                if matching:
+                    selected[fqcn] = path
+                    matched_it_patterns.update(matching)
+            classes = selected
         if not classes:
             # 模块本来就没有这一类测试（例如 ingestion-service 没有 IT）不算失败。
             continue
@@ -225,6 +251,14 @@ for module in modules:
                     "单测" if kind == "unit" else "集成测试",
                 )
             )
+
+if it_select and not matched_it_patterns:
+    failures.append("--it-select 未匹配任何 IT 源码类")
+for pattern in it_select:
+    # 多个通配模式是 OR 关系：允许某个模式暂无测试类。
+    # 精确类名仍需逐个命中，防止 CI 配置拼写错误造成假绿。
+    if not any(ch in pattern for ch in "*?[") and pattern not in matched_it_patterns:
+        failures.append("--it-select 指定类 %s 不存在" % pattern)
 
 for kind, label in (("unit", "单测"), ("it", "集成测试")):
     if kind == "unit" and not want_unit:
