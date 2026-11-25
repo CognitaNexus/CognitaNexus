@@ -33,7 +33,7 @@
 #                        （用于按 -Dtest 只跑子集的 job）
 #   --require A,B        额外要求这些类（简单名或全限定名）出现在报告里
 #   --it-select P,Q      只核对匹配的 IT 源码类（简单类名或全限定名，支持 * 通配）
-#                        每个模式至少匹配一个源码类，匹配类都必须产出非跳过报告
+#                        精确类名必须存在；多个通配模式合计至少命中一个 IT 类
 # =============================================================================
 
 set -euo pipefail
@@ -252,9 +252,13 @@ for module in modules:
                 )
             )
 
+if it_select and not matched_it_patterns:
+    failures.append("--it-select 未匹配任何 IT 源码类")
 for pattern in it_select:
-    if pattern not in matched_it_patterns:
-        failures.append("--it-select 模式 %s 未匹配任何 IT 源码类" % pattern)
+    # 多个通配模式是 OR 关系：允许某个模式暂无测试类。
+    # 精确类名仍需逐个命中，防止 CI 配置拼写错误造成假绿。
+    if not any(ch in pattern for ch in "*?[") and pattern not in matched_it_patterns:
+        failures.append("--it-select 指定类 %s 不存在" % pattern)
 
 for kind, label in (("unit", "单测"), ("it", "集成测试")):
     if kind == "unit" and not want_unit:
