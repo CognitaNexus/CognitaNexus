@@ -53,7 +53,12 @@ public final class GraphProjectionReadiness {
               + "）：拒绝增量消费，否则水位会越过尚未回填的成果");
     }
     if (current.failedWorks() != 0) {
-      return Optional.of("回填存在 " + current.failedWorks() + " 条失败成果：拒绝增量消费，需先修复这些成果并重新回填（rebuild）");
+      return Optional.of(
+          "回填存在 "
+              + current.failedWorks()
+              + " 条失败成果：拒绝增量消费，需先修复这些成果并用对账零差异收尾"
+              + "（GraphProjectionReconciler.repairAndComplete / GraphBackfillService.markRepairedAndCompleted），"
+              + "或整库 rebuild");
     }
     if (activeGeneration == null || activeGeneration.isBlank()) {
       return Optional.of("缺少 PG 活动 generation：拒绝增量消费");

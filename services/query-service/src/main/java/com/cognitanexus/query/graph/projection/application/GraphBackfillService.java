@@ -5,6 +5,8 @@ import com.cognitanexus.query.graph.domain.GraphProjectionMeta;
 import com.cognitanexus.query.graph.projection.domain.GraphBackfillStatus;
 import com.cognitanexus.query.graph.projection.domain.GraphProjectedWork;
 import com.cognitanexus.query.graph.projection.domain.GraphProjectionCheckpoint;
+import com.cognitanexus.query.graph.projection.domain.GraphReconciliationFinding;
+import com.cognitanexus.query.graph.projection.domain.GraphReconciliationReport;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -40,6 +42,13 @@ import org.slf4j.LoggerFactory;
  * 回填标成 COMPLETED，增量就会从快照修订之后接上并推进水位，读路径从此信任一张缺了几条成果的图，
  * 且缺口再也不会被重试（游标已越过了它们）。正确处置是：修好失败成果后 {@link #rebuild(String)}
  * 或 {@link GraphProjectionReconciler#repair} 补齐，再让水位前进。
+ *
+ * <p><b>修复后必须能恢复 COMPLETED（否则「零失败才能 COMPLETED」会变成永久封锁）</b>：失败成果都在
+ * 游标之后，{@link #backfill(String)} 续跑不会再扫到它们（游标已越过），仅仅重跑回填只会把
+ * {@code failed_works} 继续累加、永远停在 FAILED，于是 {@link GraphProjectionReadiness} 永久拒绝增量。
+ * 因此本类提供 {@link #markRepairedAndCompleted} 作为唯一的收尾入口：它要求一份<b>零阻塞差异</b>的对账
+ * 报告作为证据（调用路径见 {@link GraphProjectionReconciler#repairAndComplete}），才把断点改回
+ * COMPLETED、{@code failed_works} 归零并推进水位。没有证据就没有 COMPLETED——「修好了」不是一句话。
  *
  * <p>并发：同进程内用 {@link AtomicBoolean} 互斥，避免调度器与人工触发同时写同一批成果——
  * ADR-005 §5.1 明确「同一 workId 必须串行消费」，版本守卫只兜底迟到/重放，不承担并发互斥。
@@ -112,6 +121,110 @@ public class GraphBackfillService {
    */
   public GraphBackfillResult rebuild(String scope) {
     return run(scope, true);
+  }
+
+  /**
+   * 定向修复后的收尾：把 FAILED/RUNNING 的断点恢复为 COMPLETED、{@code failed_works} 归零并推进图水位。
+   *
+   * <p>这是「零失败才能 COMPLETED」的<b>另一半</b>：失败成果都在游标之后，所以继续 {@code backfill}
+   * 永远扫不到它们，{@code failed_works} 只会单调累加——如果不提供这条路径，唯一的解除封锁办法就是
+   * 整库 {@code rebuild}，一次脏数据就能把百万级重建重做一遍。
+   *
+   * <p>五道校验，缺一不开门（都是为了不让水位说谎）：
+   *
+   * <ol>
+   *   <li><b>必须有对账报告</b>：没有证据的「已修好」不接受；
+   *   <li><b>报告必须同作用域、同 generation</b>：拿别的代/别的环境的一致结论来收尾本代，等于伪造；
+   *   <li><b>报告不得有阻塞差异</b>（{@link GraphReconciliationReport#hasDrift()}）：仍缺成果/多边/
+   *       标题过期时水位不能前进；
+   *   <li><b>报告不得被截断</b>（{@code scanTruncated}）：只对比了前 5000 条时「零差异」只在那 5000 条
+   *       内成立，不能升级成全库结论；
+   *   <li><b>断点 generation 必须等于 PG 活动代</b>：不同代不是收尾问题，是整库重建问题。
+   * </ol>
+   *
+   * <p>{@code processedWorks} 补上本次实际写进图的成果数（{@code repairedWorks}），让累计计数与图的真实
+   * 内容一致；水位推进沿用 {@link #advanceWatermark} 的「只前进」规则，所以新事件到达后再由增量追赶。
+   *
+   * @param scope 投影作用域（null 走默认作用域）
+   * @param verification 修复后重新执行的对账报告（必须零阻塞差异且未被截断）
+   * @param repairedWorks 本次修复真正写入图的成果数
+   * @throws IllegalStateException 证据不足/仍存在差异/扫描被截断/generation 不一致时拒绝收尾
+   */
+  public GraphBackfillResult markRepairedAndCompleted(
+      String scope, GraphReconciliationReport verification, int repairedWorks) {
+    if (verification == null) {
+      throw new IllegalArgumentException("恢复 COMPLETED 必须附带一份对账报告作为证据：无证据的『已修好』不予收尾");
+    }
+    String effectiveScope = effectiveScope(scope);
+    if (!effectiveScope.equals(verification.scope())) {
+      throw new IllegalStateException(
+          "对账报告作用域 "
+              + verification.scope()
+              + " 与待收尾作用域 "
+              + effectiveScope
+              + " 不一致：不得用别的作用域的一致结论收尾");
+    }
+    if (verification.hasDrift()) {
+      throw new IllegalStateException(
+          "对账仍存在 "
+              + verification.countBySeverity(GraphReconciliationFinding.Severity.ERROR)
+              + " 条阻塞差异（"
+              + verification.summary()
+              + "）：断点保持 FAILED，不恢复 COMPLETED、不推进水位");
+    }
+    if (verification.scanTruncated()) {
+      throw new IllegalStateException(
+          "对账扫描被截断（只覆盖前 "
+              + verification.scannedWorks()
+              + " 条合格成果）：『零差异』只在该范围内成立，不足以支持全库 COMPLETED；请提高 scan-limit 后重新对账");
+    }
+    GraphProjectionSource.Stage stage = requireStage();
+    GraphProjectionCheckpoint current =
+        checkpoints
+            .find(effectiveScope)
+            .orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "尚无回填断点（scope=" + effectiveScope + "）：先执行 backfill 再谈修复收尾"));
+    if (!current.matchesGeneration(stage.generation())) {
+      throw new IllegalStateException(
+          "断点 generation="
+              + current.generation()
+              + " 与 PG 活动代 "
+              + stage.generation()
+              + " 不一致：这不是修复收尾能解决的问题，必须整库重建（rebuild）");
+    }
+    if (!stage.generation().trim().equals(verification.generation())) {
+      throw new IllegalStateException(
+          "对账报告属于 generation="
+              + verification.generation()
+              + "，PG 活动代是 "
+              + stage.generation()
+              + "：请针对当前代重新对账");
+    }
+    if (current.status() == GraphBackfillStatus.COMPLETED && current.failedWorks() == 0) {
+      return toResult(
+          current, readProjectedVersion(effectiveScope), 0, 0, "断点已是 COMPLETED 且零失败，无需收尾");
+    }
+
+    Instant now = clock.instant();
+    GraphProjectionCheckpoint repaired = current.repaired(repairedWorks, now);
+    checkpoints.save(repaired);
+    long projected = advanceWatermark(effectiveScope, repaired, stage);
+    log.warn(
+        "图投影修复收尾 scope={} generation={} failed {}→0 修复成果={} 水位 {}→{}",
+        effectiveScope,
+        stage.generation(),
+        current.failedWorks(),
+        Math.max(repairedWorks, 0),
+        current.baseRevision(),
+        projected);
+    return toResult(
+        repaired,
+        projected,
+        Math.max(repairedWorks, 0),
+        0,
+        "对账零阻塞差异，断点已恢复 COMPLETED、失败数归零并推进水位到 " + projected);
   }
 
   private GraphBackfillResult run(String scope, boolean rebuild) {
@@ -202,7 +315,7 @@ public class GraphBackfillService {
                 + " 条失败成果（最后失败样例："
                 + (checkpoint.lastError() == null ? "未记录" : checkpoint.lastError())
                 + "），断点保持 FAILED：图不完整，不得标为完成、也不推进图水位；"
-                + "修复后执行 repair 或 rebuild";
+                + "修复后执行 reconcile + repairAndComplete（对账零差异才恢复 COMPLETED）或 rebuild";
         checkpoint = checkpoint.failed(error, finishedAt);
         checkpoints.save(checkpoint);
         log.error(

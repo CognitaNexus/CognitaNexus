@@ -145,13 +145,46 @@ public record GraphProjectionCheckpoint(
         now);
   }
 
+  /**
+   * 修复收尾：把「因部分成果失败而停在 FAILED」的断点恢复为 COMPLETED。
+   *
+   * <p><b>只能在有对账证据时调用</b>（见 {@code GraphBackfillService.markRepairedAndCompleted}）：
+   * 一次人工的「我修好了」不能替代「图上确实没有缺口了」，否则水位就成了口头声明。
+   *
+   * <p>{@code failedWorks} 归零、{@code lastError} 清空（原因已进日志与对账报告），
+   * {@code processedWorks} 补上本次单点修复真正写进图的成果数，使累计计数与真实图内容一致；
+   * 游标与 {@code baseRevision} 保持不变（它们记录的是快照锚点，不是修复动作）。
+   *
+   * @param processedDelta 本次修复实际写入图的成果数（{@code STALE_IGNORED} 不计入）
+   */
+  public GraphProjectionCheckpoint repaired(long processedDelta, Instant now) {
+    return new GraphProjectionCheckpoint(
+        scope,
+        GraphBackfillStatus.COMPLETED,
+        generation,
+        cursorWorkId,
+        baseRevision,
+        processedWorks + Math.max(processedDelta, 0L),
+        processedBatches,
+        0L,
+        null,
+        startedAt,
+        now,
+        now);
+  }
+
   /** 是否可以从当前游标继续。 */
   public boolean resumable() {
     return status.resumable();
   }
 
-  /** 断点对应的 generation 与 PG 当前代不同时必须重建，而不是在错误的代上续跑。 */
+  /**
+   * 断点对应的 generation 与 PG 当前代不同时必须重建，而不是在错误的代上续跑。
+   *
+   * <p>两侧都 {@code trim()} 后比较：{@code generation} 可能来自配置/运维脚本，尾随空格不该被读成
+   * 「换代了，必须整库重建」——那会让一次无害的输入差异触发一次全量重建。
+   */
   public boolean matchesGeneration(String activeGeneration) {
-    return generation.equals(activeGeneration);
+    return activeGeneration != null && generation.equals(activeGeneration.trim());
   }
 }

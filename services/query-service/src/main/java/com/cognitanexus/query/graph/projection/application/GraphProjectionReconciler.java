@@ -41,6 +41,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>{@link #repair(GraphReconciliationReport)} 只重新同步或退场具体成果，不直接改水位：
  * 水位是「每条事件都已应用」的结论，不能由一次读操作的对比结果伪造。
+ *
+ * <p><b>修复后如何解除增量封锁</b>：{@link #repairAndComplete} 把「修复 → 重新对账 → 断点收尾」串成一次
+ * 调用。单独调 {@link #repair} 只能把缺的成果补进图，{@code FAILED} 断点仍在（{@code failed_works>0}），
+ * 而失败成果都在游标之后、续跑扫不到它们，于是如果不收尾，唯一出路就只剩整库重建。
  */
 public class GraphProjectionReconciler {
 
@@ -472,6 +476,66 @@ public class GraphProjectionReconciler {
     GraphRepairResult result = new GraphRepairResult(repaired, retired, failed, notes);
     log.info("图投影定向修复完成 {}", result.summary());
     return result;
+  }
+
+  /**
+   * 修复 + 复核对账 + 断点收尾：把「部分失败 → 修复 → 恢复 COMPLETED」闭环成一次可重复执行的运维动作。
+   *
+   * <p>为什么收尾不能由 {@link #repair} 自己完成：{@code repair} 只知道「我尝试修了哪些成果」，不知道
+   * 「现在图与 PG 是否已经没有差异」。把断点改回 COMPLETED、把水位推进都要求后者，所以本方法在
+   * {@code repair} 之后<b>必须重跑一次对账</b>，用新报告作为证据交给
+   * {@link GraphBackfillService#markRepairedAndCompleted}。
+   *
+   * <p>三个分叉严格区分，不互相兼容：
+   *
+   * <ul>
+   *   <li>仍有成果修复失败 → 断点保持 FAILED，不回滚已修复的成果（它们已经在图里了）；
+   *   <li>修完了但复核对账仍有阻塞差异 → 同样保持 FAILED，并在 note 里给出报告摘要；
+   *   <li>修复完成且复核对账零阻塞差异 → 断点恢复 COMPLETED、{@code failed_works=0}、水位推进到
+   *       快照修订，{@link GraphProjectionReadiness} 不再封锁增量。
+   * </ul>
+   *
+   * @param report 修复所依据的对账报告（可为一次 {@code reconcile} 的结果）
+   * @param options 复核对账使用的范围参数；{@code null} 用默认值
+   * @param backfill 回填服务（断点与水位归它管；本类不直接改水位）
+   * @throws IllegalStateException 修复看起来成功但对账证据不足以支持收尾（如扫描被截断、断点换代）：
+   *     这种拒绕不能静默，否则运维会以为「跑过了就好了」
+   */
+  public GraphRepairResult repairAndComplete(
+      GraphReconciliationReport report, ReconcileOptions options, GraphBackfillService backfill) {
+    if (backfill == null) {
+      throw new IllegalArgumentException("修复收尾必须提供回填服务：断点与水位只能由它改写");
+    }
+    GraphRepairResult repaired = repair(report);
+    if (!repaired.complete()) {
+      return withNote(
+          repaired, "仍有 " + repaired.failedWorks() + " 条成果修复失败：断点保持 FAILED、水位不推进（修好后再执行一次）");
+    }
+    GraphReconciliationReport after =
+        reconcile(report.scope(), options == null ? ReconcileOptions.defaults() : options);
+    if (after.hasDrift()) {
+      return withNote(repaired, "复核对账仍有阻塞差异（" + after.summary() + "）：断点保持 FAILED、水位不推进");
+    }
+    GraphBackfillResult completion =
+        backfill.markRepairedAndCompleted(report.scope(), after, repaired.repairedWorks());
+    return withNote(
+        repaired,
+        "断点已收尾：status="
+            + completion.status()
+            + "、failed_works="
+            + completion.failedWorks()
+            + "、水位→"
+            + completion.projectedVersion()
+            + "，增量消费恢复追赶（"
+            + completion.note()
+            + "）");
+  }
+
+  private static GraphRepairResult withNote(GraphRepairResult result, String note) {
+    List<String> notes = new ArrayList<>(result.notes());
+    notes.add(note);
+    return new GraphRepairResult(
+        result.repairedWorks(), result.retiredWorks(), result.failedWorks(), notes);
   }
 
   /** 单条孤立成果的处理结局；只有 RETIRED（退场/删除）与 RESYNCED（正向同步）才算动了图。 */

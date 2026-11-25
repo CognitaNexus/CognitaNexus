@@ -253,6 +253,15 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
   是两件事；把带缺口的一次回填标成 `COMPLETED`，增量就会从快照修订之后接上并推进水位，读路径从此
   信任一张缺了几条成果的图，而缺口再也不会被重试（游标已越过它们）。处置路径是修复失败成果后执行
   `repair()`（对账的 `WORK_MISSING_IN_GRAPH` 指名具体成果）或 `rebuild()`，再让水位前进。
+- **闭环：修复后必须能恢复 `COMPLETED`**（否则「零失败才能 COMPLETED」会变成永久封锁）。失败成果都在
+  游标之后，继续 `backfill()` 不会再扫到它们，`failed_works` 只会单调累加——若没有收尾路径，一次脏数据
+  就能迫使百万级整库 `rebuild()`。因此提供唯一的收尾入口
+  `GraphBackfillService.markRepairedAndCompleted(scope, verification, repairedWorks)`，由
+  `GraphProjectionReconciler.repairAndComplete(report, options, backfill)` 串成一次动作：
+  `repair` 单点补齐 → **重新对账** → 以新报告为证据收尾。收尾要求：报告同作用域、同 generation、
+  `hasDrift()==false`、且**未被截断**（`scanTruncated=false`，只对比前 N 条的「零差异」不升级为全库结论）；
+  满足才把断点改回 `COMPLETED`、`failed_works` 归零、`processed_works` 补上实际写入数，并推进水位到
+  快照修订（仍只前进）。任何一条不满足都保持 `FAILED`、水位不动——「修好了」不等于「可以宣称追平」。
 - **增量消费的初始化前置条件**（`GraphProjectionReadiness`，调度器与投影器共用同一份规则）：必须有
   该作用域的断点、`status=COMPLETED`、`failed_works=0`、且断点 `generation` 等于 PG 活动代。缺任何一条
   都拒绝消费事件并保持水位不动——「没有断点」不等于「不需要回填」，它等于图几乎是空的。

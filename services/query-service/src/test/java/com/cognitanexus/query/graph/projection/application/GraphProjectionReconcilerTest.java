@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.cognitanexus.query.graph.domain.GraphProjectionMeta;
 import com.cognitanexus.query.graph.projection.FakeGraphProjectionEnv;
+import com.cognitanexus.query.graph.projection.FakeGraphProjectionEnv.FakeCheckpointStore;
 import com.cognitanexus.query.graph.projection.FakeGraphProjectionEnv.FakeInspector;
 import com.cognitanexus.query.graph.projection.FakeGraphProjectionEnv.FakeSource;
 import com.cognitanexus.query.graph.projection.FakeGraphProjectionEnv.FakeStore;
 import com.cognitanexus.query.graph.projection.application.GraphProjectionReconciler.ReconcileOptions;
+import com.cognitanexus.query.graph.projection.domain.GraphBackfillStatus;
 import com.cognitanexus.query.graph.projection.domain.GraphReconciliationFinding;
 import com.cognitanexus.query.graph.projection.domain.GraphReconciliationReport;
 import java.util.List;
@@ -370,6 +372,75 @@ class GraphProjectionReconcilerTest {
     assertThat(realReport.consistent()).isTrue();
     assertThat(allReport.pgEligibleWorks()).isEqualTo(2);
     assertThat(codes(allReport)).contains("EDGE_SET_MISMATCH");
+  }
+
+  @Test
+  @DisplayName("D-2 部分失败 → repair 补齐 → 断点恢复 COMPLETED、失败数归零、水位推进，增量解除封锁")
+  void repairAndCompleteRecoversFailedBackfill() {
+    // 三篇合格成果，图水位从 0 开始（能看出「水位是否真的被推进」）。
+    var w1 = FakeGraphProjectionEnv.work("w-1", 1L, "s-a", "s-b");
+    var w2 = FakeGraphProjectionEnv.work("w-2", 2L, "s-b", "s-c");
+    var w3 = FakeGraphProjectionEnv.work("w-3", 3L, "s-c", "s-d", "s-e");
+    for (var work : List.of(w1, w2, w3)) {
+      source.add(work);
+    }
+    store.meta = new GraphProjectionMeta(SCOPE, 0L, 0L, GEN, null);
+    FakeCheckpointStore checkpoints = new FakeCheckpointStore();
+    // batchSize=2：第一批含 w-2，失败后游标仍前进（漏格由 repair 单点补齐）。
+    GraphProjectionProperties properties =
+        new GraphProjectionProperties(false, 2, 3, 0L, 100L, false, 5_000L, 100, 1_000, 5, true);
+    GraphBackfillService backfill =
+        new GraphBackfillService(source, synchronizer, store, checkpoints, properties, "query");
+
+    // 1) 回填因 1 条成果失败停在 FAILED，水位不推进，增量被封锁。
+    store.permanentFailures.add("w-2");
+    GraphBackfillResult failedRun = backfill.backfill(SCOPE);
+
+    assertThat(failedRun.status()).isEqualTo(GraphBackfillStatus.FAILED);
+    assertThat(failedRun.failedWorks()).isEqualTo(1);
+    assertThat(store.meta.projectedVersion()).isZero();
+    assertThat(GraphProjectionReadiness.blocker(checkpoints.find(SCOPE), GEN)).isPresent();
+
+    // 2) 底层故障未修复时收尾必须拒绝：repair 失败 → 断点仍 FAILED、水位仍不动。
+    GraphReconciliationReport drifted = reconciler.reconcile(SCOPE, ReconcileOptions.defaults());
+    GraphRepairResult stillBroken =
+        reconciler.repairAndComplete(drifted, ReconcileOptions.defaults(), backfill);
+
+    assertThat(stillBroken.complete()).isFalse();
+    assertThat(checkpoints.find(SCOPE).orElseThrow().status())
+        .isEqualTo(GraphBackfillStatus.FAILED);
+    assertThat(checkpoints.find(SCOPE).orElseThrow().failedWorks()).isEqualTo(1);
+    assertThat(store.meta.projectedVersion()).isZero();
+
+    // 3) 修好底层故障后重跑对账 + repairAndComplete：闭环应当收尾。
+    store.permanentFailures.clear();
+    GraphReconciliationReport afterFix = reconciler.reconcile(SCOPE, ReconcileOptions.defaults());
+    assertThat(afterFix.missingWorks()).containsExactly("w-2");
+
+    GraphRepairResult repaired =
+        reconciler.repairAndComplete(afterFix, ReconcileOptions.defaults(), backfill);
+
+    assertThat(repaired.complete()).isTrue();
+    assertThat(repaired.failedWorks()).isZero();
+    assertThat(repaired.repairedWorks()).isEqualTo(1);
+    var recovered = checkpoints.find(SCOPE).orElseThrow();
+    assertThat(recovered.status()).isEqualTo(GraphBackfillStatus.COMPLETED);
+    assertThat(recovered.failedWorks()).isZero();
+    assertThat(recovered.lastError()).isNull();
+    // 水位推进到快照修订（10），且累计成果数补上了修复写入的那一条。
+    assertThat(store.meta.projectedVersion()).isEqualTo(10L);
+    assertThat(recovered.processedWorks()).isEqualTo(3L);
+    assertThat(recovered.cursorWorkId()).isEqualTo("w-3");
+
+    // 4) 增量消费不再被封锁；再调 backfill 也不会重扫（否则每次调用都变全量）。
+    assertThat(GraphProjectionReadiness.blocker(checkpoints.find(SCOPE), GEN)).isEmpty();
+    long pageCallsBefore =
+        source.calls.stream().filter(call -> call.startsWith("pageWorks")).count();
+    GraphBackfillResult again = backfill.backfill(SCOPE);
+    assertThat(again.status()).isEqualTo(GraphBackfillStatus.COMPLETED);
+    assertThat(again.worksThisRun()).isZero();
+    assertThat(source.calls.stream().filter(call -> call.startsWith("pageWorks")).count())
+        .isEqualTo(pageCallsBefore);
   }
 
   @Test
