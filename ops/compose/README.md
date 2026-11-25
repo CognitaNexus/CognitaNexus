@@ -7,12 +7,32 @@
 | 文件 | 作用 |
 | --- | --- |
 | `../../compose.yaml` | 全栈基础拓扑：PostgreSQL 16 + 两个 Redis + 三个服务 + nginx |
-| `compose.server.yaml` | 服务器覆盖：不外露数据库与后端端口，只保留前端一个入口 |
-| `init-databases.sh` | 数据卷首启时创建三个库与六个角色（owner/app 分离） |
+| `compose.server.yaml` | 服务器覆盖：不外露数据库、图库与后端端口，只保留前端一个入口 |
+| `compose.test-infra.yaml` | 隔离测试基础设施：PostgreSQL 16 + Redis 8 + Neo4j 5.26（不构建应用镜像，端口/数据卷与开发环境分开） |
+| `init-databases.sh` | 数据卷首启时创建三个库与六个角色（owner/app 分离）；开发与测试基础设施共用同一份定义 |
 | `maven-settings.xml` | 容器内 Maven 构建参数（阿里云镜像，不指定本地仓库路径） |
 
 服务镜像定义位于各自的服务目录：`services/*/Dockerfile`；前端镜像定义位于 `frontend/Dockerfile`，
 配套 `frontend/nginx.conf`。
+
+## 图数据库（Neo4j）与测试基础设施
+
+`compose.yaml` 增加了 Neo4j 5.26 Community 服务，但 query-service 的图投影**默认关闭**
+（`CN_QUERY_GRAPH_ENABLED=false`）：不连图库、不执行 DDL，合作网络仍由 PostgreSQL 提供。
+开启后图只作为读优化，图库不可用或投影落后时降级回 PG，边界见 ADR-005。
+
+隔离测试基础设施不要用本文件：
+
+```bash
+export CN_TEST_PG_SUPERUSER_PASSWORD='...'
+export CN_TEST_REDIS_PASSWORD='...'
+export CN_TEST_NEO4J_PASSWORD='...'
+bash ops/verify/test-infra-smoke.sh up
+```
+
+它使用独立的 `CN_TEST_*` 变量名与卷名前缀，避免测试操作误连开发库/开发图库。
+`compose.test-infra.yaml` 与 `ops/verify/test-infra-smoke.sh` **未在本机启动验证**（原因同上：
+本机 Docker 守护进程不可用），只做过 YAML 解析与脚本语法检查。
 
 ## 为什么本机不用这套拓扑
 

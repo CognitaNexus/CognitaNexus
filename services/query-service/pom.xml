@@ -47,6 +47,18 @@
       <groupId>org.mybatis.spring.boot</groupId>
       <artifactId>mybatis-spring-boot-starter</artifactId>
     </dependency>
+    <!--
+      Neo4j 官方 Java Driver。版本由 Spring Boot 3.5 的依赖管理统一给出（当前 5.28.x），
+      不在这里写死，避免与 Boot 升级脱节。
+
+      刻意只引 driver，不引 spring-boot-starter-data-neo4j：本项目只需要「会话 + Cypher」，
+      不需要 Spring Data 的映射与仓储派生查询；引入 starter 会顺带装配一套本服务不使用的
+      自动配置，让「图库关闭时零侵入」变得难以证明。
+    -->
+    <dependency>
+      <groupId>org.neo4j.driver</groupId>
+      <artifactId>neo4j-java-driver</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>

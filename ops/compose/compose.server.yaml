@@ -26,6 +26,14 @@ services:
     ports: !override []
     restart: always
 
+  neo4j:
+    # 服务器上不把图库端口暴露到宿主机：图只由 query-service 经内网访问，
+    # 对外没有「用 Browser 连生产图库」的需求，不映射端口就少一个攻击面。
+    ports: !override []
+    restart: always
+    # 停机前完成存储刷新，避免每次重启都做恢复。
+    stop_grace_period: 60s
+
   core-service:
     ports: !override []
     restart: always
