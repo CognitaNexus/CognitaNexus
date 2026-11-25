@@ -231,7 +231,7 @@ services:
       # 图投影默认关闭。打开后 query 只把图当读优化：图不可用或水位落后时降级回 PostgreSQL，
       # 公开查询结果仍以 PG 为准（ADR-005 §6）。关闭时不建立任何图库连接。
       CN_QUERY_GRAPH_ENABLED: ${CN_QUERY_GRAPH_ENABLED:-false}
-      CN_NEO4J_URI: bolt://neo4j:7687
+      CN_NEO4J_URI: ${CN_NEO4J_URI:-bolt://neo4j:7687}
       CN_NEO4J_USER: ${CN_NEO4J_USER:-neo4j}
       CN_NEO4J_PASSWORD: ${CN_NEO4J_PASSWORD:-cn_neo4j_dev}
       CN_NEO4J_DATABASE: ${CN_NEO4J_DATABASE:-neo4j}
