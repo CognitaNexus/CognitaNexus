@@ -50,6 +50,15 @@
         bash ops/local/test-db.sh start
         ./mvnw -B -ntp verify -Dcn.it.skip=false -Dspotless.check.skip=true
       默认 skip 是显式记录的状态，不是「跑过并通过」；测试报告里按两次不同命令分别记。
+
+      ===== 2026-11-25 CI 修复 =====
+      「默认跳过」本身没错，错在**没有任何机制发现它被跳过了**：只要 CI 里漏传
+      -Dcn.it.skip=false（或传成 cn.it.skip=true），构建照样一片绿，而报告里连一行
+      「IT 未执行」都没有。两处补强：
+        1. 新增 ci profile（见文件末尾 <profiles>），CI 用 -Pci 显式翻开集成测试；
+        2. ops/verify/ci-test-report-gate.sh 在 CI 里核对「源码里每个 *IT.java 都有对应
+           的 failsafe 报告且 tests > 0 / skipped = 0」，缺一份就失败。
+      只靠命令行的 -D 是纪律，靠 profile + 报告核对才是门禁。
     -->
     <cn.it.skip>true</cn.it.skip>
     <!-- 覆盖率门禁：三个核心模块各自的包前缀，见编码规范 8.3 -->
@@ -220,6 +229,59 @@
         <groupId>com.diffplug.spotless</groupId>
         <artifactId>spotless-maven-plugin</artifactId>
       </plugin>
+      <!--
+        架构依赖检查（CI 的 Backend Quality 里的「架构依赖检查」就是这一条）。
+        它检查的是**依赖方向**，不是包内分层；包内分层由各服务的 ArchUnit 依赖与评审把关。
+
+        为什么需要它：三个服务各拥有自己的数据库、只通过 HTTP/Outbox 通信，这条边界一旦被
+        「顺手加一个 Maven 依赖」绕过，编译器不会报错、单测也不会红，只会在某次部署后表现为
+        「core 直接读了 query_db」。所以这里把「服务之间不得互相依赖」写成构建期禁令。
+        依赖是空的（现在没人违反），拦截发生在以后。
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>3.5.0</version>
+        <executions>
+          <execution>
+            <id>enforce-service-boundaries</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>com.cognitanexus:core-service</exclude>
+                    <exclude>com.cognitanexus:ingestion-service</exclude>
+                    <exclude>com.cognitanexus:query-service</exclude>
+                  </excludes>
+                  <message>服务之间只能通过 HTTP / Outbox 通信，禁止以 Maven 依赖方式引用另一个服务的实现</message>
+                </bannedDependencies>
+                <requireJavaVersion>
+                  <version>[21,)</version>
+                </requireJavaVersion>
+              </rules>
+              <fail>true</fail>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
   </build>
+
+  <!--
+    CI 用 `-Pci` 打开真实集成测试。profile 存在的意义不是省一次 -D：
+    `-Dcn.it.skip=false` 忘了传时构建照样成功，而 -Pci 与 ops/verify/ci-test-report-gate.sh
+    一起把「IT 没跑」变成可见的失败。
+  -->
+  <profiles>
+    <profile>
+      <id>ci</id>
+      <properties>
+        <cn.it.skip>false</cn.it.skip>
+      </properties>
+    </profile>
+  </profiles>
 </project>
