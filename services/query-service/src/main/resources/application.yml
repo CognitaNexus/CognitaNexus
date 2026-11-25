@@ -100,6 +100,32 @@ cn:
     service-token: ${CN_QUERY_SERVICE_TOKEN:cn_query_service_dev}
     connect-timeout: 2s
     request-timeout: 3s
+  query:
+    graph:
+      # 图投影默认关闭：不连图库、不执行 DDL、不改变现有 PG 合作网络的任何行为。
+      # 打开前先确认 Neo4j 已就绪并执行过 schema（启动时也会幂等执行一遍）。
+      enabled: ${CN_QUERY_GRAPH_ENABLED:false}
+      # 连接串只从环境变量取：服务器上用 bolt+ssc 或经内网直连，开发机默认本机 7687。
+      uri: ${CN_NEO4J_URI:bolt://127.0.0.1:7687}
+      username: ${CN_NEO4J_USER:neo4j}
+      # 不提供可用的开发默认口令：空口令在开发机上「能用」，到服务器上就是未授权访问入口。
+      # 启用图投影却留空会直接启动失败（Neo4jGraphProperties#validate）。
+      password: ${CN_NEO4J_PASSWORD:}
+      database: ${CN_NEO4J_DATABASE:neo4j}
+      connect-timeout: 3s
+      # 单条 Cypher 的最长执行时间；路径计算预算由应用层在层间检查，见 budget-millis。
+      query-timeout: 10s
+      # 单篇成果的作者数阈值：超过则不物化作者对边，改由二部图推导（防 n(n-1)/2 组合爆炸）。
+      # 硬上限 200，与 projection.max-authors-per-achievement-for-edges 的隔离口径一致。
+      max-authors-per-work-for-materialized-edge: 20
+      # 单条边随响应返回的证据条数上限；强度仍是真实计数，截断会显式标记。
+      max-evidence-work-ids-per-edge: 50
+      # 以下三项与 projection.graph-* 保持一致：同一个查询不应因为换了存储而有不同的规模上限。
+      max-nodes: 20000
+      max-edges: 100000
+      budget-millis: 1000
+      scope: ${CN_NEO4J_SCOPE:query-public}
+
   projection:
     # 必须与 core 的 cn.outbox.consumer-endpoints.query 键一致，否则事件会以别的 consumerId 落库，
     # 表现为「收到了但水位不动」。

@@ -3,6 +3,7 @@ package com.cognitanexus.query.network.application;
 import com.cognitanexus.query.consistency.PublicBarrierGuard;
 import com.cognitanexus.query.network.domain.CooperationGraph;
 import com.cognitanexus.query.network.domain.CooperationGraph.CooperationEdge;
+import com.cognitanexus.query.network.domain.NetworkRules;
 import com.cognitanexus.query.network.infrastructure.NetworkMapper;
 import com.cognitanexus.query.platform.scope.DataNatureScope;
 import com.cognitanexus.query.projection.application.ProjectionProperties;
@@ -41,19 +42,17 @@ public class NetworkService {
 
   private static final Logger log = LoggerFactory.getLogger(NetworkService.class);
 
-  /** 图规则版本。建边口径或路径选择规则变化时提升。 */
-  public static final String RULE_VERSION = "NETWORK_V1";
+  /**
+   * 图规则版本。建边口径或路径选择规则变化时提升。
+   *
+   * <p>常量本体在 {@link NetworkRules}：图投影实现必须使用同一个值，否则两条查询路径会
+   * 用同一句 {@code ruleVersion} 描述不同的规则。
+   */
+  public static final String RULE_VERSION = NetworkRules.RULE_VERSION;
 
   private static final String NATURE_ALL = "ALL";
-  private static final int MAX_DEPTH = 3;
-
-  /**
-   * 最短路径的搜索深度上限。
-   *
-   * <p>合作网络的经验直径在 6 跳以内；给一个明确上限是为了让「查不到」有一个可解释的边界，
-   * 而不是在超大网络上无界展开。超出时如实说明「在 N 跳内不连通」，不冒充「全图不连通」。
-   */
-  private static final int MAX_PATH_DEPTH = 6;
+  private static final int MAX_DEPTH = NetworkRules.MAX_NEIGHBORHOOD_DEPTH;
+  private static final int MAX_PATH_DEPTH = NetworkRules.MAX_PATH_DEPTH;
 
   private final NetworkMapper mapper;
   private final PublicBarrierGuard guard;
@@ -368,9 +367,7 @@ public class NetworkService {
             properties.graphMaxEdges(),
             "budgetMillis",
             properties.graphBudgetMillis()));
-    data.put(
-        "edgeRule",
-        "仅真实、公开、生效、关系合格（AUTO / SELF_CONFIRMED）的共同论文建边；" + "待核验/争议/已排除关系不参与确定合作；边强度为不同合格论文数");
+    data.put("edgeRule", NetworkRules.EDGE_RULE);
     return data;
   }
 

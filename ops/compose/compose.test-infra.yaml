@@ -1,0 +1,134 @@
+# CognitaNexus 隔离测试基础设施（阶段三/七：图数据库与迁移准备）
+#
+# 目的：在一台开发机或 CI runner 上用**可移植、可重复**的方式起 PostgreSQL 16 + Redis 8 +
+# Neo4j 5.26，供以下场景使用：
+#   - query-service 的 PostgreSQL 集成测试（*IT，默认跳过）；
+#   - Neo4j schema / 图模型集成测试（services/query-service/.../it/Neo4jSchemaIT.java）；
+#   - 华为云迁移前的全量重建演练（docs/ops/huaweicloud-migration-prep.md §5）。
+#
+# 与仓库根 compose.yaml 的关系：根文件是**开发/服务器全栈**（三个业务服务 + 前端）；
+# 本文件只起基础设施，不构建应用镜像，端口与数据卷全部与开发环境隔离，避免「跑测试顺手
+# 清掉开发库」这类事故。
+#
+# 用法：
+#   export CN_TEST_PG_SUPERUSER_PASSWORD='...'
+#   export CN_TEST_REDIS_PASSWORD='...'
+#   export CN_TEST_NEO4J_PASSWORD='...'      # 至少 8 位，Neo4j 有最小长度限制
+#   docker compose -f ops/compose/compose.test-infra.yaml up -d
+#   bash ops/verify/test-infra-smoke.sh up
+#
+# 停止并保留数据：docker compose -f ops/compose/compose.test-infra.yaml down
+# 停止并删除数据：加 -v（会丢测试数据；本文件的数据卷名带 test- 前缀，正是为了让这一步可辨认）
+#
+# 口令策略：所有口令**没有默认值**，缺失时 compose 直接报错退出。测试实例也是实例，
+# 用固定默认口令起一个监听端口的图库/数据库，等于把「只在本地用」这个假设交给运气。
+
+name: ${CN_TEST_INFRA_PROJECT:-cognitanexus-test-infra}
+
+services:
+  postgres:
+    # 固定到 16 系列的具体小版本：集成测试依赖 Flyway 与扩展（pg_trgm）的行为，
+    # 用 floating tag 会让「昨天通过、今天失败」无法归因。
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${CN_TEST_PG_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${CN_TEST_PG_SUPERUSER_PASSWORD:?必须设置 CN_TEST_PG_SUPERUSER_PASSWORD}
+      # 迁移/运行账号的口令，由 init-databases.sh 在数据卷首次初始化时创建角色使用。
+      CN_CORE_DB_OWNER_PASSWORD: ${CN_TEST_CORE_DB_OWNER_PASSWORD:-cn_test_core_owner}
+      CN_CORE_DB_PASSWORD: ${CN_TEST_CORE_DB_PASSWORD:-cn_test_core_app}
+      CN_INGESTION_DB_OWNER_PASSWORD: ${CN_TEST_INGESTION_DB_OWNER_PASSWORD:-cn_test_ingestion_owner}
+      CN_INGESTION_DB_PASSWORD: ${CN_TEST_INGESTION_DB_PASSWORD:-cn_test_ingestion_app}
+      CN_QUERY_DB_OWNER_PASSWORD: ${CN_TEST_QUERY_DB_OWNER_PASSWORD:-cn_test_query_owner}
+      CN_QUERY_DB_PASSWORD: ${CN_TEST_QUERY_DB_PASSWORD:-cn_test_query_app}
+    volumes:
+      - test-pgdata:/var/lib/postgresql/data
+      # 与开发环境共用同一份初始化脚本：角色与库的定义只有一处，测试库的结构不会悄悄偏离。
+      - ./init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    ports:
+      # 默认 55432：与开发库 5432 明确区分，PostgresTestDatabase 默认也连这个端口。
+      - '127.0.0.1:${CN_TEST_PG_PORT:-55432}:5432'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${CN_TEST_PG_SUPERUSER:-postgres} -d postgres
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    mem_limit: 512m
+
+  redis:
+    image: redis:8.0-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${CN_TEST_REDIS_PASSWORD:?必须设置 CN_TEST_REDIS_PASSWORD}
+      - --appendonly
+      - 'no' # 测试缓存可丢弃，不落盘；落盘会让人误以为这份数据值得抢救。
+      - --maxmemory
+      - ${CN_TEST_REDIS_MAXMEMORY:-128mb}
+      - --maxmemory-policy
+      - allkeys-lru
+    environment:
+      CN_TEST_REDIS_PASSWORD: ${CN_TEST_REDIS_PASSWORD:?必须设置 CN_TEST_REDIS_PASSWORD}
+    ports:
+      # 默认 56379：不与开发缓存 6380 / 会话 6379 冲突。
+      - '127.0.0.1:${CN_TEST_REDIS_PORT:-56379}:6379'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli -a "$$CN_TEST_REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    mem_limit: 128m
+
+  neo4j:
+    # Community 版：单库、无因果集群。本项目的图投影是**可全量从 PG 重建**的派生数据，
+    # 不需要社区版之外的高可用能力；将来上华为云 GES 时替换的是适配器，不是图模型。
+    image: neo4j:5.26-community
+    restart: unless-stopped
+    environment:
+      # Neo4j 要求 「用户/口令」形式；口令缺失时 compose 直接失败，不落回空口令。
+      NEO4J_AUTH: ${CN_TEST_NEO4J_USER:-neo4j}/${CN_TEST_NEO4J_PASSWORD:?必须设置 CN_TEST_NEO4J_PASSWORD}
+      NEO4J_server_memory_heap_initial__size: ${CN_TEST_NEO4J_HEAP:-512m}
+      NEO4J_server_memory_heap_max__size: ${CN_TEST_NEO4J_HEAP:-512m}
+      NEO4J_server_memory_pagecache_size: ${CN_TEST_NEO4J_PAGECACHE:-512m}
+      # 健康检查与人工核对都用同一组凭据；只注入容器内，不写进镜像。
+      NEO4J_USER: ${CN_TEST_NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${CN_TEST_NEO4J_PASSWORD:?必须设置 CN_TEST_NEO4J_PASSWORD}
+      # 最小口令长度保持默认 8：测试实例也不应允许弱口令。
+      NEO4J_dbms_security_auth__minimum__password__length: '8'
+    volumes:
+      - test-neo4j-data:/data
+      - test-neo4j-logs:/logs
+    ports:
+      # Bolt 默认 17687，与 Neo4jSchemaIT 的默认值一致；HTTP 默认 17474，避免撞开发端口 7474。
+      - '127.0.0.1:${CN_TEST_NEO4J_BOLT_PORT:-17687}:7687'
+      - '127.0.0.1:${CN_TEST_NEO4J_HTTP_PORT:-17474}:7474'
+    healthcheck:
+      # 用 cypher-shell 而不是 TCP 探测：端口可连时数据库可能仍在恢复/初始化。
+      # start_period 给足 90 秒：Neo4j 首次启动要建库并加载存储，短了会误判为失败。
+      test:
+        - CMD-SHELL
+        - >-
+          cypher-shell -a bolt://127.0.0.1:7687 -u "$$NEO4J_USER" -p "$$NEO4J_PASSWORD"
+          'RETURN 1 AS ok' >/dev/null 2>&1 || exit 1
+      interval: 10s
+      timeout: 15s
+      retries: 30
+      start_period: 90s
+    # Neo4j 自身堆 512m + pagecache 512m + 非堆，1536m 留出安全余量。
+    mem_limit: 1536m
+
+volumes:
+  # 卷名带 test- 前缀：down -v 之前能一眼看出删的是测试数据。
+  test-pgdata:
+    name: ${CN_TEST_INFRA_PROJECT:-cognitanexus-test-infra}-pgdata
+  test-neo4j-data:
+    name: ${CN_TEST_INFRA_PROJECT:-cognitanexus-test-infra}-neo4j-data
+  test-neo4j-logs:
+    name: ${CN_TEST_INFRA_PROJECT:-cognitanexus-test-infra}-neo4j-logs
