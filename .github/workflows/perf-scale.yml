@@ -1,0 +1,344 @@
+name: perf-scale
+
+# =============================================================================
+# 阶段六：性能与容量（**只手动触发，绝不随 push / PR 跑**）
+# =============================================================================
+#
+# 为什么必须与 ci.yml 分开、且只有 workflow_dispatch：
+#   1. 百万/500 万规模的造数 + 索引重建 + 4 档并发压测是「小时级、吃满 CPU/磁盘」的
+#      作业。塞进日常 PR CI 只有两个结果：要么拖到所有人都等，要么被反复取消而没人看。
+#   2. 结论的可比性来自「同环境重复」。日常 CI 的 runner 规格由平台调度，性能作业的
+#      runner 规格必须由发起人显式指定（runner_label），并写进报告。
+#   3. 它不属于「这份代码能不能上」的判定，属于「这个容量/并发下还能不能达标」的验证。
+#      把验证混进门禁，就会有人为了让 PR 变绿而调压测参数。
+#
+# 这个工作流不部署任何东西、不读任何 secret：所有凭据都是本 job 临时容器里的一次性
+# 测试口令，runner 销毁即失效。
+#
+# 前置安全门禁（第一道，跑在造数之前）：
+#   node tests/perf/capacity-model.mjs --require-scale=${scale} --avail-gb=auto --mem-gb=auto
+#   —— 磁盘或内存不够时直接非零退出（退出码 4），**不启动导入**。500 万需要约 38 GB
+#   数据 + 4 GB 余量，GitHub 托管的 ubuntu-latest 只有约 14 GB 可用，因此在默认 runner
+#   上跑 5m 会被门禁拦住：这是预期行为，不是流水线故障。要真跑 100 万/500 万，请把
+#   runner_label 指向自托管或云端大规格机器（见 docs/ops/phase6-performance-capacity-plan.md）。
+#
+# 产物（Artifact）：容量精算 JSON/Markdown、门禁结论、分层计数、SQL EXPLAIN 与 Cypher
+# PROFILE、各并发档 P50/P95/P99、每秒资源采样、流水线日志、验收判定汇总。
+# =============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      scale:
+        description: '规模档位（去重成果数，数据全部 SIMULATED 合成，非真实收录）'
+        required: true
+        type: choice
+        default: '10k'
+        options:
+          - '10k'
+          - '100k'
+          - '1m'
+          - '5m'
+      concurrency:
+        description: '并发档位（逗号分隔，不要空格）'
+        required: true
+        type: string
+        default: '10,30,50,100'
+      warmup_seconds:
+        description: '预热秒数（预热段样本全部丢弃）'
+        required: true
+        type: string
+        default: '120'
+      duration_seconds:
+        description: '稳态秒数（RPS 与分位只统计这一段）'
+        required: true
+        type: string
+        default: '300'
+      query_mode:
+        description: '合作网络查询模式'
+        required: true
+        type: choice
+        default: 'POSTGRES_ONLY'
+        options:
+          - 'POSTGRES_ONLY'
+          - 'NEO4J_WITH_PG_FALLBACK'
+          - 'SHADOW_COMPARE'
+      runner_label:
+        description: 'runner 标签（100 万/500 万 必须填大规格 runner，如 8C32G+100GB SSD）'
+        required: true
+        type: string
+        default: 'ubuntu-latest'
+
+# 只需要读代码：不推分支、不改 PR、不发布任何东西。
+permissions:
+  contents: read
+
+# 性能作业同分支串行：两套压测并行会互相抢 CPU 与磁盘 IO，得到的两份 P95 都不能用。
+concurrency:
+  group: perf-scale-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  JAVA_VERSION: '21'
+  NODE_VERSION: '22'
+  # 下面两个口令只用于本 job 的一次性 service 容器（runner 销毁即失效），不是生产凭据。
+  # 与 .github/workflows/ci.yml 的 graph-integration job 保持同一值，便于对照。
+  PG_PASSWORD: cn_perf_pg_2026
+  NEO4J_PASSWORD: cn_test_neo4j_2026
+  # 报告目录按运行 ID 隔离（reports/perf/<run_id>/<scale>），避免同名 Artifact。
+  # 不在顶层 env 里用 ${{ inputs.* }} 拼路径：顶层 env 的上下文可用性不可靠，
+  # 每个需要它的 step 里就地定义（step-level env 确定支持 inputs）。
+
+jobs:
+  perf-scale:
+    name: Perf & Capacity (${{ inputs.scale }} / ${{ inputs.query_mode }})
+    # 规格由发起人决定：默认 ubuntu-latest，100 万/500 万 需指向大规格 runner。
+    runs-on: ${{ inputs.runner_label || 'ubuntu-latest' }}
+    timeout-minutes: 330
+    services:
+      postgres:
+        # 与 compose.yaml / ci.yml 同一镜像族；tag 钉死，避免上游 latest 漂移。
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: cn_perf_pg_2026
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 10s
+          --shm-size=2gb
+      neo4j:
+        image: neo4j:5.26-community
+        env:
+          # 一次性测试口令（20 位，满足 Neo4j 最小长度要求）。
+          NEO4J_AUTH: neo4j/cn_test_neo4j_2026
+          # 托管 runner 上必须显式限内存：Neo4j 默认按物理内存比例分配，会和 PG 抢。
+          NEO4J_server_memory_heap_max__size: 1G
+          NEO4J_server_memory_pagecache_size: 512m
+        ports:
+          - 7474:7474
+          - 7687:7687
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p cn_test_neo4j_2026 'RETURN 1'"
+          --health-interval 15s
+          --health-timeout 10s
+          --health-retries 40
+          --health-start-period 45s
+    steps:
+      - uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # 0. 参数校验：workflow_dispatch 的输入是人工可控文本，进 shell 前必须白名单。
+      # -----------------------------------------------------------------------
+      - name: 校验输入参数
+        env:
+          SCALE: ${{ inputs.scale }}
+          CONCURRENCY: ${{ inputs.concurrency }}
+          WARMUP: ${{ inputs.warmup_seconds }}
+          DURATION: ${{ inputs.duration_seconds }}
+          QUERY_MODE: ${{ inputs.query_mode }}
+          RUNNER_LABEL: ${{ inputs.runner_label }}
+        run: |
+          set -euo pipefail
+          case "$SCALE" in 10k|100k|1m|5m) : ;; *) echo "::error::scale 只能是 10k/100k/1m/5m：$SCALE"; exit 2 ;; esac
+          case "$QUERY_MODE" in
+            POSTGRES_ONLY|NEO4J_WITH_PG_FALLBACK|SHADOW_COMPARE) : ;;
+            *) echo "::error::query_mode 非法：$QUERY_MODE"; exit 2 ;;
+          esac
+          # 并发档只允许 1~4 个正整数，防止把 1000,2000 塞进来烧掉 runner。
+          echo "$CONCURRENCY" | grep -Eq '^[0-9]{1,3}(,[0-9]{1,3}){0,3}$' \
+            || { echo "::error::concurrency 格式应为 10,30,50,100：$CONCURRENCY"; exit 2; }
+          for v in $(echo "$CONCURRENCY" | tr ',' ' '); do
+            [ "$v" -ge 1 ] && [ "$v" -le 500 ] \
+              || { echo "::error::并发档 $v 越界（1..500）"; exit 2; }
+          done
+          echo "$WARMUP" | grep -Eq '^[0-9]{1,4}$' || { echo "::error::warmup_seconds 非法：$WARMUP"; exit 2; }
+          echo "$DURATION" | grep -Eq '^[0-9]{1,5}$' || { echo "::error::duration_seconds 非法：$DURATION"; exit 2; }
+          [ "$RUNNER_LABEL" != "" ] || { echo "::error::runner_label 不能为空"; exit 2; }
+          if [ "$SCALE" = "5m" ] && [ "$RUNNER_LABEL" = "ubuntu-latest" ]; then
+            echo "::warning::500 万规模需要约 38 GB 数据 + 4 GB 余量，ubuntu-latest 只有约 14 GB 可用，容量门禁会阻断。"
+          fi
+          echo "参数校验通过：scale=$SCALE concurrency=$CONCURRENCY warmup=${WARMUP}s steady=${DURATION}s mode=$QUERY_MODE runner=$RUNNER_LABEL"
+
+      - name: 设置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: 设置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # -----------------------------------------------------------------------
+      # 1. 环境清点：报告里必须写明「这份数字是在什么机器上得到的」
+      # -----------------------------------------------------------------------
+      - name: 环境清点（写入报告目录）
+        env:
+          OUT_DIR: reports/perf/${{ github.run_id }}/${{ inputs.scale }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT_DIR"
+          {
+            echo "# 运行环境清点"
+            echo
+            echo "- 触发：workflow_dispatch run_id=${GITHUB_RUN_ID} actor=${GITHUB_ACTOR:-unknown}"
+            echo "- commit：${GITHUB_SHA}（ref=${GITHUB_REF}）"
+            echo "- runner_label：${{ inputs.runner_label }}"
+            echo "- 开始时间（UTC）：$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "- 规模：${{ inputs.scale }}；并发：${{ inputs.concurrency }}；图查询模式：${{ inputs.query_mode }}"
+            echo "- 数据性质：SIMULATED（合成，仅证明容量与性能，不代表真实收录量）"
+            echo
+            echo '## 主机'
+            echo '```'
+            nproc
+            grep -E '^(MemTotal|MemAvailable|SwapTotal):' /proc/meminfo || true
+            df -h . /tmp || true
+            uname -a
+            java -version 2>&1 | head -3
+            node --version
+            psql --version || echo 'psql 不可用'
+            echo '```'
+          } | tee "$OUT_DIR/environment.md"
+
+      # -----------------------------------------------------------------------
+      # 2. 容量与磁盘/内存前置安全门禁：不通过就不导入（与 ops/perf 脚本同一份口径）
+      # -----------------------------------------------------------------------
+      - name: 容量与资源前置安全门禁
+        env:
+          OUT_DIR: reports/perf/${{ github.run_id }}/${{ inputs.scale }}
+          SCALE: ${{ inputs.scale }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT_DIR"
+          node tests/perf/capacity-model.mjs \
+            --avail-gb=auto --mem-gb=auto --disk-path="$GITHUB_WORKSPACE" \
+            --disk-headroom-gb=4 \
+            --require-scale="$SCALE" \
+            --json="$OUT_DIR/capacity-model.json" \
+            --markdown="$OUT_DIR/capacity-model.md" 2>&1 | tee "$OUT_DIR/capacity-gate.log"
+          # capacity-model.mjs 退出码：0 通过 / 3 模型漂移 / 4 资源阻断。set -e 已保证
+          # 非零即终止本条与后续步骤（除非显式 if: always()），不会带病造数。
+
+      - name: 安装 PostgreSQL 客户端（若镜像未自带）
+        run: |
+          set -euo pipefail
+          if command -v psql >/dev/null 2>&1; then
+            psql --version
+            exit 0
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client
+          psql --version
+
+      - name: 构建服务 jar（压测需要真实服务在线）
+        run: |
+          set -euo pipefail
+          chmod +x mvnw
+          ./mvnw -B -ntp -Pci -DskipTests -Dspotless.check.skip=true \
+            -pl services/query-service,services/core-service -am package 2>&1 | tail -30
+          ls -lh services/query-service/target/query-service-*.jar services/core-service/target/core-service-*.jar
+
+      # -----------------------------------------------------------------------
+      # 3. 导入 → 索引 → 计数 → 执行计划 → 图投影 → 并发压测（脚本内自带预检与采样）
+      # -----------------------------------------------------------------------
+      - name: 分级容量压测（导入 + 图投影 + 计划 + 并发）
+        timeout-minutes: 240
+        env:
+          OUT_DIR: reports/perf/${{ github.run_id }}/${{ inputs.scale }}
+          # 报告根目录：每个 run_id 一个目录，Artifact 与本地运行结构完全一致。
+          CN_PERF_REPORTS: ${{ github.workspace }}/reports/perf/${{ github.run_id }}
+          # 端口与脚本默认值对齐：容器映射到 127.0.0.1 的标准端口。
+          PG_HOST: 127.0.0.1
+          PG_IT_PORT: '5432'
+          PG_USER: postgres
+          PGBIN: /usr/bin
+          NEO4J_HTTP_PORT: '7474'
+          NEO4J_BOLT_PORT: '7687'
+          CN_TEST_NEO4J_PASSWORD: cn_test_neo4j_2026
+          CN_TEST_NEO4J_USER: neo4j
+          CN_NEO4J_SCOPE: query-public
+          CN_PERF_DISK_PATH: ${{ github.workspace }}
+          # service 容器的 Neo4j store 在容器里，宿主机 du 不到：显式指向不存在的目录，
+          # 让脚本跳过 store 体积读数而不是猜一个数字（报告里会写明「未采到」）。
+          NEO4J_HOME: /nonexistent-neo4j-store
+          # 2 核 runner 上 768m 会被 100 并发打爆；托管 runner 内存更宽，给 1G。
+          QUERY_HEAP: 1024m
+          LOAD_NATURE: SIMULATED
+          SCALE: ${{ inputs.scale }}
+          CONCURRENCY: ${{ inputs.concurrency }}
+          WARMUP_SECONDS: ${{ inputs.warmup_seconds }}
+          DURATION_SECONDS: ${{ inputs.duration_seconds }}
+          QUERY_MODE: ${{ inputs.query_mode }}
+        run: |
+          set -uo pipefail
+          mkdir -p "$OUT_DIR"
+          bash ops/perf/run-scale-benchmark.sh \
+            --only=all \
+            --stage="$SCALE" \
+            --vus="$CONCURRENCY" \
+            --warmup="$WARMUP_SECONDS" \
+            --seconds="$DURATION_SECONDS" \
+            --graph-mode="$QUERY_MODE" \
+            --disk-headroom-gb=4 2>&1 | tee "$OUT_DIR/pipeline.console.log"
+
+      # -----------------------------------------------------------------------
+      # 4. 汇总与验收判定（P95 ≤ 2s、错误率 ≤ 1%，阈值写死在脚本里，CI 不可放宽）
+      # -----------------------------------------------------------------------
+      - name: 汇总与验收判定
+        if: always()
+        env:
+          OUT_DIR: reports/perf/${{ github.run_id }}/${{ inputs.scale }}
+          CONCURRENCY: ${{ inputs.concurrency }}
+        run: |
+          set -uo pipefail
+          mkdir -p "$OUT_DIR"
+          node tests/perf/perf-summary.mjs \
+            --dir="$OUT_DIR" \
+            --expect-vus="$CONCURRENCY" \
+            --json="$OUT_DIR/perf-summary.json" \
+            --enforce 2>&1 | tee "$OUT_DIR/perf-summary.console.log"
+
+      - name: 结束快照（磁盘与内存）
+        if: always()
+        env:
+          OUT_DIR: reports/perf/${{ github.run_id }}/${{ inputs.scale }}
+        run: |
+          set -uo pipefail
+          mkdir -p "$OUT_DIR"
+          {
+            echo "# 结束快照（UTC $(date -u +%Y-%m-%dT%H:%M:%SZ)）"
+            echo '```'
+            df -h . || true
+            grep -E '^(MemTotal|MemAvailable|SwapTotal):' /proc/meminfo || true
+            echo '```'
+          } | tee "$OUT_DIR/final-snapshot.md"
+
+      - name: 上传性能与容量证据
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-scale-${{ inputs.scale }}-run${{ github.run_id }}
+          path: |
+            reports/perf/**
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: 数据库容器日志（失败时）
+        if: failure()
+        env:
+          OUT_DIR: reports/perf/${{ github.run_id }}/${{ inputs.scale }}
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+          NEO4J_CONTAINER: ${{ job.services.neo4j.id }}
+        run: |
+          set -uo pipefail
+          mkdir -p "$OUT_DIR"
+          docker logs --tail 200 "$PG_CONTAINER" > "$OUT_DIR/postgres-container.log" 2>&1 || true
+          docker logs --tail 200 "$NEO4J_CONTAINER" > "$OUT_DIR/neo4j-container.log" 2>&1 || true
+          echo "已保存容器日志到 $OUT_DIR"
