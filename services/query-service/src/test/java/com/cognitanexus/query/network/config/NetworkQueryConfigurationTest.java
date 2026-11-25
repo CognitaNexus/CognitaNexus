@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.cognitanexus.query.consistency.PublicBarrierGuard;
 import com.cognitanexus.query.graph.application.CollaborationGraphService;
+import com.cognitanexus.query.graph.application.GraphProjectionInitializationProbe;
 import com.cognitanexus.query.graph.application.GraphProjectionStore;
 import com.cognitanexus.query.graph.config.Neo4jGraphProperties;
 import com.cognitanexus.query.graph.domain.GraphProjectionMeta;
@@ -131,10 +132,14 @@ class NetworkQueryConfigurationTest {
         new ProjectionProperties(
             "query", 500, 5, 200, false, 2_000L, 20_000, 100_000, 1_000L, 10_000, 20, 100);
 
+    GraphProjectionInitializationProbe probe = mock(GraphProjectionInitializationProbe.class);
+    when(probe.inspect("query-public")).thenReturn(Optional.empty());
+
     GraphNetworkBackend backend =
         configuration.graphNetworkBackend(
             mock(CollaborationGraphService.class),
             store,
+            probe,
             initializer,
             graphProperties,
             mock(NetworkMapper.class),

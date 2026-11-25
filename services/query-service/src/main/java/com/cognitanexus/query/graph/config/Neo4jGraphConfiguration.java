@@ -2,9 +2,11 @@ package com.cognitanexus.query.graph.config;
 
 import com.cognitanexus.query.graph.application.CollaborationGraphRepository;
 import com.cognitanexus.query.graph.application.CollaborationGraphService;
+import com.cognitanexus.query.graph.application.GraphProjectionInitializationProbe;
 import com.cognitanexus.query.graph.application.GraphProjectionStore;
 import com.cognitanexus.query.graph.application.GraphSchemaStore;
 import com.cognitanexus.query.graph.infrastructure.Neo4jCollaborationGraphRepository;
+import com.cognitanexus.query.graph.infrastructure.Neo4jGraphProjectionInitializationProbe;
 import com.cognitanexus.query.graph.infrastructure.Neo4jGraphProjectionStore;
 import com.cognitanexus.query.graph.infrastructure.Neo4jGraphSchemaStore;
 import com.cognitanexus.query.graph.infrastructure.Neo4jSessionRunner;
@@ -92,6 +94,18 @@ public class Neo4jGraphConfiguration {
   public GraphProjectionStore graphProjectionStore(
       Neo4jSessionRunner runner, Neo4jGraphProperties properties) {
     return new Neo4jGraphProjectionStore(runner, properties);
+  }
+
+  /**
+   * 回填初始化状态探针。
+   *
+   * <p>必须与图库后端一起装配：水位只能证明「图写到了哪个版本」，证明不了「基线回填是否完整跑完」。
+   * 缺了它，一个版本号恰好等于已发布修订、但仍有失败成果的图会被当成可用（ADR-005 §6.1）。
+   */
+  @Bean
+  public GraphProjectionInitializationProbe graphProjectionInitializationProbe(
+      Neo4jSessionRunner runner, Neo4jGraphProperties properties) {
+    return new Neo4jGraphProjectionInitializationProbe(runner, properties);
   }
 
   @Bean

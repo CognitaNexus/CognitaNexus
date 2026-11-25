@@ -2,6 +2,7 @@ package com.cognitanexus.query.network.config;
 
 import com.cognitanexus.query.consistency.PublicBarrierGuard;
 import com.cognitanexus.query.graph.application.CollaborationGraphService;
+import com.cognitanexus.query.graph.application.GraphProjectionInitializationProbe;
 import com.cognitanexus.query.graph.application.GraphProjectionStore;
 import com.cognitanexus.query.graph.config.Neo4jGraphProperties;
 import com.cognitanexus.query.graph.schema.Neo4jSchemaInitializer;
@@ -108,12 +109,17 @@ public class NetworkQueryConfiguration {
   public GraphNetworkBackend graphNetworkBackend(
       CollaborationGraphService collaborationGraphService,
       GraphProjectionStore graphProjectionStore,
+      GraphProjectionInitializationProbe graphProjectionInitializationProbe,
       Neo4jSchemaInitializer schemaInitializer,
       Neo4jGraphProperties graphProperties,
       NetworkMapper networkMapper,
       ProjectionProperties projectionProperties) {
     ProjectionWatermarkGuard watermarkGuard =
-        new ProjectionWatermarkGuard(graphProjectionStore, schemaInitializer, graphProperties);
+        new ProjectionWatermarkGuard(
+            graphProjectionStore,
+            schemaInitializer,
+            graphProperties,
+            graphProjectionInitializationProbe);
     return new NetworkGraphQueryService(
         collaborationGraphService,
         networkMapper,

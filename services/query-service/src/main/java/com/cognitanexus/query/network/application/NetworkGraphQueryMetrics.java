@@ -59,14 +59,17 @@ public class NetworkGraphQueryMetrics {
    * 记录一次因「图不可用/水位不足」发生的回退。
    *
    * <p>按原因码分别累计，同时把「投影落后」类原因汇总到 {@code staleProjectionFallbackCount}：
-   * 平台需要区分「回填落后」与「图库挂了」这两种完全不同的处置方式。
+   * 平台需要区分「回填落后」与「图库挂了」这两种完全不同的处置方式。基线未初始化
+   * （{@code PROJECTION_NOT_INITIALIZED}）也归入这一类：它同样只能靠修复/重跑回填解决，等下去
+   * 不会自愈。
    */
   public void recordFallback(GraphProjectionStatus status) {
     String reason = status == null ? "UNKNOWN" : status.reasonCode();
     switch (reason) {
       case GraphProjectionStatus.PROJECTION_STALE,
           GraphProjectionStatus.PROJECTION_META_MISSING,
-          GraphProjectionStatus.GENERATION_MISMATCH ->
+          GraphProjectionStatus.GENERATION_MISMATCH,
+          GraphProjectionStatus.PROJECTION_NOT_INITIALIZED ->
           staleProjectionFallbackCount.incrementAndGet();
       case GraphProjectionStatus.SCHEMA_NOT_READY,
           GraphProjectionStatus.PROJECTION_META_UNREADABLE ->

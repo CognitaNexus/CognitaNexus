@@ -37,10 +37,12 @@ import org.slf4j.LoggerFactory;
  *   <li>可用性判定由 {@link ProjectionWatermarkGuard} 给出，本类不自行放宽「水位落后」。
  * </ul>
  *
- * <p><b>{@code withinLimits} 的数值口径</b>：自我网络直接使用图服务统计的「实际载入」节点/边数
- * （与 PG 加载器同义）。路径查询的图实现按需扩边、不保留加载计数，因此那里报告的是<b>构成答案的
- * 规模</b>（路径节点数 / 逐跳边数），键与 PG 完全一致。对照器把该诊断字段排除在一致性比较之外
- * （见 {@link NetworkParityComparator}），避免用「加载了多少」冒充业务结论。
+ * <p><b>{@code withinLimits} 的数值口径</b>：所有操作都报告「本次搜索<b>实际载入</b>的节点数与去重
+ * 边数」，与 PG 的 {@code ScopedGraphLoader} 同义，并由 {@code CollaborationGraphService} 在
+ * {@code GraphSubgraphResult}/{@code GraphPathResult} 里一路传出。路径查询不得用「路径节点数/跳数」
+ * 顶替加载规模——那是答案的大小，不是搜索的规模；两者混用会让对照器只能把这个字段屏蔽掉，
+ * 于是 <b>PG 与图在规模诊断上的真实偏差永远不会被发现</b>（本类曾经的写法正是如此）。
+ * 对照器因此只排除 {@code generatedAt}（见 {@link NetworkParityComparator}）。
  */
 public class NetworkGraphQueryService implements GraphNetworkBackend {
 
@@ -160,7 +162,7 @@ public class NetworkGraphQueryService implements GraphNetworkBackend {
               : List.of());
       data.put(
           "withinLimits",
-          NetworkResponseBuilder.withinLimits(result.path().size(), result.hopEdges().size()));
+          NetworkResponseBuilder.withinLimits(result.loadedNodes(), result.loadedEdges()));
       data.put("note", result.note());
       data.put("pathRule", NetworkRules.PATH_RULE_ZERO_HOP);
       return data;
@@ -174,7 +176,7 @@ public class NetworkGraphQueryService implements GraphNetworkBackend {
       data.put("note", result.note());
       data.put(
           "withinLimits",
-          NetworkResponseBuilder.withinLimits(result.path().size(), result.hopEdges().size()));
+          NetworkResponseBuilder.withinLimits(result.loadedNodes(), result.loadedEdges()));
       return data;
     }
 
@@ -184,7 +186,7 @@ public class NetworkGraphQueryService implements GraphNetworkBackend {
     data.put("pathNodes", NetworkResponseBuilder.nodeViews(mapper, generation, result.path()));
     data.put(
         "withinLimits",
-        NetworkResponseBuilder.withinLimits(result.path().size(), result.hopEdges().size()));
+        NetworkResponseBuilder.withinLimits(result.loadedNodes(), result.loadedEdges()));
     data.put("pathRule", NetworkRules.PATH_RULE);
     data.put("scope", NetworkRules.pathScope(result.hops()));
     return data;

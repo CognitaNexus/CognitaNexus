@@ -7,6 +7,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.cognitanexus.query.graph.application.GraphProjectionInitializationProbe;
+import com.cognitanexus.query.graph.application.GraphProjectionInitializationProbe.InitializationState;
 import com.cognitanexus.query.graph.application.GraphProjectionStore;
 import com.cognitanexus.query.graph.domain.GraphProjectionMeta;
 import com.cognitanexus.query.graph.schema.Neo4jSchemaInitializer;
@@ -20,28 +22,45 @@ import org.junit.jupiter.api.Test;
 /**
  * 投影水位落后保护（Stale Projection Guard）。
  *
- * <p>这些用例锁住 ADR-005 §6.1/§7 的承诺：**图落后于已发布修订时必须被判定为不可用**，
- * 而不是返回一张「看起来完整」的旧图。逐个原因码覆盖，是因为它们对应完全不同的运维处置：
- * 回填没跟上（PROJECTION_STALE）、作用域配错（META_MISSING）、PG 换代（GENERATION_MISMATCH）、
- * 图库连不上（META_UNREADABLE）、schema 没建好（SCHEMA_NOT_READY）。
+ * <p>这些用例锁住 ADR-005 §6.1/§7 的承诺：**图落后于已发布修订、或根本还没完成基线初始化时，
+ * 必须被判定为不可用**，而不是返回一张「看起来完整」的旧图/空图。逐个原因码覆盖，是因为它们对应
+ * 完全不同的运维处置：等待回填跟上（PROJECTION_STALE）、重跑/修复回填（PROJECTION_NOT_INITIALIZED）、
+ * 作用域配错（META_MISSING）、PG 换代（GENERATION_MISMATCH）、图库连不上（META_UNREADABLE）、
+ * schema 没建好（SCHEMA_NOT_READY）。
+ *
+ * <p><b>回归背景</b>：旧实现只在「两侧 generation 都非空且不相等」时拒绝，并且从不校验
+ * {@code projectedVersion > 0}。于是 (a) 空库上 {@code publishedRevision == projectedVersion == 0}
+ * 被判成「不落后 → 可用」；(b) 调用方漏传 generation（null/空白）时整库图结果被无条件信任；
+ * (c) 回填中断留下的版本/状态完全无法识别。下面每个用例都对应其中一条。
  */
 class ProjectionWatermarkGuardTest {
 
   private GraphProjectionStore store;
   private Neo4jSchemaInitializer initializer;
+  private GraphProjectionInitializationProbe probe;
   private ProjectionWatermarkGuard guard;
 
   @BeforeEach
   void setUp() {
     store = mock(GraphProjectionStore.class);
     initializer = mock(Neo4jSchemaInitializer.class);
+    probe = mock(GraphProjectionInitializationProbe.class);
     when(initializer.isReady()).thenReturn(true);
-    guard = new ProjectionWatermarkGuard(store, initializer, NetworkTestFixtures.graphProperties());
+    when(probe.inspect(anyString())).thenReturn(Optional.empty());
+    guard =
+        new ProjectionWatermarkGuard(
+            store, initializer, NetworkTestFixtures.graphProperties(), probe);
   }
 
   private static GraphProjectionMeta meta(long projectedVersion, String generation) {
     return new GraphProjectionMeta(
         "query-public", projectedVersion, projectedVersion, generation, Instant.now());
+  }
+
+  private void initialization(String status, long failedWorks, String generation) {
+    when(probe.inspect("query-public"))
+        .thenReturn(
+            Optional.of(new InitializationState("query-public", status, failedWorks, generation)));
   }
 
   @Test
@@ -109,19 +128,127 @@ class ProjectionWatermarkGuardTest {
   }
 
   @Test
-  @DisplayName("权威侧 generation 只是空白时不做换代判断（老部署可能没有该值）")
-  void blankAuthoritativeGenerationDoesNotBlock() {
-    when(store.readMeta("query-public")).thenReturn(Optional.of(meta(120L, "41")));
+  @DisplayName("回归：空图（版本 0 对 0）不得因「0 >= 0 不落后」被判可用")
+  void emptyGraphWithZeroVersionsIsNotInitialized() {
+    when(store.readMeta("query-public")).thenReturn(Optional.of(meta(0L, "42")));
 
-    assertThat(guard.evaluate(120L, "   ").graphUsable()).isTrue();
+    GraphProjectionStatus status = guard.evaluate(0L, "42");
+
+    assertThat(status.graphUsable()).isFalse();
+    assertThat(status.dataComplete()).isFalse();
+    assertThat(status.reasonCode()).isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
+    assertThat(status.projectedVersion()).isZero();
+    assertThat(status.reason()).contains("基线初始化");
   }
 
   @Test
-  @DisplayName("权威侧没给出 generation 时不做换代判断")
-  void missingAuthoritativeGenerationSkipsGenerationCheck() {
+  @DisplayName("回归：版本 0 时原因码是 NOT_INITIALIZED 而不是 STALE（两者运维处置不同）")
+  void zeroProjectedVersionIsNotInitializedRatherThanStale() {
+    when(store.readMeta("query-public")).thenReturn(Optional.of(meta(0L, "42")));
+
+    GraphProjectionStatus status = guard.evaluate(120L, "42");
+
+    assertThat(status.graphUsable()).isFalse();
+    assertThat(status.reasonCode()).isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
+    assertThat(status.reasonCode()).isNotEqualTo(GraphProjectionStatus.PROJECTION_STALE);
+  }
+
+  @Test
+  @DisplayName("回归：权威侧 generation 只是空白时不再「跳过换代判断」放行")
+  void blankAuthoritativeGenerationIsNotInitialized() {
     when(store.readMeta("query-public")).thenReturn(Optional.of(meta(120L, "41")));
 
-    assertThat(guard.evaluate(120L, null).graphUsable()).isTrue();
+    GraphProjectionStatus status = guard.evaluate(120L, "   ");
+
+    assertThat(status.graphUsable()).isFalse();
+    assertThat(status.reasonCode()).isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
+  }
+
+  @Test
+  @DisplayName("回归：权威侧没给出 generation 时不再「跳过换代判断」放行")
+  void missingAuthoritativeGenerationIsNotInitialized() {
+    when(store.readMeta("query-public")).thenReturn(Optional.of(meta(120L, "41")));
+
+    GraphProjectionStatus status = guard.evaluate(120L, null);
+
+    assertThat(status.graphUsable()).isFalse();
+    assertThat(status.reasonCode()).isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
+  }
+
+  @Test
+  @DisplayName("回归：水位记录里的 generation 是回填占位值 UNINITIALIZED 时不可用")
+  void placeholderProjectedGenerationIsNotInitialized() {
+    when(store.readMeta("query-public"))
+        .thenReturn(Optional.of(meta(120L, GraphProjectionMeta.UNINITIALIZED_GENERATION)));
+
+    GraphProjectionStatus status = guard.evaluate(120L, "42");
+
+    assertThat(status.graphUsable()).isFalse();
+    assertThat(status.reasonCode()).isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
+  }
+
+  @Test
+  @DisplayName("回归：两侧都是占位 generation（尚未分配代）时也不可用，不能被「相等」蒙过去")
+  void bothPlaceholderGenerationsAreNotInitialized() {
+    when(store.readMeta("query-public"))
+        .thenReturn(Optional.of(meta(120L, GraphProjectionMeta.UNINITIALIZED_GENERATION)));
+
+    GraphProjectionStatus status =
+        guard.evaluate(120L, GraphProjectionMeta.UNINITIALIZED_GENERATION);
+
+    assertThat(status.graphUsable()).isFalse();
+    assertThat(status.reasonCode()).isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
+  }
+
+  @Test
+  @DisplayName("回归：回填仍在 RUNNING 时不可用（水位恰好赶上也不行）")
+  void runningBackfillIsNotInitialized() {
+    when(store.readMeta("query-public")).thenReturn(Optional.of(meta(120L, "42")));
+    initialization("RUNNING", 0L, "42");
+
+    GraphProjectionStatus status = guard.evaluate(120L, "42");
+
+    assertThat(status.graphUsable()).isFalse();
+    assertThat(status.reasonCode()).isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
+    assertThat(status.reason()).contains("RUNNING");
+  }
+
+  @Test
+  @DisplayName("回归：回填完成但有失败成果时不可用（图上缺边会被读成「不合作」）")
+  void backfillWithFailedWorksIsNotInitialized() {
+    when(store.readMeta("query-public")).thenReturn(Optional.of(meta(120L, "42")));
+    initialization(InitializationState.COMPLETED, 3L, "42");
+
+    GraphProjectionStatus status = guard.evaluate(120L, "42");
+
+    assertThat(status.graphUsable()).isFalse();
+    assertThat(status.reasonCode()).isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
+    assertThat(status.reason()).contains("3");
+  }
+
+  @Test
+  @DisplayName("回归：回填状态属于旧代时不可用（旧代的「完成」证明不了当前代）")
+  void backfillStateOfAnotherGenerationIsNotInitialized() {
+    when(store.readMeta("query-public")).thenReturn(Optional.of(meta(120L, "42")));
+    initialization(InitializationState.COMPLETED, 0L, "41");
+
+    GraphProjectionStatus status = guard.evaluate(120L, "42");
+
+    assertThat(status.graphUsable()).isFalse();
+    assertThat(status.reasonCode()).isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
+    assertThat(status.reason()).contains("41").contains("42");
+  }
+
+  @Test
+  @DisplayName("回填状态完整且属于当前代：可用")
+  void completedBackfillIsUsable() {
+    when(store.readMeta("query-public")).thenReturn(Optional.of(meta(120L, "42")));
+    initialization(InitializationState.COMPLETED, 0L, "42");
+
+    GraphProjectionStatus status = guard.evaluate(120L, "42");
+
+    assertThat(status.graphUsable()).isTrue();
+    assertThat(status.dataComplete()).isTrue();
   }
 
   @Test
@@ -155,9 +282,24 @@ class ProjectionWatermarkGuardTest {
   }
 
   @Test
+  @DisplayName("读回填状态失败按「水位不可读」处理，不伪装成「未初始化」（处置不同）")
+  void unreadableInitializationProbeIsReportedAsUnreadable() {
+    when(store.readMeta("query-public")).thenReturn(Optional.of(meta(120L, "42")));
+    when(probe.inspect("query-public"))
+        .thenThrow(
+            new com.cognitanexus.query.graph.infrastructure.GraphStoreUnavailableException("boom"));
+
+    GraphProjectionStatus status = guard.evaluate(120L, "42");
+
+    assertThat(status.graphUsable()).isFalse();
+    assertThat(status.reasonCode()).isEqualTo(GraphProjectionStatus.PROJECTION_META_UNREADABLE);
+    assertThat(status.reason()).contains("GraphStoreUnavailableException");
+  }
+
+  @Test
   @DisplayName("负的权威修订按 0 处理：不会因为调用方传错而误判「水位领先」")
   void negativeAuthoritativeRevisionIsClamped() {
-    when(store.readMeta("query-public")).thenReturn(Optional.of(meta(0L, "42")));
+    when(store.readMeta("query-public")).thenReturn(Optional.of(meta(1L, "42")));
 
     GraphProjectionStatus status = guard.evaluate(-5L, "42");
 
@@ -176,5 +318,17 @@ class ProjectionWatermarkGuardTest {
     assertThat(status.reasonCode()).isEqualTo(GraphProjectionStatus.READY);
     assertThat(status.reason()).isEmpty();
     assertThat(status.graphUsable()).isTrue();
+  }
+
+  @Test
+  @DisplayName("未初始化的判定不是「数据完整」：dataComplete 必须为 false")
+  void notInitializedStatusIsNotDataComplete() {
+    GraphProjectionStatus status =
+        GraphProjectionStatus.notInitialized(meta(0L, "42"), 0L, "42", "原因");
+
+    assertThat(status.projectionPresent()).isTrue();
+    assertThat(status.projectionCoversPublishedRevision()).isFalse();
+    assertThat(status.dataComplete()).isFalse();
+    assertThat(status.graphUsable()).isFalse();
   }
 }

@@ -17,13 +17,14 @@ import java.util.TreeSet;
  * 是否一致」变成可执行断言，而不是靠人眼抽查两次响应。比较对象是<b>两条路径各自产出的响应体</b>，
  * 而不是「图领域对象 vs PG 领域对象」——因为用户看到的是响应，字段名、顺序、空值形态都算契约的一部分。
  *
- * <p>刻意<b>不</b>比较两个字段：
+ * <p>刻意<b>只不</b>比较一个字段：{@code generatedAt}——两条路径各自取 {@code Instant.now()}，永远
+ * 不同，它不是业务结论。
  *
- * <ul>
- *   <li>{@code generatedAt}：两条路径各自取 {@code Instant.now()}，永远不同。它不是业务结论；
- *   <li>{@code withinLimits}：加载规模诊断。PG 报告「加载了多少」，图实现按需扩边、不保留同一计数；
- *       把它纳入比较会让每次对照都因实现细节失败，反而掩盖真正的节点/边/路径差异。
- * </ul>
+ * <p>{@code withinLimits}（本次搜索实际载入的节点/边数）<b>参与比较</b>。它曾经被排除在外，因为图侧
+ * 路径查询用「路径节点数/跳数」冒充加载规模，与 PG 口径不同；把这种偏差屏蔽掉等于让对照器给一个
+ * 错口径盖章。现在两侧都由各自的搜索子图统计口径产出（{@code ScopedGraphLoader} /
+ * {@code CollaborationGraphService} + {@code GraphPathResult}），差异就是真差异（例如图侧少扩了一层、
+ * 或二部图分支把没有合作边的作者对算进加载规模），必须被报出来。
  *
  * <p>其余字段全部逐层比较，包括列表<b>顺序</b>：节点按 BFS 层次与规范 ID、边按两端 ID、路径按跳序。
  * 顺序被纳入契约的理由与上面相同——同一请求两次对答顺序不同，会被读成「图在变」。
@@ -33,8 +34,8 @@ import java.util.TreeSet;
  */
 public class NetworkParityComparator {
 
-  /** 不参与一致性比较的诊断字段（见类注释）。 */
-  public static final Set<String> DIAGNOSTIC_FIELDS = Set.of("generatedAt", "withinLimits");
+  /** 不参与一致性比较的诊断字段（见类注释）：只排除墙钟时间。 */
+  public static final Set<String> DIAGNOSTIC_FIELDS = Set.of("generatedAt");
 
   /** 单次报告最多列出的差异条数。 */
   public static final int MAX_REPORTED_DIFFERENCES = 32;

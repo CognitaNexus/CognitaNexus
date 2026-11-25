@@ -9,6 +9,7 @@ import com.cognitanexus.query.consistency.PublicBarrierGuard;
 import com.cognitanexus.query.corelink.CoreInternalClient;
 import com.cognitanexus.query.graph.application.CollaborationGraphRepository;
 import com.cognitanexus.query.graph.application.CollaborationGraphService;
+import com.cognitanexus.query.graph.application.GraphProjectionInitializationProbe.InitializationState;
 import com.cognitanexus.query.graph.application.GraphProjectionStore;
 import com.cognitanexus.query.graph.config.Neo4jGraphProperties;
 import com.cognitanexus.query.graph.domain.GraphAuthorship;
@@ -515,7 +516,13 @@ class NetworkGraphQueryIT {
               networkMapper,
               projectionProperties,
               deadProperties,
-              new ProjectionWatermarkGuard(deadStore, readySchema, deadProperties));
+              new ProjectionWatermarkGuard(
+                  deadStore,
+                  readySchema,
+                  deadProperties,
+                  // 图库不可达时探针同样读不到；这里声明「没有初始化状态记录」的最简实现，
+                  // 用例验证的是连接失败导致的回退（PROJECTION_META_UNREADABLE）。
+                  scope -> java.util.Optional.empty()));
 
       NetworkGraphQueryMetrics fallbackMetrics = new NetworkGraphQueryMetrics();
       NetworkQueryRouter fallbackRouter =
@@ -581,6 +588,115 @@ class NetworkGraphQueryIT {
         .containsEntry("parityDroppedCount", 0L);
   }
 
+  @Test
+  @Order(10)
+  @DisplayName("回归：withinLimits 在真实双库上逐字段一致（路径不再用节点数/跳数冒充加载规模）")
+  void withinLimitsSemanticsMatchPostgres() {
+    // 可达路径：双侧各按需扩边，规模由两条实现各自的搜索子图统计给出。
+    for (String[] pair : List.of(new String[] {A, D}, new String[] {A, E}, new String[] {C, F})) {
+      Map<String, Object> pgView =
+          networkService.shortestPath(pair[0], pair[1], "REAL", null, null);
+      Map<String, Object> graphView = router.shortestPath(pair[0], pair[1], "REAL", null, null);
+      assertSameResponse("withinLimits path " + pair[0] + "->" + pair[1], pgView, graphView);
+      assertThat(graphView.get("withinLimits")).isEqualTo(pgView.get("withinLimits"));
+    }
+
+    // 0 跳、不可达、不存在的种子：同样如实报告搜索规模，而不是 1/0。
+    for (String[] pair :
+        List.of(
+            new String[] {A, A},
+            new String[] {A, "missing-scholar"},
+            new String[] {A, "not-connected"})) {
+      Map<String, Object> pgView =
+          networkService.shortestPath(pair[0], pair[1], "REAL", null, null);
+      Map<String, Object> graphView = router.shortestPath(pair[0], pair[1], "REAL", null, null);
+      assertSameResponse("withinLimits path " + pair[0] + "->" + pair[1], pgView, graphView);
+      assertThat(graphView.get("withinLimits")).isEqualTo(pgView.get("withinLimits"));
+    }
+
+    // 自我网络：真实 Cypher 扩边与 PG 扩边载入同一批节点/边。
+    for (String seed : SCHOLARS) {
+      for (int depth = 1; depth <= 3; depth++) {
+        Map<String, Object> pgView =
+            networkService.neighborhood(seed, depth, 0, "REAL", null, null);
+        Map<String, Object> graphView = router.neighborhood(seed, depth, 0, "REAL", null, null);
+        assertSameResponse("withinLimits seed=" + seed + ";depth=" + depth, pgView, graphView);
+      }
+    }
+  }
+
+  @Test
+  @Order(11)
+  @DisplayName("回归：回填未完成（RUNNING/有失败成果/旧代）时图不可用，自动回退 PG；严格模式 503")
+  void incompleteBackfillBlocksGraphServing() {
+    NetworkGraphQueryMetrics markerMetrics = new NetworkGraphQueryMetrics();
+    NetworkQueryRouter fallback =
+        routerWithMode(GraphQueryMode.NEO4J_WITH_PG_FALLBACK, graphBackend, markerMetrics);
+    NetworkQueryRouter strict =
+        routerWithMode(GraphQueryMode.NEO4J_STRICT, graphBackend, new NetworkGraphQueryMetrics());
+
+    // 水位已经等于已发布修订（旧实现据此判定「可用」），但回填还停在 RUNNING：
+    // 图上只有一部分成果，缺边会被读成「这两位不合作」。
+    writeInitializationState("RUNNING", 0L, GENERATION);
+    try {
+      GraphProjectionStatus status = backendStatus();
+      assertThat(status.graphUsable()).isFalse();
+      assertThat(status.reasonCode()).isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
+
+      long fallbacksBefore = markerMetric(markerMetrics, "staleProjectionFallbackCount");
+      Map<String, Object> pgView = networkService.neighborhood(A, 2, 0, "REAL", null, null);
+      Map<String, Object> routedView = fallback.neighborhood(A, 2, 0, "REAL", null, null);
+      assertSameResponse("backfill-running-fallback", pgView, routedView);
+      assertThat(markerMetric(markerMetrics, "staleProjectionFallbackCount"))
+          .isEqualTo(fallbacksBefore + 1);
+      assertThat(markerMetric(markerMetrics, "graphServedQueries")).isZero();
+
+      assertThatThrownBy(() -> strict.neighborhood(A, 1, 0, "REAL", null, null))
+          .isInstanceOf(BusinessException.class)
+          .extracting(exception -> ((BusinessException) exception).errorCode())
+          .isEqualTo(ErrorCode.VIEW_UPDATING);
+
+      // 有失败成果的「COMPLETED」同样不可用：完成 ≠ 完整。
+      writeInitializationState(InitializationState.COMPLETED, 2L, GENERATION);
+      assertThat(backendStatus().reasonCode())
+          .isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
+
+      // 状态属于旧代：旧代的「完成」证明不了当前代。
+      writeInitializationState(InitializationState.COMPLETED, 0L, GENERATION + "-old");
+      assertThat(backendStatus().reasonCode())
+          .isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
+
+      // 真正完成后才允许图库服务（且响应仍与 PG 一致）。
+      writeInitializationState(InitializationState.COMPLETED, 0L, GENERATION);
+      assertThat(backendStatus().graphUsable()).isTrue();
+      Map<String, Object> served = fallback.neighborhood(A, 2, 0, "REAL", null, null);
+      assertSameResponse("backfill-completed", pgView, served);
+      assertThat(markerMetric(markerMetrics, "graphServedQueries")).isEqualTo(1L);
+    } finally {
+      deleteInitializationState();
+    }
+  }
+
+  @Test
+  @Order(12)
+  @DisplayName("回归：空图（projected_version=0）不得因 0 >= 0 被判可用")
+  void emptyProjectionIsNotInitialized() {
+    setProjectedVersion(0L);
+    try {
+      // 旧实现：publishedRevision==0 且 projectedVersion==0 → generation 相同、不落后 → READY。
+      GraphProjectionStatus atZero = graphBackend.status(0L, GENERATION);
+      assertThat(atZero.graphUsable()).isFalse();
+      assertThat(atZero.reasonCode()).isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
+
+      // 已发布修订更大时，原因码必须是「未初始化」而不是「落后」：处置是重跑回填。
+      GraphProjectionStatus behindByNothing = graphBackend.status(REVISION, GENERATION);
+      assertThat(behindByNothing.reasonCode())
+          .isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
+    } finally {
+      setProjectedVersion(REVISION);
+    }
+  }
+
   // ===========================================================================
   // 辅助
   // ===========================================================================
@@ -599,6 +715,11 @@ class NetworkGraphQueryIT {
 
   private GraphProjectionStatus backendStatus() {
     return graphBackend.status(REVISION, GENERATION);
+  }
+
+  private static long markerMetric(NetworkGraphQueryMetrics target, String key) {
+    Object value = target.snapshot().get(key);
+    return value instanceof Number number ? number.longValue() : 0L;
   }
 
   private long metric(String key) {
@@ -717,6 +838,51 @@ class NetworkGraphQueryIT {
     }
     projectionStore.replaceWork(
         new GraphWorkNode(workId, title, true, nature, 1L, topics, organizations), authorships);
+  }
+
+  /** 写入回填初始化状态（真实 Neo4j 节点，与 Backfill 的写入契约一致）。 */
+  private void writeInitializationState(String status, long failedWorks, String generation) {
+    deleteInitializationState();
+    runner.write(
+        tx -> {
+          tx.run(
+                  """
+                  CREATE (:GraphProjectionInitialization {
+                    scope: $scope, status: $status, failed_works: $failedWorks,
+                    generation: $generation, updated_at_epoch_ms: timestamp()
+                  })
+                  """,
+                  Map.of(
+                      "scope", SCOPE,
+                      "status", status,
+                      "failedWorks", failedWorks,
+                      "generation", generation))
+              .consume();
+          return null;
+        });
+  }
+
+  private void deleteInitializationState() {
+    runner.write(
+        tx -> {
+          tx.run(
+                  "MATCH (i:GraphProjectionInitialization {scope: $scope}) DETACH DELETE i",
+                  Map.of("scope", SCOPE))
+              .consume();
+          return null;
+        });
+  }
+
+  /** 直接改水位版本：用于验证「空图不被当成可用图」这条判定。 */
+  private void setProjectedVersion(long version) {
+    runner.write(
+        tx -> {
+          tx.run(
+                  "MATCH (m:GraphProjectionMeta {scope: $scope}) SET m.projected_version = $version",
+                  Map.of("scope", SCOPE, "version", version))
+              .consume();
+          return null;
+        });
   }
 
   /** 启动时补齐图库文档中的必要节点（与 PG 行一一对应由 {@link #work} 完成）。 */

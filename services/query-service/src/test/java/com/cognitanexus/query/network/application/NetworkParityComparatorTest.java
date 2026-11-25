@@ -18,8 +18,9 @@ import org.junit.jupiter.api.Test;
  * <ul>
  *   <li>业务字段（版本、节点、边、路径、跳数、可达性、截断相关结果）必须逐字段比较，
  *       列表顺序也算契约；
- *   <li>诊断字段 {@code generatedAt}/{@code withinLimits} 明确排除，否则每次对照都因墙钟时间
- *       和加载规模而失败，真正的差异被淹没；
+ *   <li>只有墙钟时间 {@code generatedAt} 被排除；{@code withinLimits}（加载规模）<b>参与比较</b>。
+ *       它曾被当成「实现细节」排除，实际后果是图侧用「路径节点数/跳数」冒充加载规模却永远不会被
+ *       发现——对照器替一个错口径背书；
  *   <li>{@code Long 1} 与 {@code Integer 1} 是同一个业务值，类型差异不算不一致；
  *   <li>字段缺失比「值不同」更严重，必须单独报告为 {@code <missing>}。
  * </ul>
@@ -59,13 +60,13 @@ class NetworkParityComparatorTest {
 
   private static Map<String, Object> copy(Map<String, Object> source) {
     Map<String, Object> copy = new LinkedHashMap<>(source);
+    // 只有墙钟时间不同：这是唯一的诊断字段。
     copy.put("generatedAt", java.time.Instant.parse("2026-11-11T11:11:11Z"));
-    copy.put("withinLimits", Map.of("nodes", 999, "edges", 999));
     return copy;
   }
 
   @Test
-  @DisplayName("只有诊断字段不同：判定一致（诊断字段不参与比较）")
+  @DisplayName("只有 generatedAt 不同：判定一致（墙钟时间不参与比较）")
   void diagnosticFieldsAreIgnored() {
     Map<String, Object> postgres = neighborhood("a", "b", "c");
     Map<String, Object> graph = copy(postgres);
@@ -77,6 +78,36 @@ class NetworkParityComparatorTest {
     assertThat(report.comparedNodes()).isEqualTo(3);
     assertThat(report.comparedEdges()).isEqualTo(2);
     assertThat(report.summary()).contains("对照一致").contains("节点 3");
+  }
+
+  @Test
+  @DisplayName("回归：withinLimits 不同即不一致（加载规模诊断不再被屏蔽）")
+  void withinLimitsDifferenceIsReported() {
+    Map<String, Object> postgres = neighborhood("a", "b", "c");
+    Map<String, Object> graph = copy(postgres);
+    graph.put("withinLimits", Map.of("nodes", 1, "edges", 0));
+
+    ParityDiffReport report = comparator.compare("shortestPath", "a->c", postgres, graph);
+
+    assertThat(report.matched()).isFalse();
+    List<String> fields =
+        report.differences().stream().map(ParityDiffReport.FieldDifference::field).toList();
+    assertThat(fields).contains("withinLimits.nodes", "withinLimits.edges");
+  }
+
+  @Test
+  @DisplayName("回归：一侧缺 withinLimits 也必须报告（少字段比值不同更严重）")
+  void missingWithinLimitsIsReported() {
+    Map<String, Object> postgres = neighborhood("a", "b");
+    Map<String, Object> graph = copy(postgres);
+    graph.remove("withinLimits");
+
+    ParityDiffReport report = comparator.compare("neighborhood", "seed=a", postgres, graph);
+
+    assertThat(report.matched()).isFalse();
+    assertThat(report.differences())
+        .singleElement()
+        .satisfies(difference -> assertThat(difference.field()).isEqualTo("withinLimits"));
   }
 
   @Test

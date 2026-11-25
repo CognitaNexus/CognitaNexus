@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.cognitanexus.query.consistency.PublicBarrierGuard;
 import com.cognitanexus.query.graph.application.CollaborationGraphRepository;
 import com.cognitanexus.query.graph.application.CollaborationGraphService;
+import com.cognitanexus.query.graph.application.GraphProjectionInitializationProbe;
 import com.cognitanexus.query.graph.application.GraphProjectionStore;
 import com.cognitanexus.query.graph.config.Neo4jGraphProperties;
 import com.cognitanexus.query.graph.domain.GraphCollaborationEdge;
@@ -27,6 +28,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 合作网络单元测试的共用假件。
@@ -164,7 +166,20 @@ final class NetworkTestFixtures {
     GraphProjectionStore store = mock(GraphProjectionStore.class);
     Neo4jSchemaInitializer initializer = mock(Neo4jSchemaInitializer.class);
     when(initializer.isReady()).thenReturn(schemaReady);
-    return new ProjectionWatermarkGuard(store, initializer, graphProperties());
+    return new ProjectionWatermarkGuard(
+        store, initializer, graphProperties(), initializationProbe());
+  }
+
+  /**
+   * 默认探针：本部署没有初始化状态记录（{@code Optional.empty()}）。
+   *
+   * <p>此时水位保护只做元数据完整性判定。需要验证回填就绪时不完整的图被拦住时，显式把状态注入
+   * 这个桩（见 {@code ProjectionWatermarkGuardTest}）。
+   */
+  static GraphProjectionInitializationProbe initializationProbe() {
+    GraphProjectionInitializationProbe probe = mock(GraphProjectionInitializationProbe.class);
+    when(probe.inspect(anyString())).thenReturn(Optional.empty());
+    return probe;
   }
 
   static GraphCollaborationEdge graphEdge(String a, String b, int strength) {

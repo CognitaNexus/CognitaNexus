@@ -106,6 +106,10 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
 (:GraphProjectionMeta {
   scope, projected_version, catalog_revision, generation, updated_at_epoch_ms
 })
+
+(:GraphProjectionInitialization {
+  scope, status, failed_works, generation, updated_at_epoch_ms
+})
 ```
 
 - 标识一律用**字符串**（架构 §9.3）。路径并列比较用规范 ID 的 Unicode 字典序，不用区域排序，
@@ -116,7 +120,8 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
   不用学者当前机构补齐（架构 §9.2）。
 - `Work.edges_materialized` 表示该成果的作者对边是否已物化（§4.4）。
 - 约束与索引见 `services/query-service/src/main/resources/neo4j/schema.cypher`：
-  `scholar_id` / `work_id` / `GraphProjectionMeta.scope` 三个唯一约束；
+  `scholar_id` / `work_id` / `GraphProjectionMeta.scope` / `GraphProjectionInitialization.scope`
+  四个唯一约束；
   领域、机构、数据性质、公开位、来源版本、`AUTHORED.work_id`、`COOPERATED_WITH.work_id/pair_key/
   data_origin` 索引。全部 `IF NOT EXISTS`，启动幂等。
 
@@ -255,6 +260,22 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
    落后则**降级回 PostgreSQL**，不返回旧图；
 3. 图库不可达同样降级（§7）。
 
+**「不落后」不等于「可用」**：水位为 0 的空库在 `published_revision == 0` 时也满足第 2 条，
+但它从未回填过。因此判定必须同时满足下面四条，由 `ProjectionWatermarkGuard` 一次性给出：
+
+1. schema 就绪（缺唯一约束不得服务）；
+2. 水位记录存在，且 `projected_version > 0`（基线初始化已开始并有成果落库）；
+3. generation 双方**均可判定且严格相等**：`null`/空白/占位值 `UNINITIALIZED` 都按「未初始化」
+   处理，任一方缺失不得当作一致放行（否则一次漏传参数就等于整库图结果被信任）；
+4. 回填就绪探针（`GraphProjectionInitializationProbe`，图内
+   `(:GraphProjectionInitialization {scope})`）存在时，必须是 `status = COMPLETED`、
+   `failed_works = 0` 且 `generation` 等于当前活动代；探针不存在则退化为第 2、3 条。
+
+不满足第 2～4 条的判定原因码是 `PROJECTION_NOT_INITIALIZED`，与 `PROJECTION_STALE` **分开**：
+落后等回填即可，未初始化必须重跑/修复回填，等下去不会自愈。`NEO4J_WITH_PG_FALLBACK` 下自动回退
+PG，`NEO4J_STRICT` 下返回 503。初始化状态的唯一约束
+（`graph_projection_initialization_scope_unique`）保证一个作用域只有一份完成度记录。
+
 图里的 `is_public`/`data_origin` 只用于让「已投影的正确图」自洽，不是授权依据。
 
 ### 6.2 筛选条件
@@ -301,6 +322,11 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
 3. 从起点贪心：每步只在「跳数单调递增且仍在某条最短路径上」的邻居中取**规范 ID 字典序最小**
    的一个；邻居按 `TreeSet` 升序访问，结果与遍历顺序、存储实现无关；
 4. 只返回一条，不枚举全部等长路径；零跳必须确认种子在范围内有合格合作边。
+
+`withinLimits`（响应里的 `nodes`/`edges`）在两条实现上语义唯一：**本次搜索实际载入的节点数与
+去重边数**。图侧由 `GraphSubgraphResult`/`GraphPathResult` 一路传出（双侧搜索节点取较大值、边取
+和），不得用「路径节点数 / 跳数」顶替——那是答案大小，不是搜索规模。正因为口径统一，
+`NetworkParityComparator` 只排除墙钟时间 `generatedAt`，`withinLimits` 参与逐字段比较。
 
 为什么不用 Cypher `shortestPath` / `allShortestPaths`：前者对等长路径的返回没有稳定约定；
 后者在稠密图上可能枚举出大量等长路径。把选择规则留在应用层，两个实现可以逐例比对

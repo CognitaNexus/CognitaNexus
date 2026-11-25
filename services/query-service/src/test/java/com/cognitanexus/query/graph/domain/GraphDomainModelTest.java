@@ -125,14 +125,23 @@ class GraphDomainModelTest {
         new GraphCollaborationEdge("s-1", "s-2", 1, List.of(evidence("w-1")));
 
     GraphPathResult reachable =
-        new GraphPathResult(true, 1, List.of("s-1", "s-2"), List.of(edge), "ok");
+        new GraphPathResult(true, 1, List.of("s-1", "s-2"), List.of(edge), 2, 1, "ok");
     assertThat(reachable.hopEdges()).hasSize(1);
+    assertThat(reachable.loadedNodes()).isEqualTo(2);
+    assertThat(reachable.loadedEdges()).isEqualTo(1);
 
     assertThatThrownBy(
-            () -> new GraphPathResult(true, 2, List.of("s-1", "s-2"), List.of(edge), "bad"))
+            () -> new GraphPathResult(true, 2, List.of("s-1", "s-2"), List.of(edge), 2, 1, "bad"))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new GraphPathResult(false, 0, List.of("s-1"), List.of(), "bad"))
+    assertThatThrownBy(() -> new GraphPathResult(false, 0, List.of("s-1"), List.of(), 1, 0, "bad"))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThat(GraphPathResult.unreachable("none").hops()).isNull();
+    // 载入规模不能为负：负数会被读成「比空图还小」，属于实现错误。
+    assertThatThrownBy(() -> new GraphPathResult(false, null, List.of(), List.of(), -1, 0, "bad"))
+        .isInstanceOf(IllegalArgumentException.class);
+    // 不可达结果也必须携带搜索规模：不可达同样是一次真实搜索。
+    GraphPathResult unreachable = GraphPathResult.unreachable("none", 3, 2);
+    assertThat(unreachable.hops()).isNull();
+    assertThat(unreachable.loadedNodes()).isEqualTo(3);
+    assertThat(unreachable.loadedEdges()).isEqualTo(2);
   }
 }

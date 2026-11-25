@@ -38,11 +38,16 @@ public class Neo4jSchemaInitializer implements ApplicationRunner {
   /**
    * 必须存在的约束。
    *
-   * <p>三个唯一约束分别保护：学者身份、成果身份、投影水位作用域。少任何一个，对应实体就可能在
-   * 重放/并发下重复，而图查询会把这些重复节点当成不同的人或成果。
+   * <p>四个唯一约束分别保护：学者身份、成果身份、投影水位作用域、回填初始化状态作用域。少任何
+   * 一个，对应实体就可能在重放/并发下重复，而图查询会把这些重复节点当成不同的人、成果，或者把
+   * 「基线是否完成」读成取决于记住哪一条初始化状态。
    */
   public static final Set<String> REQUIRED_CONSTRAINTS =
-      Set.of("scholar_id_unique", "work_id_unique", "graph_projection_meta_scope_unique");
+      Set.of(
+          "scholar_id_unique",
+          "work_id_unique",
+          "graph_projection_meta_scope_unique",
+          "graph_projection_initialization_scope_unique");
 
   private final GraphSchemaStore store;
   private final Neo4jSchemaStatementSource source;

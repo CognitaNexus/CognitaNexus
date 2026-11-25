@@ -117,7 +117,10 @@ class NetworkGraphQueryServiceTest {
             NetworkTestFixtures.projectionProperties(),
             NetworkTestFixtures.graphProperties(),
             new ProjectionWatermarkGuard(
-                store, initializer, NetworkTestFixtures.graphProperties()));
+                store,
+                initializer,
+                NetworkTestFixtures.graphProperties(),
+                NetworkTestFixtures.initializationProbe()));
 
     assertThatThrownBy(() -> service.neighborhood(NetworkTestFixtures.barrier(), "a", 1, 0, ALL))
         .isInstanceOf(BusinessException.class)
@@ -149,6 +152,53 @@ class NetworkGraphQueryServiceTest {
     assertThat(NetworkTestFixtures.pathNodes(graphView))
         .extracting(node -> node.get("scholarId"))
         .containsExactly("s", "b", "t");
+  }
+
+  @Test
+  @DisplayName("回归：最短路径的 withinLimits 报告搜索子图规模，与 PG 逐字段一致（不是路径节点数/跳数）")
+  void pathWithinLimitsMatchesPostgres() {
+    List<EdgeRow> edges =
+        List.of(edge("s", "b", 1), edge("b", "t", 2), edge("s", "c", 1), edge("c", "t", 1));
+    NetworkMapper mapper = NetworkTestFixtures.mapper(edges);
+    NetworkService postgres = NetworkTestFixtures.postgres(mapper);
+    NetworkGraphQueryService graph = NetworkTestFixtures.graphQueryService(edges, mapper, true);
+
+    // 可达：双侧各载入了一部分子图，节点取两侧较大值、边取两侧之和——与 ScopedGraphLoader 同口径。
+    Map<String, Object> pgView = postgres.shortestPath("s", "t", "ALL", null, null);
+    Map<String, Object> graphView =
+        graph.shortestPath(NetworkTestFixtures.barrier(), "s", "t", ALL);
+    assertThat(graphView.get("withinLimits")).isEqualTo(pgView.get("withinLimits"));
+    assertThat(pgView.get("withinLimits")).isEqualTo(Map.of("nodes", 4, "edges", 6));
+
+    // 0 跳：规模是种子那一步实际载入的邻居，不是「1 个节点、0 条边」。
+    Map<String, Object> pgZero = postgres.shortestPath("s", "s", "ALL", null, null);
+    Map<String, Object> graphZero =
+        graph.shortestPath(NetworkTestFixtures.barrier(), "s", "s", ALL);
+    assertThat(graphZero.get("withinLimits")).isEqualTo(pgZero.get("withinLimits"));
+
+    // 不可达：搜索规模同样要如实报告。
+    Map<String, Object> pgMissing = postgres.shortestPath("s", "missing", "ALL", null, null);
+    Map<String, Object> graphMissing =
+        graph.shortestPath(NetworkTestFixtures.barrier(), "s", "missing", ALL);
+    assertThat(graphMissing.get("withinLimits")).isEqualTo(pgMissing.get("withinLimits"));
+  }
+
+  @Test
+  @DisplayName("回归：自我网络的 withinLimits 与 PG 同口径（实际载入的节点/去重边）")
+  void neighborhoodWithinLimitsMatchesPostgres() {
+    List<EdgeRow> edges = List.of(edge("a", "c", 1), edge("a", "b", 2), edge("b", "d", 1));
+    NetworkMapper mapper = NetworkTestFixtures.mapper(edges);
+    NetworkService postgres = NetworkTestFixtures.postgres(mapper);
+    NetworkGraphQueryService graph = NetworkTestFixtures.graphQueryService(edges, mapper, true);
+
+    for (int depth = 1; depth <= 3; depth++) {
+      Map<String, Object> pgView = postgres.neighborhood("a", depth, 0, "ALL", null, null);
+      Map<String, Object> graphView =
+          graph.neighborhood(NetworkTestFixtures.barrier(), "a", depth, 0, ALL);
+      assertThat(graphView.get("withinLimits"))
+          .as("depth=" + depth)
+          .isEqualTo(pgView.get("withinLimits"));
+    }
   }
 
   @Test
@@ -240,7 +290,10 @@ class NetworkGraphQueryServiceTest {
             NetworkTestFixtures.projectionProperties(),
             NetworkTestFixtures.graphProperties(),
             new ProjectionWatermarkGuard(
-                store, initializer, NetworkTestFixtures.graphProperties()));
+                store,
+                initializer,
+                NetworkTestFixtures.graphProperties(),
+                NetworkTestFixtures.initializationProbe()));
     assertThat(fresh.status(120L, "42").graphUsable()).isTrue();
 
     when(store.readMeta("query-public"))

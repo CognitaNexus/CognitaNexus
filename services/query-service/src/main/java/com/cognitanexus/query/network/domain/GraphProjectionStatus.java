@@ -16,7 +16,9 @@ import java.util.Locale;
  * </ol>
  *
  * <p>另外检查 generation：PG 全量重建会换代，图仍停留在旧代时即使版本号看起来不落后也不可服务
- * （ADR-005 §5.3）。{@code dataComplete} 把这三条合成一个可断言的布尔：数据覆盖是否完整。
+ * （ADR-005 §5.3）。判断「是否可用」共有四条，缺一不可：schema 就绪、水位记录存在、<b>基线初始化
+ * 已完成</b>（版本 &gt; 0、generation 双方可判定且严格相等、回填状态为 COMPLETED 且无失败成果）、
+ * 水位未落后。{@code dataComplete} 把这些数据条件合成一个可断言的布尔：数据覆盖是否完整。
  * 它<b>不</b>包含 schema 就绪——那是「能不能安全地读」，不是「数据全不全」。
  *
  * @param schemaReady 图库 schema（唯一约束与索引）是否已确认就绪
@@ -54,6 +56,14 @@ public record GraphProjectionStatus(
 
   /** 图停留在旧的 generation（PG 已重建换代）。 */
   public static final String GENERATION_MISMATCH = "GENERATION_MISMATCH";
+
+  /**
+   * 图投影尚未完成基线初始化：版本仍为 0、generation 是占位/不可判定，或回填未完成、有失败成果。
+   *
+   * <p>与 {@link #PROJECTION_STALE} 分开的原因是<b>处置不同</b>：落后意味着「回填在跑、等它跟上」，
+   * 而未初始化意味着「回填没有成功完成过」，必须重新执行或修复回填，等多久都不会自愈。
+   */
+  public static final String PROJECTION_NOT_INITIALIZED = "PROJECTION_NOT_INITIALIZED";
 
   /** 水位读取失败（图库不可达、认证失败、驱动异常）。 */
   public static final String PROJECTION_META_UNREADABLE = "PROJECTION_META_UNREADABLE";
@@ -178,5 +188,31 @@ public record GraphProjectionStatus(
         authoritativeGeneration,
         PROJECTION_META_UNREADABLE,
         "读取图投影水位失败（" + errorKind + "），图库当前不可用");
+  }
+
+  /**
+   * 图投影尚未完成基线初始化。
+   *
+   * <p>典型场景：空库上 {@code projectedVersion == publishedRevision == 0}（旧实现会把
+   * {@code 0 >= 0} 读成「不落后」而放行）、回填中断后水位停在 0、generation 还是占位值
+   * {@code UNINITIALIZED}、或回填状态不是 COMPLETED/存在失败成果。
+   *
+   * <p>{@code projectionPresent=true}：水位记录可能存在，只是它证明不了图是完整的。
+   */
+  public static GraphProjectionStatus notInitialized(
+      GraphProjectionMeta meta,
+      long authoritativeRevision,
+      String authoritativeGeneration,
+      String detail) {
+    return new GraphProjectionStatus(
+        true,
+        true,
+        false,
+        meta.projectedVersion(),
+        authoritativeRevision,
+        meta.generation(),
+        authoritativeGeneration,
+        PROJECTION_NOT_INITIALIZED,
+        "图投影尚未完成基线初始化，不能作为公开查询来源：" + detail);
   }
 }

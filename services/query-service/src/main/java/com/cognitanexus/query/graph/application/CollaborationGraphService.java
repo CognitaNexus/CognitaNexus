@@ -111,7 +111,13 @@ public final class CollaborationGraphService {
         "按种子 " + depthValue + " 跳内实际载入的子图，不是筛选范围的全图");
   }
 
-  /** 最短合作路径。结果包含逐跳证据，规则与 PG 版本逐字一致。 */
+  /**
+   * 最短合作路径。结果包含逐跳证据与本次搜索实际载入的规模，规则与 PG 版本逐字一致。
+   *
+   * <p>{@code loadedNodes/loadedEdges} 必须与 PG 侧 {@code withinLimits} 同口径：它是<b>搜索子图</b>
+   * 的规模（双侧取较大/求和），不是路径长度。把它接在 {@link GraphPathResult} 而不是让响应装配层
+   * 用 {@code path.size()} 应付，是为了让两条实现的口径只有一个来源（ADR-005 §6.4）。
+   */
   public GraphPathResult shortestPath(
       String from, String to, GraphFilterCriteria criteria, long requestedBudgetMillis) {
     if (from == null || from.isBlank() || to == null || to.isBlank()) {
@@ -128,9 +134,18 @@ public final class CollaborationGraphService {
       boolean inScope = self.adjacency.containsKey(from);
       if (!inScope) {
         return GraphPathResult.unreachable(
-            "起点在当前范围内没有合格公开合作边（可能成果未公开或未生效、关系非 AUTO/SELF_CONFIRMED、" + "或当前筛选条件将其排除），不按 0 跳可达处理。");
+            "起点在当前范围内没有合格公开合作边（可能成果未公开或未生效、关系非 AUTO/SELF_CONFIRMED、" + "或当前筛选条件将其排除），不按 0 跳可达处理。",
+            self.visited.size(),
+            self.loadedEdges.size());
       }
-      return new GraphPathResult(true, 0, List.of(from), List.of(), "起点与终点相同，按 0 跳返回。");
+      return new GraphPathResult(
+          true,
+          0,
+          List.of(from),
+          List.of(),
+          self.visited.size(),
+          self.loadedEdges.size(),
+          "起点与终点相同，按 0 跳返回。");
     }
 
     Snapshot fromSide = new Snapshot(effective, maxEdges, maxNodes);
@@ -143,7 +158,9 @@ public final class CollaborationGraphService {
               + NetworkRules.MAX_PATH_DEPTH
               + " 跳范围内未找到合作路径；这不等于全图不连通，只说明最短距离超过 "
               + NetworkRules.MAX_PATH_DEPTH
-              + " 跳。起点或终点若在范围内没有合格合作边，也会得到这个结果。");
+              + " 跳。起点或终点若在范围内没有合格合作边，也会得到这个结果。",
+          fromSide.visited.size(),
+          fromSide.loadedEdges.size());
     }
 
     int distance = fromSource.get(to);
@@ -195,6 +212,9 @@ public final class CollaborationGraphService {
         distance,
         path,
         hopEdges,
+        // 与 PG 的合并口径一致：节点取两侧较大值，边取两侧之和（双侧各加载了一部分搜索子图）。
+        Math.max(fromSide.visited.size(), toSide.visited.size()),
+        fromSide.loadedEdges.size() + toSide.loadedEdges.size(),
         "双侧按需扩边至第 " + distance + " 跳，不是筛选范围的全图；" + GraphPathResult.PATH_RULE);
   }
 

@@ -29,7 +29,7 @@ class NetworkGraphQueryMetricsTest {
   }
 
   @Test
-  @DisplayName("回退原因分列：落后/无水位/换代计为 stale，schema/不可读计为图库不可用")
+  @DisplayName("回退原因分列：落后/无水位/换代/未初始化计为 stale，schema/不可读计为图库不可用")
   void fallbackReasonsAreGrouped() {
     metrics.recordFallback(stale());
     metrics.recordFallback(GraphProjectionStatus.metaMissing(10L, "42"));
@@ -38,9 +38,13 @@ class NetworkGraphQueryMetricsTest {
             new GraphProjectionMeta("query-public", 10L, 10L, "41", Instant.now()), 10L, "42"));
     metrics.recordFallback(GraphProjectionStatus.schemaNotReady(10L, "42"));
     metrics.recordFallback(GraphProjectionStatus.metaUnreadable(10L, "42", "Timed Out"));
+    // 基线未初始化与「落后」归为同一类：都只能靠修复/重跑回填解决，等下去不会自愈。
+    metrics.recordFallback(
+        GraphProjectionStatus.notInitialized(
+            new GraphProjectionMeta("query-public", 0L, 0L, "42", Instant.now()), 0L, "42", "x"));
 
     Map<String, Object> snapshot = metrics.snapshot();
-    assertThat(snapshot).containsEntry("staleProjectionFallbackCount", 3L);
+    assertThat(snapshot).containsEntry("staleProjectionFallbackCount", 4L);
     assertThat(snapshot).containsEntry("graphUnavailableFallbackCount", 2L);
     @SuppressWarnings("unchecked")
     Map<String, Long> byReason = (Map<String, Long>) snapshot.get("fallbackByReason");
@@ -49,7 +53,8 @@ class NetworkGraphQueryMetricsTest {
         .containsEntry(GraphProjectionStatus.PROJECTION_META_MISSING, 1L)
         .containsEntry(GraphProjectionStatus.GENERATION_MISMATCH, 1L)
         .containsEntry(GraphProjectionStatus.SCHEMA_NOT_READY, 1L)
-        .containsEntry(GraphProjectionStatus.PROJECTION_META_UNREADABLE, 1L);
+        .containsEntry(GraphProjectionStatus.PROJECTION_META_UNREADABLE, 1L)
+        .containsEntry(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED, 1L);
   }
 
   @Test

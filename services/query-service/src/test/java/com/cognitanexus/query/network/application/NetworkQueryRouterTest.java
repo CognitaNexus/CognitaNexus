@@ -192,6 +192,41 @@ class NetworkQueryRouterTest {
   }
 
   @Test
+  @DisplayName("回归：投影未完成基线初始化时回退 PG（计入 stale 类），严格模式显式 503")
+  void notInitializedProjectionFallsBackToPostgres() {
+    backend.status =
+        GraphProjectionStatus.notInitialized(
+            new GraphProjectionMeta("query-public", 0L, 0L, "42", Instant.now()), 0L, "42", "x");
+
+    Map<String, Object> view =
+        router(GraphQueryMode.NEO4J_WITH_PG_FALLBACK, backend)
+            .neighborhood("s", 2, 0, "REAL", null, null);
+
+    assertSameResponse("not-initialized", pgNeighborhood(), view);
+    assertThat(backend.neighborhoodCalls).isZero();
+    assertThat(metrics.snapshot())
+        .containsEntry("staleProjectionFallbackCount", 1L)
+        .containsEntry("graphServedQueries", 0L);
+
+    NetworkGraphQueryMetrics strictMetrics = new NetworkGraphQueryMetrics();
+    NetworkQueryRouter strict =
+        new NetworkQueryRouter(
+            postgres,
+            barrierGuard,
+            new NetworkGraphQueryProperties(GraphQueryMode.NEO4J_STRICT.name(), false, 8),
+            strictMetrics,
+            new NetworkParityComparator(),
+            backend,
+            Runnable::run);
+    assertThatThrownBy(() -> strict.neighborhood("s", 1, 0, "REAL", null, null))
+        .isInstanceOf(BusinessException.class)
+        .extracting(exception -> ((BusinessException) exception).errorCode())
+        // 503：未初始化属于「视图还不可用」，不是 500，也不是静默返回 200。
+        .isEqualTo(ErrorCode.VIEW_UPDATING);
+    assertThat(strictMetrics.snapshot()).containsEntry("strictRejections", 1L);
+  }
+
+  @Test
   @DisplayName("对照模式在水位落后时跳过图查询并单独计数：跳过不算一致")
   void shadowCompareSkipsWhenProjectionStale() {
     backend.status =
