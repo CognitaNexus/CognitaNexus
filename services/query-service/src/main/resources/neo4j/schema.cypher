@@ -83,12 +83,8 @@ FOR ()-[c:COOPERATED_WITH]-() ON (c.data_origin);
 CREATE CONSTRAINT graph_projection_meta_scope_unique IF NOT EXISTS
 FOR (m:GraphProjectionMeta) REQUIRE m.scope IS UNIQUE;
 
-// ---------------------------------------------------------------------------
-// GraphProjectionInitialization：基线回填完成度
-//   水位（GraphProjectionMeta.projected_version）只说明「图写到了哪个版本」，它无法区分
-//   「回填完整跑完」与「回填中途停下、水位刚好等于已发布修订」。回填在开始灌数据前后写这份状态
-//   （status / failed_works / generation），水位保护据此判定图是否可以服务公开查询（ADR-005 §6.1）。
-//   scope 唯一：同一作用域只允许一条状态，否则「基线是否完成」会因读到哪条记录而变。
-// ---------------------------------------------------------------------------
-CREATE CONSTRAINT graph_projection_initialization_scope_unique IF NOT EXISTS
-FOR (i:GraphProjectionInitialization) REQUIRE i.scope IS UNIQUE;
+// 回填（Backfill）断点与完成度**不在这里**：它们由 PostgreSQL 迁移 V7 的
+// qry_graph_projection_checkpoint(scope, status, failed_works, generation, ...) 唯一记录，
+// 读路径用 PostgresGraphProjectionInitializationProbe 读它（ADR-005 §5.2、§6.1）。
+// 在图库里再存一份「回填是否完成」会产生第二个权威源：两份记录一旦漂移，就会出现
+// 「图缺一批合作边、却被判定为可服务公开查询」。

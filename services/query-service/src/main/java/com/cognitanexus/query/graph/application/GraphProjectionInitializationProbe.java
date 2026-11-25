@@ -17,8 +17,9 @@ import java.util.Optional;
  * </ol>
  *
  * <p>这三种状态下「{@code projectedVersion >= publishedRevision}」可能同时成立，而只有第一种可以
- * 服务公开查询。因此回填在开始/结束时写一份初始化状态（状态、失败成果数、所对应的 generation），
- * 读路径用它回答「基线是否真的完成」。判定口径是<b>严格</b>的：
+ * 服务公开查询。因此回填在开始/结束时把状态、失败成果数与所对应的 generation 写入 PostgreSQL 的
+ * 回填断点表（迁移 V7 的 {@code qry_graph_projection_checkpoint}，每个 scope 一行），读路径用它
+ * 回答「基线是否真的完成」。判定口径是<b>严格</b>的：
  *
  * <ul>
  *   <li>{@link InitializationState#COMPLETED}；</li>
@@ -27,12 +28,25 @@ import java.util.Optional;
  *   <li>状态里的 {@code generation} 必须等于 PG 当前活动代（否则这份「完成」属于旧代）。</li>
  * </ul>
  *
- * <p>返回值语义：{@link Optional#empty()} 表示<b>本部署没有初始化状态记录</b>（例如尚未接入回填
- * 标记的旧实例）。此时水位保护退回到「元数据完整性」判定（版本 &gt; 0、generation 双方可判定且
- * 严格相等），不会因为缺少探针就放行空图。
+ * <p>返回值语义：
  *
- * <p>实现必须是<b>只读</b>的：探针失败（图库不可达/认证失败）由调用方按「水位不可读」处理，
- * 不能伪装成「未初始化」——两者的运维处置不同。
+ * <ul>
+ *   <li>查到断点行：返回该行状态；
+ *   <li>断点表已部署但没有该 scope 的行：返回 {@code status = MISSING}（从未回填过），由守卫判为
+ *       {@code PROJECTION_NOT_INITIALIZED}，<b>不得</b>因此放行；
+ *   <li>{@link Optional#empty()}：<b>本部署还没有断点表</b>（V7 迁移未部署）。此时水位保护退回到
+ *       「元数据完整性」判定（版本 &gt; 0、generation 双方可判定且严格相等），不会因为缺少探针就
+ *       放行空图。
+ * </ul>
+ *
+ * <p>回填完成度只有<b>一个</b>权威源：PostgreSQL 的 {@code qry_graph_projection_checkpoint}
+ * （{@code status='COMPLETED' AND failed_works=0 AND generation=activeGeneration}）与 Neo4j 的
+ * {@code GraphProjectionMeta}（{@code projected_version >= published_revision > 0 AND
+ * generation=activeGeneration}）共同决定图是否可以服务，二者必须同时成立；图库里不再另存一份
+ * 「回填是否完成」。
+ *
+ * <p>实现必须是<b>只读</b>的：探针失败（图库不可达/认证失败/PG 不可达）由调用方按「水位不可读」
+ * 处理，不能伪装成「未初始化」——两者的运维处置不同。
  */
 public interface GraphProjectionInitializationProbe {
 
@@ -40,11 +54,12 @@ public interface GraphProjectionInitializationProbe {
    * 读取指定作用域的初始化状态。
    *
    * @param scope 投影作用域
-   * @return 初始化状态；该作用域没有状态记录时返回 {@link Optional#empty()}
+   * @return 初始化状态；断点表尚未部署时返回 {@link Optional#empty()}；表已部署但该 scope 没有
+   *     断点行时返回 {@code status = MISSING}
    */
   Optional<InitializationState> inspect(String scope);
 
-  /** 回填在开始灌数据前写入状态，结束时更新为 {@link #COMPLETED} 或失败态。 */
+  /** 回填写入 {@code RUNNING}，结束时更新为 {@link #COMPLETED} 或失败态（PG 断点表的一行）。 */
   record InitializationState(String scope, String status, long failedWorks, String generation) {
 
     /** 回填完整跑完（唯一可服务的状态）。 */

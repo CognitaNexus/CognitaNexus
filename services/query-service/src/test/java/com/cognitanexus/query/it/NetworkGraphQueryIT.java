@@ -9,6 +9,7 @@ import com.cognitanexus.query.consistency.PublicBarrierGuard;
 import com.cognitanexus.query.corelink.CoreInternalClient;
 import com.cognitanexus.query.graph.application.CollaborationGraphRepository;
 import com.cognitanexus.query.graph.application.CollaborationGraphService;
+import com.cognitanexus.query.graph.application.GraphProjectionInitializationProbe;
 import com.cognitanexus.query.graph.application.GraphProjectionInitializationProbe.InitializationState;
 import com.cognitanexus.query.graph.application.GraphProjectionStore;
 import com.cognitanexus.query.graph.config.Neo4jGraphProperties;
@@ -19,6 +20,7 @@ import com.cognitanexus.query.graph.domain.GraphWorkNode;
 import com.cognitanexus.query.graph.infrastructure.Neo4jCollaborationGraphRepository;
 import com.cognitanexus.query.graph.infrastructure.Neo4jGraphProjectionStore;
 import com.cognitanexus.query.graph.infrastructure.Neo4jSessionRunner;
+import com.cognitanexus.query.graph.infrastructure.PostgresGraphProjectionInitializationProbe;
 import com.cognitanexus.query.graph.schema.Neo4jSchemaInitializer;
 import com.cognitanexus.query.network.application.GraphNetworkBackend;
 import com.cognitanexus.query.network.application.NetworkGraphQueryMetrics;
@@ -138,6 +140,7 @@ class NetworkGraphQueryIT {
   @Autowired private GraphProjectionStore projectionStore;
   @Autowired private CollaborationGraphService collaborationGraphService;
   @Autowired private Neo4jSessionRunner runner;
+  @Autowired private GraphProjectionInitializationProbe initializationProbe;
   @Autowired private NetworkMapper networkMapper;
   @Autowired private ProjectionProperties projectionProperties;
 
@@ -215,6 +218,24 @@ class NetworkGraphQueryIT {
     // 初始水位刻意落后一版：先验证「落后绝不返回图结果」，再推进到一致版本做一致性对照。
     projectionStore.advanceMeta(
         new GraphProjectionMeta(SCOPE, REVISION - 1, REVISION - 1, GENERATION, Instant.now()));
+
+    // 回填断点表（Pr #22 的
+    // 迁移 V7）。本分支的迁移集只到 V6，因此这里按 V7 列定义幂等建表：与已部署 V7 的环境
+    // 相比不多不少一列、不另建主键，两分支合并后本语句自然退化为空操作。
+    boolean checkpointTableDeployed =
+        Boolean.TRUE.equals(
+            jdbc.queryForObject(
+                "SELECT to_regclass('public.qry_graph_projection_checkpoint') IS NOT NULL",
+                Boolean.class));
+    if (!checkpointTableDeployed) {
+      // V7 未部署：断点表不存在时必须退化为 Optional.empty()（只看水位元数据），不能报错。
+      assertThat(initializationProbe.inspect(SCOPE))
+          .as("断点表尚未部署（V7 未迁移）时探针必须退化为 Optional.empty()")
+          .isEmpty();
+      createCheckpointTable();
+    }
+    // 已完成的基线回填：前 10 个用例验证的是「投影完整时两条实现逐字段一致」。
+    writeInitializationState(InitializationState.COMPLETED, 0L, GENERATION);
   }
 
   @AfterAll
@@ -228,6 +249,8 @@ class NetworkGraphQueryIT {
     jdbc.update("DELETE FROM qry_contribution WHERE generation = ?", GENERATION);
     jdbc.update("DELETE FROM qry_achievement WHERE generation = ?", GENERATION);
     jdbc.update("DELETE FROM qry_generation WHERE generation = ?", GENERATION);
+    // 只删本用例的断点行，不删表：合并后 V7 已部署时，删表会让 Flyway 记录与实际杂构不一致。
+    deleteInitializationState();
     runner.write(
         tx -> {
           tx.run(
@@ -627,7 +650,7 @@ class NetworkGraphQueryIT {
 
   @Test
   @Order(11)
-  @DisplayName("回归：回填未完成（RUNNING/有失败成果/旧代）时图不可用，自动回退 PG；严格模式 503")
+  @DisplayName("回归：断点缺失/回填未完成（MISSING、RUNNING、有失败成果、旧代）时图不可用，自动回退 PG；严格模式 503")
   void incompleteBackfillBlocksGraphServing() {
     NetworkGraphQueryMetrics markerMetrics = new NetworkGraphQueryMetrics();
     NetworkQueryRouter fallback =
@@ -635,10 +658,26 @@ class NetworkGraphQueryIT {
     NetworkQueryRouter strict =
         routerWithMode(GraphQueryMode.NEO4J_STRICT, graphBackend, new NetworkGraphQueryMetrics());
 
+    // 表已部署但该 scope 一行都没有：本 scope 从未回填。探针必须返回 MISSING（而不是 empty），
+    // 否则就会退化成只看水位元数据——而水位恰好等于已发布修订时，未回填的空图会被当成可用。
+    deleteInitializationState();
+    assertThat(initializationProbe.inspect(SCOPE))
+        .hasValueSatisfying(
+            state -> {
+              assertThat(state.status())
+                  .isEqualTo(PostgresGraphProjectionInitializationProbe.MISSING);
+              assertThat(state.completed()).isFalse();
+            });
+    assertThat(backendStatus().graphUsable()).isFalse();
+    assertThat(backendStatus().reasonCode())
+        .isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
+
     // 水位已经等于已发布修订（旧实现据此判定「可用」），但回填还停在 RUNNING：
     // 图上只有一部分成果，缺边会被读成「这两位不合作」。
     writeInitializationState("RUNNING", 0L, GENERATION);
     try {
+      assertThat(initializationProbe.inspect(SCOPE))
+          .hasValueSatisfying(state -> assertThat(state.status()).isEqualTo("RUNNING"));
       GraphProjectionStatus status = backendStatus();
       assertThat(status.graphUsable()).isFalse();
       assertThat(status.reasonCode()).isEqualTo(GraphProjectionStatus.PROJECTION_NOT_INITIALIZED);
@@ -840,37 +879,62 @@ class NetworkGraphQueryIT {
         new GraphWorkNode(workId, title, true, nature, 1L, topics, organizations), authorships);
   }
 
-  /** 写入回填初始化状态（真实 Neo4j 节点，与 Backfill 的写入契约一致）。 */
+  /**
+   * 按 Pr #22 的 V7 迁移建表（列名、类型、CHECK 约束与主键一致）。
+   *
+   * <p>为何要自建：本分支（Pr #21）的迁移集只到 V6，而探针读的是 V7 的
+   * {@code qry_graph_projection_checkpoint}。合并后 V7 已由 Flyway 执行，本语句因
+   * {@code IF NOT EXISTS} 变成空操作，不需要改测试。
+   */
+  private void createCheckpointTable() {
+    jdbc.execute(
+        """
+        CREATE TABLE IF NOT EXISTS qry_graph_projection_checkpoint (
+            scope             text        PRIMARY KEY,
+            status            text        NOT NULL,
+            generation        text        NOT NULL,
+            cursor_work_id    text,
+            base_revision     bigint      NOT NULL DEFAULT 0,
+            processed_works   bigint      NOT NULL DEFAULT 0,
+            processed_batches integer     NOT NULL DEFAULT 0,
+            failed_works      bigint      NOT NULL DEFAULT 0,
+            last_error        text,
+            started_at        timestamptz NOT NULL DEFAULT now(),
+            updated_at        timestamptz NOT NULL DEFAULT now(),
+            finished_at       timestamptz,
+            CONSTRAINT ck_it_graph_ckpt_status CHECK (
+                status IN ('RUNNING', 'COMPLETED', 'FAILED')
+            )
+        )
+        """);
+  }
+
+  /**
+   * 写入回填断点（真实 PostgreSQL 行，与 Pr #22 Backfill 的写入契约一致）。
+   *
+   * <p>用 {@code ON CONFLICT DO UPDATE} 而非先删后插：真实 Backfill 也是在同一个 scope 上推进同
+   * 一行状态（RUNNING → COMPLETED/FAILED），一次 upsert 更接近生产行为。
+   */
   private void writeInitializationState(String status, long failedWorks, String generation) {
-    deleteInitializationState();
-    runner.write(
-        tx -> {
-          tx.run(
-                  """
-                  CREATE (:GraphProjectionInitialization {
-                    scope: $scope, status: $status, failed_works: $failedWorks,
-                    generation: $generation, updated_at_epoch_ms: timestamp()
-                  })
-                  """,
-                  Map.of(
-                      "scope", SCOPE,
-                      "status", status,
-                      "failedWorks", failedWorks,
-                      "generation", generation))
-              .consume();
-          return null;
-        });
+    jdbc.update(
+        """
+        INSERT INTO qry_graph_projection_checkpoint
+          (scope, status, generation, failed_works, processed_works, updated_at)
+        VALUES (?, ?, ?, ?, 10, now())
+        ON CONFLICT (scope) DO UPDATE
+           SET status = EXCLUDED.status,
+               generation = EXCLUDED.generation,
+               failed_works = EXCLUDED.failed_works,
+               updated_at = now()
+        """,
+        SCOPE,
+        status,
+        generation,
+        failedWorks);
   }
 
   private void deleteInitializationState() {
-    runner.write(
-        tx -> {
-          tx.run(
-                  "MATCH (i:GraphProjectionInitialization {scope: $scope}) DETACH DELETE i",
-                  Map.of("scope", SCOPE))
-              .consume();
-          return null;
-        });
+    jdbc.update("DELETE FROM qry_graph_projection_checkpoint WHERE scope = ?", SCOPE);
   }
 
   /** 直接改水位版本：用于验证「空图不被当成可用图」这条判定。 */

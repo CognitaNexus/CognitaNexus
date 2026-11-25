@@ -106,11 +106,12 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
 (:GraphProjectionMeta {
   scope, projected_version, catalog_revision, generation, updated_at_epoch_ms
 })
-
-(:GraphProjectionInitialization {
-  scope, status, failed_works, generation, updated_at_epoch_ms
-})
 ```
+
+回填的断点与完成度**不在图里**：它们是 PostgreSQL 迁移 `V7` 的表
+`qry_graph_projection_checkpoint(scope, status, generation, cursor_work_id, base_revision,
+processed_works, processed_batches, failed_works, last_error, started_at, updated_at, finished_at)`，
+由 Backfill 写入、由 `PostgresGraphProjectionInitializationProbe` 只读（§5.2、§6.1）。
 
 - 标识一律用**字符串**（架构 §9.3）。路径并列比较用规范 ID 的 Unicode 字典序，不用区域排序，
   也不转数字。
@@ -120,10 +121,10 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
   不用学者当前机构补齐（架构 §9.2）。
 - `Work.edges_materialized` 表示该成果的作者对边是否已物化（§4.4）。
 - 约束与索引见 `services/query-service/src/main/resources/neo4j/schema.cypher`：
-  `scholar_id` / `work_id` / `GraphProjectionMeta.scope` / `GraphProjectionInitialization.scope`
-  四个唯一约束；
+  `scholar_id` / `work_id` / `GraphProjectionMeta.scope` 三个唯一约束；
   领域、机构、数据性质、公开位、来源版本、`AUTHORED.work_id`、`COOPERATED_WITH.work_id/pair_key/
-  data_origin` 索引。全部 `IF NOT EXISTS`，启动幂等。
+  data_origin` 索引。全部 `IF NOT EXISTS`，启动幂等。（回填完成度的唯一性由 PG 侧的
+  `qry_graph_projection_checkpoint.scope` 主键保证，不在图库重复建约束。）
 
 ### 4.2 关系
 
@@ -229,6 +230,11 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
   3. 批量结束后 `advanceMeta` 推进 `projected_version` 到本批最大 `source_version`。
 - 断点就是 `GraphProjectionMeta.projected_version`：进程中断后从该水位之后继续；重复扫描的
   批次因幂等而安全。**不使用内存 offset**——进程重启后 offset 无法解释「哪些成果已应用」。
+- **断点与完成度的持久记录在 PG，不放在图库节点里**：迁移 `V7` 的
+  `qry_graph_projection_checkpoint`（每个 `scope` 一行，`status ∈ {RUNNING, COMPLETED, FAILED}`、
+  `cursor_work_id`、`base_revision`、`processed_works`、`failed_works`、`generation`）。
+  图库只保留 `GraphProjectionMeta` 水位——它只前进、只回答「图写到了哪个版本」。
+  两边各写一份「回填是否完成」必然漂移，而漂移后的结果正是「图缺一批合作边、却被判为可服务」。
 - 重建使用**新 generation**（`GraphProjectionMeta.generation`）。全部灌完并核对行数后，才允许
   把公开读路径切到图库；切换前图查询一律走 PG（§7）。
 
@@ -267,14 +273,29 @@ PG 降级路径（§7、§8）。方法名里的 `All` 就是为了避免被误�
 2. 水位记录存在，且 `projected_version > 0`（基线初始化已开始并有成果落库）；
 3. generation 双方**均可判定且严格相等**：`null`/空白/占位值 `UNINITIALIZED` 都按「未初始化」
    处理，任一方缺失不得当作一致放行（否则一次漏传参数就等于整库图结果被信任）；
-4. 回填就绪探针（`GraphProjectionInitializationProbe`，图内
-   `(:GraphProjectionInitialization {scope})`）存在时，必须是 `status = COMPLETED`、
-   `failed_works = 0` 且 `generation` 等于当前活动代；探针不存在则退化为第 2、3 条。
+4. 回填就绪探针（`GraphProjectionInitializationProbe`）读 PostgreSQL 断点表
+   `qry_graph_projection_checkpoint`（迁移 `V7`）：
+   - 存在该 `scope` 的行时，必须是 `status = COMPLETED`、`failed_works = 0` 且 `generation`
+     等于当前活动代；
+   - 表存在但**没有该 `scope` 的行**时，探针返回合成状态 `MISSING`（本 scope 从未回填），
+     判为未初始化——不得退化成「只看水位元数据」；
+   - 仅当断点表**本身不存在**（PostgreSQL `SQLState 42P01`，即 `V7` 尚未部署的环境）时，探针
+     返回 `Optional.empty()`，退化为第 2、3 条；其他数据库错误上抛，判为「水位不可读」（
+     `PROJECTION_META_UNREADABLE`），不得伪装成未初始化。
 
 不满足第 2～4 条的判定原因码是 `PROJECTION_NOT_INITIALIZED`，与 `PROJECTION_STALE` **分开**：
 落后等回填即可，未初始化必须重跑/修复回填，等下去不会自愈。`NEO4J_WITH_PG_FALLBACK` 下自动回退
-PG，`NEO4J_STRICT` 下返回 503。初始化状态的唯一约束
-（`graph_projection_initialization_scope_unique`）保证一个作用域只有一份完成度记录。
+PG，`NEO4J_STRICT` 下返回 503。
+
+**回填完成度只有一个权威源，图可用性由两个存储的完成度共同决定**：
+
+| 事实 | 唯一权威源 | 完成条件 |
+| --- | --- | --- |
+| 基线回填是否完整跑完 | PostgreSQL `qry_graph_projection_checkpoint` | `status='COMPLETED' AND failed_works=0 AND generation=activeGeneration` |
+| 图投影是否追平 | Neo4j `GraphProjectionMeta` | `projected_version >= published_revision > 0 AND generation=activeGeneration` |
+
+两者必须**同时**成立才允许图库回答公开查询；任一不成立即 `PROJECTION_NOT_INITIALIZED` /
+`PROJECTION_STALE`。「回填完成度」只有 PG 这一个来源，图库里不另存一份副本。
 
 图里的 `is_public`/`data_origin` 只用于让「已投影的正确图」自洽，不是授权依据。
 
@@ -351,6 +372,8 @@ PG，`NEO4J_STRICT` 下返回 503。初始化状态的唯一约束
 | 投影水位落后 `published_revision` | `GraphProjectionMeta.behind()` | 走 PG；不得拿旧图冒充当前结果 |
 | 图数据部分损坏（证据缺标题、节点缺失） | 适配器校验 | **抛错**并降级；由对账/重建修复，不跳过坏边 |
 | 重建进行中 | `generation` 不一致 / 运维标记 | 走 PG，直到核对通过并切换 |
+| 基线回填未完成（`RUNNING` / `FAILED` / 有失败成果 / 旧代）或断点行缺失（`MISSING`） | PostgreSQL `qry_graph_projection_checkpoint` + `GraphProjectionMeta` | 走 PG；`PROJECTION_NOT_INITIALIZED`。缺边会被读成「不合作」，因此不能等；先重跑/修复回填 |
+| 断点表不存在（V7 未部署）或断点/PG 不可读 | PostgreSQL `SQLState 42P01` / 其他数据库错误 | 表不存在：退化为水位元数据判定；其他错误：`PROJECTION_META_UNREADABLE` 并走 PG（不伪装成未初始化） |
 | 图规模超限 | 节点/边计数 | 明确失败 `GRAPH_SCOPE_TOO_LARGE`，**不降级**：降级会让同一请求在大图上悄悄变成慢查询，掩盖真实规模问题 |
 
 **健康端点必须是 UP，降级只写在 details**：`neo4jGraphHealthIndicator` 恒返回 `Health.up()`，

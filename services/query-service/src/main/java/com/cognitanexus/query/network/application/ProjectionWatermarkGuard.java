@@ -29,9 +29,10 @@ import java.util.Optional;
  *   <li>再比 generation：两侧都必须<b>可判定且严格相等</b>。任一为空或占位值就不构成「同一代」的
  *       证据，按未初始化处理——旧实现「任一方为空即放行」会让一次漏传参数变成整库图结果被当成
  *       当前结果返回；
- *   <li>然后看回填就绪探针（{@link GraphProjectionInitializationProbe}）：存在初始化状态时必须是
- *       {@code COMPLETED}、{@code failedWorks == 0} 且属于当前活动代。有失败成果说明图上少了一批
- *       合作边，而缺边会被读成「这两位不合作」；
+ *   <li>然后看回填就绪探针（{@link GraphProjectionInitializationProbe}）：它只读 PostgreSQL 断点表
+ *       {@code qry_graph_projection_checkpoint}（迁移 V7），存在状态时必须是 {@code COMPLETED}、
+ *       {@code failedWorks == 0} 且属于当前活动代。有失败成果或断点行缺失（{@code MISSING}）说明图上
+ *       少了一批合作边，而缺边会被读成「这两位不合作」；</newText>
  *   <li>最后比版本：{@code projectedVersion < publishedRevision} 即落后。
  * </ol>
  *

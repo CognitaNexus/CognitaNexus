@@ -139,8 +139,7 @@ class Neo4jGraphConfigurationTest {
                     java.util.Set.of(
                         "scholar_id_unique",
                         "work_id_unique",
-                        "graph_projection_meta_scope_unique",
-                        "graph_projection_initialization_scope_unique"),
+                        "graph_projection_meta_scope_unique"),
                     java.util.Set.of("scholar_domain"));
               }
             },
