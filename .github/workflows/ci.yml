@@ -1,0 +1,643 @@
+name: ci
+
+# =============================================================================
+# CI：只判「这份代码能不能上」，不部署任何东西
+# =============================================================================
+#
+# 与 CD 的关系：本文件里没有一条 SSH、没有一条 secret、没有任何部署动作。
+# 部署在 .github/workflows/deploy.yml，只有 workflow_dispatch 手动触发 + production
+# environment 审批 + confirm_deploy == 'DEPLOY' 才会执行。普通 push 不会碰到服务器。
+#
+# 为什么还要在 push(dev/main) 上跑：PR 的检查只证明「合并前那一刻是好的」，合并后
+# 的 dev 需要一个独立记录。两个触发条件都跑 CI，意味着「dev 红了」这件事可见，
+# 而不是要靠一次人工部署才发现。
+#
+# 七个 job 的划分不是按目录，而是按**失败时谁能定位**：
+#   backend-quality        编译/单测/覆盖率/架构依赖 —— 代码本身的问题
+#   frontend-quality       类型/单测/构建 + 缓存目录污染 —— 前端工具链的问题
+#   database-integration   Flyway + 真实 PostgreSQL —— SQL、约束、事务、并发
+#   graph-integration      Neo4j 图 Schema 与查询 —— 图能力是否真的可用
+#   cross-service          Outbox/Inbox 事件同步与投影 —— 跨服务一致性
+#   api-contract           公共 API 契约、错误码、分页、鉴权 —— 对外协议
+#   security               依赖/配置/凭据/工作流权限 —— 泄露与权限
+#
+# 所有外部依赖都是**本 job 内的临时 service 容器**（GitHub-hosted runner），
+# 不复用任何部署服务器的数据库，也不需要 SSH 凭据。
+# =============================================================================
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+# 最小权限：CI 只需要读代码。没有 contents: write，任何 job 都推不了代码、改不了 PR。
+permissions:
+  contents: read
+
+# 同一分支连续推送时只保留最新一次：CI 是「当前代码是否合格」，旧提交的结论没有价值。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 固定工具链版本：与 AGENTS.md「Java 21 / Spring Boot / Vue+TS」一致。
+  JAVA_VERSION: '21'
+  NODE_VERSION: '22'
+  # 与 ops/local/test-db.sh 的 IT_PORT 保持一致 —— 8 个 *IT 用例内部会断言连接串包含
+  # ":55432/"，端口换了测试会直接红（这是刻意的：防止误连共享开发库）。
+  # 端口写在各 job 的 services 里（services 定义不支持 env 上下文）。
+  #
+  # 测试实例口令（仅本 job 的临时容器，非生产凭据）。
+  NEO4J_PASSWORD: cn_test_neo4j_2026
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. 后端质量：编译、Spotless、单测、JaCoCo 覆盖率、架构依赖
+  # ---------------------------------------------------------------------------
+  backend-quality:
+    name: Backend Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: 确保 mvnw 可执行
+        # 仓库里 mvnw 的执行位曾经缺失（git 记录 100644），本机只能 sh ./mvnw 绕。
+        # 本次已在 git index 里改成 100755；这里仍显式 chmod，避免宿主文件系统丢位。
+        run: |
+          chmod +x mvnw
+          ./mvnw -v
+
+      - name: Spotless 格式检查
+        # verify 阶段也会跑一次；单列一步是为了让「格式不对」在 2 分钟内红，
+        # 而不是等单测与覆盖率全跑完才报。
+        run: ./mvnw -B -ntp spotless:check
+
+      - name: 编译 + 单测 + JaCoCo 覆盖率门禁 + 架构依赖检查
+        # verify 覆盖：编译、surefire（*Test）、spotless、JaCoCo check（4 条包级门禁）、
+        # maven-enforcer（服务之间禁止互相依赖 + Java 版本下限）。
+        # 集成测试在本 job 默认跳过（需要真实 PostgreSQL，见 database-integration）。
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp verify 2>&1 | tee /tmp/backend-verify.log | tail -40
+
+      - name: 测试证据核对（没跑、跳过了，都必须失败）
+        # 只看 mvn 的退出码不够：cn.it.skip 忘了翻、@Disabled、覆盖率 include 写错
+        # 都能让构建照样绿。这里核对报告本身：源码里每个 *Test.java 必须有报告、
+        # tests > 0、failures/errors = 0；覆盖率门禁的 include 必须匹配到非空包集合。
+        if: always()
+        run: bash ops/verify/ci-test-report-gate.sh --unit --coverage
+
+      - name: 测试计数写入注解（未登录也看得到）
+        if: always()
+        run: |
+          s=$(grep -hE '^\[INFO\] Tests run: [0-9]+, Failures: [0-9]+, Errors: [0-9]+, Skipped: [0-9]+' /tmp/backend-verify.log | tail -8 | tr '\n' ' ')
+          echo "::notice title=后端测试汇总::${s:-未找到测试汇总行（构建可能没跑到测试阶段）}"
+
+      - name: 上传 JUnit 与覆盖率报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-quality-reports
+          path: |
+            **/target/surefire-reports/**
+            **/target/site/jacoco/**
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: 上传诊断日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-quality-diagnostics
+          path: /tmp/backend-verify.log
+          retention-days: 7
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # 2. 前端质量：npm ci / 类型检查 / 单测 / Vite 构建
+  # ---------------------------------------------------------------------------
+  frontend-quality:
+    name: Frontend Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm ci
+        run: npm ci --no-audit --no-fund
+
+      - name: TypeScript 类型检查（vue-tsc --noEmit）
+        run: npm run typecheck
+
+      - name: 前端单测
+        run: npm test
+
+      - name: Vite 构建
+        run: npm run build
+
+      - name: 断言没有把 Windows 缓存路径写成目录
+        # frontend/.npmrc 曾有一行 cache=D:/dev-tools/npm-cache。Linux 下它会变成
+        # $PWD/D:/dev-tools/npm-cache，每次 npm 命令都在工作区里重建 frontend/D:/。
+        # 这一行已删除；这一步是回归断言：一旦有人把它加回去（或复制 Windows 配置），
+        # CI 立刻红，而不是等到某天 git status 里多出 18 MB 缓存才发现。
+        run: |
+          if [ -e 'D:' ]; then
+            echo "::error file=frontend/.npmrc::工作区出现了 D:/ 目录 —— .npmrc 里又有硬编码的 Windows 缓存路径"
+            find 'D:' -maxdepth 3 | head -20
+            exit 1
+          fi
+          echo "OK：未生成 D:/ 目录"
+
+      - name: 上传前端构建产物（供人工核对，不参与部署）
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 7
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # 3. 数据库集成：Flyway + 真实 PostgreSQL 16（core-service 的 6 个 *IT）
+  # ---------------------------------------------------------------------------
+  database-integration:
+    name: Database Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          # 仅本 job 临时容器的测试口令，与 ops/local/test-db.sh 的约定一致。
+          POSTGRES_PASSWORD: postgres_it
+          POSTGRES_DB: postgres
+        ports:
+          # 端口写死 55432：8 个 *IT 内部断言连接串包含 ":55432/"。
+          - 55432:5432
+        # healthcheck 让 job 在数据库「端口通但没起来」时等待而不是立刻跑测试；
+        # 起不来就是 job 失败，不会静默跳过集成测试。
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 10s
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: 初始化测试库与角色（对齐 ops/local/test-db.sh）
+        # 8 个 *IT 连的是 127.0.0.1:55432 的 core_it / query_it / ingestion_it，用
+        # postgres/postgres_it 做迁移、用 <role>/<role>_it 做权限边界验证。容器里这两样
+        # 都要现建，规则与 ops/local/test-db.sh 的 ensure_roles / ensure_database 一致。
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          psql_super() {
+            docker exec -i "$PG_CONTAINER" \
+              psql -U postgres -v ON_ERROR_STOP=1 "$@"
+          }
+          psql_super -d postgres <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_owner') THEN
+              CREATE ROLE core_owner LOGIN PASSWORD 'core_owner_it';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_app') THEN
+              CREATE ROLE core_app LOGIN PASSWORD 'core_app_it';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ingestion_owner') THEN
+              CREATE ROLE ingestion_owner LOGIN PASSWORD 'ingestion_owner_it';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ingestion_app') THEN
+              CREATE ROLE ingestion_app LOGIN PASSWORD 'ingestion_app_it';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'query_owner') THEN
+              CREATE ROLE query_owner LOGIN PASSWORD 'query_owner_it';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'query_app') THEN
+              CREATE ROLE query_app LOGIN PASSWORD 'query_app_it';
+            END IF;
+          END
+          $$;
+          SQL
+          for spec in core_it:core_owner ingestion_it:ingestion_owner query_it:query_owner; do
+            db="${spec%%:*}"
+            owner="${spec##*:}"
+            psql_super -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname = '$db'" | grep -q 1 \
+              || psql_super -d postgres -c "CREATE DATABASE $db OWNER $owner"
+          done
+          echo "== 连通性自检（三个库 + 迁移账号口令）=="
+          for db in core_it ingestion_it query_it; do
+            psql_super -d "$db" -Atc "select '$db OK'"
+          done
+
+      - name: Flyway 迁移 + PostgreSQL 集成测试（不允许跳过）
+        # -Pci 把 cn.it.skip 翻成 false；-Dcn.it.skip=false 同时显式写一遍（双保险，
+        # 两者任一被移除时另一条仍生效）。-DfailIfNoTests=false 只针对「某些模块没有 IT」
+        # 这一正常情况（ingestion / shared-kernel），不针对「该跑的 IT 没跑」——后者由
+        # 下一步的报告核对拦。
+        run: |
+          set -o pipefail
+          chmod +x mvnw
+          ./mvnw -B -ntp -pl services/core-service -am -Pci \
+            -Dcn.it.skip=false -DfailIfNoTests=false -Dspotless.check.skip=true \
+            verify 2>&1 | tee /tmp/db-it.log | tail -60
+
+      - name: 集成测试证据核对（每个 *IT.java 都必须有报告，skipped 必须为 0）
+        if: always()
+        run: bash ops/verify/ci-test-report-gate.sh --modules services/core-service --unit --it --coverage
+
+      - name: 上传 failsafe / surefire / JaCoCo 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-integration-reports
+          path: |
+            services/core-service/target/failsafe-reports/**
+            services/core-service/target/surefire-reports/**
+            services/core-service/target/site/jacoco/**
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: 上传诊断日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-integration-diagnostics
+          path: /tmp/db-it.log
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: 数据库日志（失败时打印容器日志尾部）
+        if: failure()
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: docker logs --tail 120 "$PG_CONTAINER" 2>&1 || true
+
+  # ---------------------------------------------------------------------------
+  # 4. 图集成：Neo4j 5 Community —— Schema、约束、索引、导入、查询、最短路径
+  # ---------------------------------------------------------------------------
+  graph-integration:
+    name: Graph Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      neo4j:
+        image: neo4j:5.26-community
+        env:
+          # 测试实例口令，非生产凭据；与 ops/verify/neo4j-ci-smoke.sh 的输入一致。
+          NEO4J_AUTH: neo4j/cn_test_neo4j_2026
+          NEO4J_server_memory_heap_max__size: 512m
+          NEO4J_server_memory_pagecache_size: 256m
+        ports:
+          - 17474:7474
+          - 17687:7687
+        # cypher-shell 是镜像内自带的客户端：健康检查直接问图数据库「RETURN 1」，
+        # 而不是只看端口。Bolt 没起来时这一步会一直等到重试耗尽并让 job 失败。
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p cn_test_neo4j_2026 'RETURN 1'"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 30
+          --health-start-period 45s
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: 图烟雾测试（约束 / 索引 / 导入 / 查询 / 最短路径）
+        # 脚本自己负责超时轮询与逐项断言；任何一项失败都以非零码退出，
+        # 不会出现「Neo4j 不可用但 CI 绿」。
+        env:
+          NEO4J_HTTP_URL: http://127.0.0.1:17474
+          NEO4J_WAIT_SECONDS: '60'
+        run: bash ops/verify/neo4j-ci-smoke.sh
+
+      - name: 图集成测试（-Dtest=*Graph*IT,*Neo4j*IT）
+        # 图 IT 由本 job 独立执行并核对报告，不与 Cross-Service 的 IT 混算。
+        run: |
+          set -o pipefail
+          chmod +x mvnw
+          ./mvnw -B -ntp -Pci -Dcn.it.skip=false -DfailIfNoTests=false \
+            -Dit.test='*Graph*IT,*Neo4j*IT' \
+            -Dtest='NoSuchGraphUnitTest' -Dsurefire.failIfNoSpecifiedTests=false \
+            -Dfailsafe.failIfNoSpecifiedTests=false \
+            -Dspotless.check.skip=true -Djacoco.skip=true \
+            verify 2>&1 | tee /tmp/graph-it.log | tail -40
+
+      - name: 图集成测试证据核对（所选 IT 必须全部执行）
+        if: always()
+        run: |
+          bash ops/verify/ci-test-report-gate.sh --modules services/query-service \
+            --it --it-select '*Graph*IT,*Neo4j*IT'
+
+      - name: 上传诊断日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graph-integration-diagnostics
+          path: |
+            /tmp/graph-it.log
+          retention-days: 7
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # 5. 跨服务集成：Core -> Query 的 Outbox/Inbox、重复/乱序/中断恢复、水位
+  # ---------------------------------------------------------------------------
+  cross-service-integration:
+    name: Cross-Service Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          # 仅本 job 临时容器的测试口令，与 ops/local/test-db.sh 的约定一致。
+          POSTGRES_PASSWORD: postgres_it
+          POSTGRES_DB: postgres
+        ports:
+          # 端口写死 55432：8 个 *IT 内部断言连接串包含 ":55432/"。
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 10s
+      # Redis：本地开发栈用会话/缓存实例。当前两个 IT 不依赖它，但跨服务用例
+      # 一旦引入「投影缓存失效」这类断言就会需要；先以 healthcheck 起好，
+      # 避免将来测试连到「本机恰好有一个 Redis」而不可复现。
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 16379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: 初始化测试库与角色
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          psql_super() {
+            docker exec -i "$PG_CONTAINER" \
+              psql -U postgres -v ON_ERROR_STOP=1 "$@"
+          }
+          psql_super -d postgres <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_owner') THEN
+              CREATE ROLE core_owner LOGIN PASSWORD 'core_owner_it';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_app') THEN
+              CREATE ROLE core_app LOGIN PASSWORD 'core_app_it';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'query_owner') THEN
+              CREATE ROLE query_owner LOGIN PASSWORD 'query_owner_it';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'query_app') THEN
+              CREATE ROLE query_app LOGIN PASSWORD 'query_app_it';
+            END IF;
+          END
+          $$;
+          SQL
+          for spec in core_it:core_owner query_it:query_owner; do
+            db="${spec%%:*}"
+            owner="${spec##*:}"
+            psql_super -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname = '$db'" | grep -q 1 \
+              || psql_super -d postgres -c "CREATE DATABASE $db OWNER $owner"
+          done
+          for db in core_it query_it; do
+            psql_super -d "$db" -Atc "select '$db OK'"
+          done
+
+      - name: Outbox/Inbox 事件同步集成测试
+        # 只跑两个跨服务 IT：
+        #   ProjectionRecoveryIT  重复投递、乱序（水位门控）、毒事件隔离、恢复后重新接收
+        #   SearchSnapshotIT      权威/公开水位与检索快照一致（count 与 list 同一版本）
+        # 其余 query 单测照常跑（覆盖率门禁需要它们），IT 用 -Dit.test 收窄。
+        run: |
+          set -o pipefail
+          chmod +x mvnw
+          ./mvnw -B -ntp -pl services/query-service -am -Pci \
+            -Dcn.it.skip=false -DfailIfNoTests=false \
+            -Dit.test='ProjectionRecoveryIT,SearchSnapshotIT' \
+            -Dfailsafe.failIfNoSpecifiedTests=false \
+            -Dspotless.check.skip=true \
+            verify 2>&1 | tee /tmp/cross-service-it.log | tail -60
+
+      - name: 跨服务测试证据核对
+        if: always()
+        run: |
+          bash ops/verify/ci-test-report-gate.sh --modules services/query-service \
+            --unit --it --it-select 'ProjectionRecoveryIT,SearchSnapshotIT' \
+            --require ProjectionRecoveryIT,SearchSnapshotIT --coverage
+
+      - name: 上传 JUnit / JaCoCo 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-service-reports
+          path: |
+            services/query-service/target/failsafe-reports/**
+            services/query-service/target/surefire-reports/**
+            services/query-service/target/site/jacoco/**
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: 上传诊断日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-service-diagnostics
+          path: /tmp/cross-service-it.log
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: 数据库日志（失败时）
+        if: failure()
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: docker logs --tail 120 "$PG_CONTAINER" 2>&1 || true
+
+  # ---------------------------------------------------------------------------
+  # 6. API 契约：状态码、错误码、分页与过滤、未授权访问与数据隔离
+  # ---------------------------------------------------------------------------
+  api-contract:
+    name: API Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: 公共 API 契约测试
+        # 选择标准（不是「随便挑几个测试」）：
+        #   *ControllerTest      —— 对外 HTTP 契约：状态码、错误体、字段名、分页参数上限
+        #   PageRequestTest      —— 分页/排序边界的统一实现
+        #   CapabilitiesTest     —— 角色能力矩阵（谁能做什么）
+        #   PortalEvidenceAccessTest —— 对象级授权：不是自己名下的证据必须 403/404 而不是 200
+        #   DataNatureScopeTest  —— 数据性质（REAL/SIMULATED/MIXED）作用域过滤，防止越界可见
+        run: |
+          set -o pipefail
+          chmod +x mvnw
+          ./mvnw -B -ntp -pl services/core-service,services/query-service -am \
+            -Dtest='*ControllerTest,PageRequestTest,CapabilitiesTest,PortalEvidenceAccessTest,DataNatureScopeTest' \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test 2>&1 | tee /tmp/api-contract.log | tail -40
+
+      - name: 契约测试证据核对（用例数下限 + 关键类必须出现）
+        if: always()
+        run: |
+          bash ops/verify/ci-test-report-gate.sh \
+            --modules services/core-service,services/query-service \
+            --unit --subset --min-tests 20 \
+            --require 'PublicCitationControllerTest,PublicSearchControllerTest,PageRequestTest,CapabilitiesTest,PortalEvidenceAccessTest,DataNatureScopeTest'
+
+      - name: 上传 JUnit 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-contract-reports
+          path: |
+            services/core-service/target/surefire-reports/**
+            services/query-service/target/surefire-reports/**
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: 上传诊断日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-contract-diagnostics
+          path: /tmp/api-contract.log
+          retention-days: 7
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # 7. 安全：依赖、构建配置、凭据、工作流权限
+  # ---------------------------------------------------------------------------
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: 设置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 确保 PyYAML 可用（工作流权限检查要解析 YAML）
+        run: |
+          if python3 -c 'import yaml' 2>/dev/null; then
+            echo "PyYAML 已可用"
+            exit 0
+          fi
+          python3 -m pip install --quiet pyyaml \
+            || python3 -m pip install --quiet --break-system-packages pyyaml
+          python3 -c 'import yaml'
+
+      - name: 凭据扫描 + 构建配置 + 工作流权限检查
+        run: bash ops/verify/security-scan.sh
+
+      - name: 依赖解析与版本锁定检查（Maven）
+        # 解析完整依赖树：失败说明某个依赖在中央仓库取不到（构建不可复现）；
+        # 同时核对没有 SNAPSHOT / LATEST / 版本区间被引入。
+        run: |
+          set -o pipefail
+          chmod +x mvnw
+          # -DappendOutput=true 必须加：多模块 reactor 里每个模块都会重写同一个 outputFile，
+          # 不加就只剩最后一个模块的依赖树（实测 136 行 vs 427 行），检查等于只覆盖 query-service。
+          ./mvnw -B -ntp dependency:tree -DoutputFile=/tmp/deps.txt -DappendOutput=true
+          ./mvnw -B -ntp dependency:tree -DoutputFile=/tmp/deps-runtime.txt \
+            -DincludeScope=runtime -DappendOutput=true
+          grep -cE ':jar:' /tmp/deps.txt /tmp/deps-runtime.txt || true
+          if grep -nE ':(SNAPSHOT|LATEST|RELEASE)' /tmp/deps.txt; then
+            echo "::error::依赖树里出现 SNAPSHOT / LATEST / RELEASE / 版本区间 —— 构建不可复现"
+            exit 1
+          fi
+          echo "OK：依赖版本全部锁定"
+
+      - name: 安装前端依赖（供审计使用）
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: 前端依赖审计（生产依赖，critical 级别失败）
+        # 只对生产依赖、只对 critical 失败：devDependencies 的传递依赖经常长期无修复，
+        # 把它设成阻塞只会让人习惯性绕过安全 job。critical 必须为 0。
+        working-directory: frontend
+        run: |
+          npm audit --omit=dev --audit-level=critical \
+            --registry=https://registry.npmjs.org --no-fund 2>&1 | tee /tmp/npm-audit.log
+
+      - name: 上传诊断日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-diagnostics
+          path: |
+            /tmp/deps.txt
+            /tmp/npm-audit.log
+          retention-days: 7
+          if-no-files-found: warn

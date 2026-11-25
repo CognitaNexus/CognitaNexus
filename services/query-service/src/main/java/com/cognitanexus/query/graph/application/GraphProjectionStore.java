@@ -50,6 +50,21 @@ public interface GraphProjectionStore {
    */
   boolean retireWork(String workId, long sourceVersion);
 
+  /**
+   * <b>对账专用</b>：删除图里存在、但 PG 中已无对应行的孤立成果节点及其边。
+   *
+   * <p>与 {@link #retireWork} 的区别是「有没有可信版本可用」：{@code retireWork} 是给 PG 里
+   * 仍然存在、只是不再合格的成果留墓碑；这个方法用于 PG 里<b>连行都没有</b>的成果——此时任何
+   * 版本号都是凭空捏造，而<b>用</b> {@link Long#MAX_VALUE} 之类的哨兵值退场会造成持久伤害：
+   * 该成果日后在 PG 中重新合格并公开时，{@link #replaceWork} 的版本守卫
+   * （{@code w.source_version <= $sourceVersion}）会永久拒绝正常版本，图上再也恢复不了。
+   *
+   * <p>删除后节点回到「从未投影过」的状态，日后重新公开时任何版本都能正常写入。
+   *
+   * @return 是否真的删除了节点（不存在时返回 false，不视为失败）
+   */
+  boolean deleteWork(String workId);
+
   Optional<GraphProjectionMeta> readMeta(String scope);
 
   /**

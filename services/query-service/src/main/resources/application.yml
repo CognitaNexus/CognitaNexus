@@ -141,6 +141,28 @@ cn:
         shadow-compare-async: ${CN_QUERY_GRAPH_SHADOW_ASYNC:true}
         shadow-compare-queue-capacity: ${CN_QUERY_GRAPH_SHADOW_QUEUE_CAPACITY:64}
 
+      # 阶段四：PG → Neo4j 的投影同步（回填/增量/对账）。默认关闭：默认不启动任何后台写入任务。
+      # 全量重建会清空整库，必须由运维在“读路径已降级到 PG”的前提下显式触发（ADR-005 §8.2）。
+      projection:
+        enabled: ${CN_GRAPH_PROJECTION_ENABLED:false}
+        # 单批成果数。2C8G 实例每批要装成果/作者/领域/机构/作者对，批次过大是重建期 OOM 的首要原因。
+        batch-size: ${CN_GRAPH_PROJECTION_BATCH_SIZE:500}
+        # 单条成果写入的最大尝试次数（含首次）及基础退避；可重试/不可重试分类见
+        # GraphProjectionErrorClassifier（域/数据错误不重试）。
+        max-attempts: 3
+        retry-backoff-millis: 200
+        # 单次回填允许的失败成果数上限，超过即整次运行转 FAILED（不把“跑完了但没进图”当成功）。
+        max-failed-works: 100
+        # 后台增量追赶调度。默认关闭：需要显式开启并确认已接线。
+        worker-enabled: ${CN_GRAPH_PROJECTION_WORKER_ENABLED:false}
+        worker-interval-ms: 5000
+        event-batch-size: 200
+        # 对账扫描上限与抽样数；扫描被截断时报告里明确写 scanTruncated=true。
+        reconcile-scan-limit: 5000
+        reconcile-sample-size: 20
+        # 孤立节点扫描（图里有、PG 已无）。共享实例上必须关闭，否则会把别的环境成果退场。
+        reconcile-orphan-scan: true
+
   projection:
     # 必须与 core 的 cn.outbox.consumer-endpoints.query 键一致，否则事件会以别的 consumerId 落库，
     # 表现为「收到了但水位不动」。
